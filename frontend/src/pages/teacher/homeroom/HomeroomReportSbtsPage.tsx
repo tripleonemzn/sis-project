@@ -274,7 +274,7 @@ export const HomeroomReportSbtsPage = ({
           ${noCell}
           <td class="align-middle">
             <div style="font-weight: bold;">${item.name}</div>
-            <div style="font-size: 10px; font-style: italic; margin-top: 2px;">${item.teacherName || '-'}</div>
+            <div style="font-size: 9.5px; font-style: italic; margin-top: 1px; line-height: 1.08;">${item.teacherName || '-'}</div>
           </td>
           <td class="center align-middle">${item.kkm}</td>
           
@@ -284,7 +284,7 @@ export const HomeroomReportSbtsPage = ({
           <!-- Kolom 2 Dinamis -->
           ${col2Cells}
           
-          <td style="padding: 4px 8px; font-size: 11px; color: ${statusColor}; font-weight: ${status === 'Belum Tuntas' ? '700' : '600'};" class="center align-middle ket-cell">${status}</td>
+          <td style="padding: 3px 6px; font-size: 10.5px; line-height: 1.08; color: ${statusColor}; font-weight: ${status === 'Belum Tuntas' ? '700' : '600'};" class="center align-middle ket-cell">${status}</td>
         </tr>
       `}).join('');
     };
@@ -293,7 +293,7 @@ export const HomeroomReportSbtsPage = ({
       if (!items || items.length === 0) return '';
       return `
         <tr>
-          <td colspan="8" style="background-color: #f9f9f9; font-weight: bold; padding: 5px;">${groupTitle}</td>
+          <td colspan="8" style="background-color: #f9f9f9; font-weight: bold; padding: 4px;">${groupTitle}</td>
         </tr>
         ${renderRows(items)}
       `;
@@ -378,49 +378,49 @@ export const HomeroomReportSbtsPage = ({
       <head>
         <title>Rapor ${resolvedReportLabel} - ${data.header.studentName}</title>
         <style>
-          @page { size: A4; margin: 1cm; }
-          body { font-family: ui-sans-serif, system-ui, sans-serif; font-size: 12px; line-height: 1.3; }
-          .header { text-align: center; margin-bottom: 20px; }
+          @page { size: A4; margin: 0.9cm; }
+          body { font-family: ui-sans-serif, system-ui, sans-serif; font-size: 11.5px; line-height: 1.18; }
+          .header { text-align: center; margin-bottom: 14px; }
           .header-title { font-weight: bold; font-size: 14px; }
           .header-school { font-weight: bold; font-size: 14px; margin: 2px 0; }
           .header-year { font-weight: bold; font-size: 12px; }
           
-          .info-table { width: 100%; margin-bottom: 12px; font-size: 12px; border-collapse: collapse; line-height: 1.16; }
-          .info-table td { padding: 1px 2px; vertical-align: top; line-height: 1.16; }
+          .info-table { width: 100%; margin-bottom: 8px; font-size: 11.5px; border-collapse: collapse; line-height: 1.08; }
+          .info-table td { padding: 1px 2px; vertical-align: top; line-height: 1.08; }
           
-          .content-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 12px; }
-          .content-table th, .content-table td { border: 1px solid black; padding: 4px; }
+          .content-table { width: 100%; border-collapse: collapse; margin-bottom: 12px; font-size: 11.5px; }
+          .content-table th, .content-table td { border: 1px solid black; padding: 3px 4px; line-height: 1.1; }
           .content-table th { text-align: center; background-color: #f0f0f0; font-weight: bold; vertical-align: middle; }
           .ket-header, .ket-cell { white-space: nowrap; width: 1%; }
           .empty-component-cell { text-align: center; color: #64748b; font-style: italic; white-space: nowrap; }
-          .attendance-note-row { display: flex; align-items: stretch; gap: 16px; margin: 15px 0; page-break-inside: avoid; }
+          .attendance-note-row { display: flex; align-items: stretch; gap: 12px; margin: 10px 0; page-break-inside: avoid; }
           .report-side-section { display: flex; flex-direction: column; min-width: 0; }
           .attendance-section { flex: 0 0 auto; }
           .note-section { flex: 1 1 auto; }
-          .side-section-title { font-weight: bold; margin-bottom: 5px; }
-          .attendance-table { width: auto; border-collapse: collapse; margin: 0; font-size: 12px; table-layout: auto; }
-          .attendance-table td { border: 1px solid black; padding: 4px 8px; white-space: nowrap; }
-          .attendance-value-cell { min-width: 58px; }
-          .note-box { border: 1px solid black; box-sizing: border-box; flex: 1 1 auto; min-height: 0; padding: 4px 8px; line-height: 1.35; white-space: normal; word-break: break-word; }
+          .side-section-title { font-weight: bold; margin-bottom: 4px; }
+          .attendance-table { width: auto; border-collapse: collapse; margin: 0; font-size: 11.5px; table-layout: auto; }
+          .attendance-table td { border: 1px solid black; padding: 3px 7px; white-space: nowrap; line-height: 1.08; }
+          .attendance-value-cell { min-width: 54px; }
+          .note-box { border: 1px solid black; box-sizing: border-box; flex: 1 1 auto; min-height: 0; padding: 3px 7px; line-height: 1.18; white-space: normal; word-break: break-word; }
           
           .center { text-align: center; }
           .align-middle { vertical-align: middle; }
           
-          .footer { margin-top: 30px; page-break-inside: avoid; }
-          .signature-row { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
+          .footer { margin-top: 18px; page-break-inside: avoid; }
+          .signature-row { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
           .signature-box { text-align: center; width: 250px; }
-          .signature-space { height: 70px; }
-          .signature-box.with-qr .signature-space { height: 18px; }
+          .signature-space { height: 56px; }
+          .signature-box.with-qr .signature-space { height: 14px; }
           .signature-qr {
             display: block;
-            width: 74px;
-            height: 74px;
+            width: 68px;
+            height: 68px;
             object-fit: contain;
-            margin: 0 auto 4px;
+            margin: 0 auto 3px;
             background: #fff;
           }
           .signature-name { display: inline-block; margin-top: 2px; }
-          .signature-nip { margin-top: 4px; font-size: 11px; }
+          .signature-nip { margin-top: 3px; font-size: 10.5px; }
         </style>
       </head>
       <body>

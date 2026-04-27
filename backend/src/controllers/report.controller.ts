@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
 import QRCode from 'qrcode';
+import { createHmac, timingSafeEqual } from 'crypto';
 import { z } from 'zod';
 import ExcelJS from 'exceljs';
 import prisma from '../utils/prisma';
@@ -97,6 +98,7 @@ type StudentReportVerificationTokenPayload = {
   semester: Semester;
   reportType: ExamType;
   reportProgramCode?: string | null;
+  reportProgramHint?: number | null;
 };
 
 type StudentReportVerificationTokenRecord = Partial<StudentReportVerificationTokenPayload> & {
@@ -112,9 +114,68 @@ type StudentReportVerificationTokenRecord = Partial<StudentReportVerificationTok
   t?: string;
   reportProgramCode?: string | null;
   p?: string | null;
+  reportProgramHint?: number | null;
+  h?: number | null;
   generatedAtMs?: number;
   g?: number;
 };
+
+const REPORT_CARD_SHORT_TOKEN_VERSION = 1;
+const REPORT_CARD_SHORT_TOKEN_NAMESPACE = 'report-card-short-v1';
+const REPORT_CARD_SHORT_TOKEN_SIGNATURE_BYTES = 7;
+
+function encodeShortReportType(reportType: ExamType): number {
+  if (reportType === ExamType.SBTS) return 1;
+  if (reportType === ExamType.SAS) return 2;
+  if (reportType === ExamType.SAT) return 3;
+  return 0;
+}
+
+function decodeShortReportType(code: number): ExamType | null {
+  if (code === 1) return ExamType.SBTS;
+  if (code === 2) return ExamType.SAS;
+  if (code === 3) return ExamType.SAT;
+  return null;
+}
+
+function encodeShortSemester(semester: Semester): number {
+  return semester === Semester.EVEN ? 1 : 0;
+}
+
+function decodeShortSemester(code: number): Semester | null {
+  if (code === 0) return Semester.ODD;
+  if (code === 1) return Semester.EVEN;
+  return null;
+}
+
+function computeShortProgramHint(raw: unknown): number {
+  const normalized = normalizeProgramCode(raw);
+  if (!normalized) return 0;
+  let hash = 0;
+  for (let index = 0; index < normalized.length; index += 1) {
+    hash = (hash * 131 + normalized.charCodeAt(index)) % 65535;
+  }
+  return hash === 0 ? 65535 : hash;
+}
+
+function formatUuidLikeToken(buffer: Buffer): string {
+  const hex = buffer.toString('hex');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
+}
+
+function parseUuidLikeToken(token: string): Buffer | null {
+  const compact = String(token || '').trim().replace(/-/g, '').toLowerCase();
+  if (!/^[0-9a-f]{32}$/.test(compact)) return null;
+  return Buffer.from(compact, 'hex');
+}
+
+function buildShortTokenSignature(payload: Buffer): Buffer {
+  return createHmac('sha256', JWT_SIGNING_SECRET)
+    .update(REPORT_CARD_SHORT_TOKEN_NAMESPACE)
+    .update(payload)
+    .digest()
+    .subarray(0, REPORT_CARD_SHORT_TOKEN_SIGNATURE_BYTES);
+}
 
 type StudentReportVerificationSnapshot = {
   schoolName: string;
@@ -140,24 +201,56 @@ type StudentReportVerificationSnapshot = {
 };
 
 function buildStudentReportVerificationToken(payload: StudentReportVerificationTokenPayload) {
-  const normalizedProgramCode = normalizeProgramCode(payload.reportProgramCode);
-  return jwt.sign(
-    {
-      k: 'RC',
-      s: payload.studentId,
-      a: payload.academicYearId,
-      m: payload.semester === Semester.ODD ? 'O' : 'E',
-      t: payload.reportType,
-      ...(normalizedProgramCode ? { p: normalizedProgramCode } : {}),
-    },
-    JWT_SIGNING_SECRET,
-    {
-    noTimestamp: true,
-    },
-  );
+  const reportTypeCode = encodeShortReportType(payload.reportType);
+  if (!reportTypeCode) {
+    throw new ApiError(500, 'Tipe rapor tidak didukung untuk token verifikasi pendek.');
+  }
+
+  const tokenBuffer = Buffer.alloc(16);
+  tokenBuffer.writeUInt32BE(Number(payload.studentId), 0);
+  tokenBuffer.writeUInt16BE(Number(payload.academicYearId), 4);
+  const flags =
+    ((REPORT_CARD_SHORT_TOKEN_VERSION & 0x0f) << 4) |
+    ((reportTypeCode & 0x07) << 1) |
+    (encodeShortSemester(payload.semester) & 0x01);
+  tokenBuffer.writeUInt8(flags, 6);
+  tokenBuffer.writeUInt16BE(computeShortProgramHint(payload.reportProgramCode), 7);
+  buildShortTokenSignature(tokenBuffer.subarray(0, 9)).copy(tokenBuffer, 9);
+  return formatUuidLikeToken(tokenBuffer);
 }
 
 function verifyStudentReportVerificationToken(token: string): StudentReportVerificationTokenPayload {
+  const shortTokenBuffer = parseUuidLikeToken(token);
+  if (shortTokenBuffer) {
+    const payloadBuffer = shortTokenBuffer.subarray(0, 9);
+    const signatureBuffer = shortTokenBuffer.subarray(9, 16);
+    const expectedSignature = buildShortTokenSignature(payloadBuffer);
+    if (!timingSafeEqual(signatureBuffer, expectedSignature)) {
+      throw new ApiError(404, 'Tautan verifikasi rapor SBTS tidak valid.');
+    }
+
+    const flags = shortTokenBuffer.readUInt8(6);
+    const version = (flags >> 4) & 0x0f;
+    if (version !== REPORT_CARD_SHORT_TOKEN_VERSION) {
+      throw new ApiError(404, 'Tautan verifikasi rapor SBTS tidak valid.');
+    }
+
+    const reportType = decodeShortReportType((flags >> 1) & 0x07);
+    const semester = decodeShortSemester(flags & 0x01);
+    if (!reportType || !semester || reportType !== ExamType.SBTS) {
+      throw new ApiError(404, 'Tautan verifikasi rapor SBTS tidak valid.');
+    }
+
+    return {
+      studentId: shortTokenBuffer.readUInt32BE(0),
+      academicYearId: shortTokenBuffer.readUInt16BE(4),
+      semester,
+      reportType,
+      reportProgramCode: null,
+      reportProgramHint: Number(shortTokenBuffer.readUInt16BE(7) || 0) || null,
+    };
+  }
+
   const decoded = jwt.verify(token, JWT_SIGNING_SECRET);
   if (!decoded || typeof decoded !== 'object') {
     throw new ApiError(404, 'Tautan verifikasi rapor SBTS tidak valid.');
@@ -201,11 +294,12 @@ function verifyStudentReportVerificationToken(token: string): StudentReportVerif
     semester,
     reportType,
     reportProgramCode: normalizeProgramCode(record.p ?? record.reportProgramCode) || null,
+    reportProgramHint: Number(record.h ?? record.reportProgramHint ?? 0) || null,
   };
 }
 
 function buildStudentReportVerificationUrl(baseUrl: string, verificationToken: string) {
-  return `${baseUrl}/v/rc/${verificationToken}`;
+  return `${baseUrl}/verify/report-card/${verificationToken}`;
 }
 
 async function buildStudentReportVerificationQrDataUrl(verificationUrl: string) {
@@ -218,6 +312,50 @@ async function buildStudentReportVerificationQrDataUrl(verificationUrl: string) 
       light: '#FFFFFFFF',
     },
   });
+}
+
+async function resolveReportProgramCodeFromShortHint(params: {
+  academicYearId: number;
+  semester: Semester;
+  reportType: ExamType;
+  programHint?: number | null;
+}) {
+  const hint = Number(params.programHint || 0);
+  if (!Number.isFinite(hint) || hint <= 0) return null;
+  const candidates = await prisma.examProgramConfig.findMany({
+    where: {
+      academicYearId: params.academicYearId,
+      isActive: true,
+      OR: [{ fixedSemester: null }, { fixedSemester: params.semester }],
+    },
+    select: {
+      code: true,
+      displayOrder: true,
+      id: true,
+      baseType: true,
+      baseTypeCode: true,
+      gradeComponentType: true,
+      gradeComponentTypeCode: true,
+      gradeComponentCode: true,
+      fixedSemester: true,
+    },
+    orderBy: [{ displayOrder: 'asc' }, { id: 'asc' }],
+  });
+  const matches: string[] = [];
+  for (const program of candidates) {
+    if (computeShortProgramHint(program.code) !== hint) continue;
+    const resolvedType =
+      (await resolveReportTypeByProgramSlot({
+        academicYearId: params.academicYearId,
+        fixedSemester: program.fixedSemester,
+        gradeComponentCode: program.gradeComponentCode,
+      })) || inferReportTypeFromProgram(program);
+    if (resolvedType !== params.reportType) continue;
+    const normalizedCode = normalizeProgramCode(program.code);
+    if (normalizedCode) matches.push(normalizedCode);
+  }
+  if (matches.length !== 1) return null;
+  return matches[0] || null;
 }
 
 function buildSbtsVerificationSnapshot(reportData: any): StudentReportVerificationSnapshot {
@@ -2273,12 +2411,21 @@ export const verifyPublicStudentSbtsReport = asyncHandler(async (req: Request, r
   }
 
   const verifiedToken = verifyStudentReportVerificationToken(token);
+  const resolvedProgramCode =
+    verifiedToken.reportProgramCode ||
+    (await resolveReportProgramCodeFromShortHint({
+      academicYearId: verifiedToken.academicYearId,
+      semester: verifiedToken.semester,
+      reportType: verifiedToken.reportType,
+      programHint: verifiedToken.reportProgramHint,
+    })) ||
+    null;
   const reportData = await reportService.getStudentReport(
     verifiedToken.studentId,
     verifiedToken.academicYearId,
     verifiedToken.semester,
     verifiedToken.reportType,
-    verifiedToken.reportProgramCode || null,
+    resolvedProgramCode,
   );
   const verificationSnapshot = buildSbtsVerificationSnapshot(reportData);
   verificationSnapshot.student.id = verifiedToken.studentId;
