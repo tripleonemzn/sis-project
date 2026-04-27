@@ -575,6 +575,59 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 - Commit hash terkait:
   - Pending commit sesi ini.
 
+## Update Terbaru 2026-04-27 16:46 WIB
+
+- Objective/task aktif:
+  - Rapikan parity dan UI wali kelas, sesuaikan popup ekstrakurikuler dengan standar modal project, lalu perbaiki QR rapor SBTS agar mengikuti pola BA yang lebih ringkas dan mudah dipindai.
+- Batch/wave terakhir selesai:
+  - Refinement wali kelas + QR rapor SBTS + update policy barcode selesai.
+- Progress:
+  - `100%` untuk request ini.
+- Area/file yang disentuh:
+  - `frontend/src/pages/teacher/homeroom/HomeroomPermissionsPage.tsx`
+  - `mobile-app/app/(app)/teacher/homeroom-permissions.tsx`
+  - `frontend/src/pages/teacher/homeroom/HomeroomExtracurricularsPage.tsx`
+  - `backend/src/controllers/report.controller.ts`
+  - `frontend/src/pages/teacher/homeroom/HomeroomReportSbtsPage.tsx`
+  - `frontend/src/App.tsx`
+  - `AGENTS.md`
+- Ringkasan perubahan:
+  - Tab `Publikasi Nilai` web dirapikan agar scrollbar/garis kecil di ujung tidak muncul di desktop, dan dua card info diganti menjadi tombol bulat modal seperti pola petunjuk ujian siswa.
+  - Urutan tab mobile disamakan dengan web: `Daftar Izin`, `Akses Ujian`, `Buku Wali Kelas`, `Publikasi Nilai`.
+  - Popup `Tambah Prestasi` pada tab ekstrakurikuler sekarang memakai backdrop ringan `bg-black/35`, modal lebih proporsional, dan body scroll internal sesuai standar project.
+  - QR rapor SBTS sekarang memakai route pendek `/v/rc/:token`, payload token yang lebih ringkas, QR density lebih ringan, ukuran cetak lebih kecil, dan teks legalitas panjang di bawah nama wali kelas dihapus.
+  - `AGENTS.md` diperbarui agar barcode/QR verifikasi dokumen ke depan wajib mengikuti standar BA/Jadwal Mengawas.
+- Verifikasi yang sudah dijalankan:
+  - `cd backend && npm run build`
+  - `cd backend && npm run service:restart`
+  - `cd backend && npm run service:health`
+  - `cd frontend && npm run build`
+  - `cd frontend && npm run deploy`
+  - `cd mobile-app && npm run typecheck`
+  - `cd mobile-app && npm run audit:parity:check`
+  - `cd mobile-app && npm run check:ota:testers`
+  - `cd mobile-app && npm run update:pilot-live:verified -- "Perapian publikasi nilai dan QR rapor. Silakan perbarui untuk menikmati fitur terbaru."`
+  - `curl -I https://siskgb2.id/teacher/wali-kelas/permissions` merespons `200`
+  - `curl -I https://siskgb2.id/v/rc/test` merespons `200`
+  - sanity check endpoint publik rapor via sample token ringkas menghasilkan `status 200`, `valid true`
+- Publish/live status:
+  - Backend live.
+  - Web live.
+  - OTA Android `pilot-live` sudah publish.
+  - Update group OTA: `ff7c782e-bbfd-428f-91d4-381860fbca5c`
+  - Push notify OTA: `3/3`
+- Sisa pekerjaan:
+  - Tidak ada untuk request ini.
+- Blocker/residual risk:
+  - Verifier rapor SBTS tetap kompatibel membaca token lama route lama, tetapi QR baru sekarang selalu menerbitkan route pendek `/v/rc/:token`.
+  - Perbaikan QR saat ini masih pilot khusus rapor SBTS; dokumen lain belum diubah selain policy default di `AGENTS.md`.
+- Langkah aman berikutnya:
+  - Minta user cek ulang halaman `Publikasi Nilai`, popup `Tambah Prestasi`, lalu cetak satu rapor SBTS baru untuk memastikan QR versi pendek sudah terbaca saat discan.
+- Last updated:
+  - 2026-04-27 16:46 WIB
+- Commit hash terkait:
+  - Pending commit sesi ini.
+
 ## Template Update Wajib Saat Ada Pekerjaan Baru
 
 - Objective/task aktif:
