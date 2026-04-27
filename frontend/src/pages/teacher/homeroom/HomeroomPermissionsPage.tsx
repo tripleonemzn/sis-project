@@ -447,66 +447,62 @@ export const HomeroomPermissionsPage = () => {
       {/* Main Card */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
         {/* Tabs & Filter Header */}
-        <div className="border-b border-gray-200 bg-gray-50 p-4 flex flex-col xl:flex-row xl:items-center justify-between gap-4">
-          <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
-            <div className="flex space-x-1 bg-white p-1 rounded-lg border border-gray-200">
+        <div className="border-b border-gray-200 bg-white px-4 pt-4">
+          <div className="flex flex-col xl:flex-row xl:items-end xl:justify-between gap-4">
+            <div className="flex overflow-x-auto gap-4">
               <button
+                type="button"
                 onClick={() => handleTabChange('permissions')}
-                className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+                className={`-mb-px flex items-center gap-2 border-b-2 px-4 py-3 whitespace-nowrap transition-colors text-[13px] ${
                   activeTab === 'permissions'
-                    ? 'bg-blue-50 text-blue-700'
-                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                    ? 'border-blue-600 text-blue-600 font-medium'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
               >
-                <div className="flex items-center gap-2">
-                  <FileText size={16} />
-                  <span>Daftar Izin</span>
-                </div>
+                <FileText size={16} />
+                <span>Daftar Izin</span>
               </button>
               <button
+                type="button"
                 onClick={() => handleTabChange('exam_restrictions')}
-                className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+                className={`-mb-px flex items-center gap-2 border-b-2 px-4 py-3 whitespace-nowrap transition-colors text-[13px] ${
                   activeTab === 'exam_restrictions'
-                    ? 'bg-blue-50 text-blue-700'
-                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                    ? 'border-blue-600 text-blue-600 font-medium'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
               >
-                <div className="flex items-center gap-2">
-                  <ShieldAlert size={16} />
-                  <span>Akses Ujian</span>
-                </div>
+                <ShieldAlert size={16} />
+                <span>Akses Ujian</span>
               </button>
               <button
+                type="button"
                 onClick={() => handleTabChange('homeroom_book')}
-                className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+                className={`-mb-px flex items-center gap-2 border-b-2 px-4 py-3 whitespace-nowrap transition-colors text-[13px] ${
                   activeTab === 'homeroom_book'
-                    ? 'bg-blue-50 text-blue-700'
-                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                    ? 'border-blue-600 text-blue-600 font-medium'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
               >
-                <div className="flex items-center gap-2">
-                  <BookOpenText size={16} />
-                  <span>Buku Wali Kelas</span>
-                </div>
+                <BookOpenText size={16} />
+                <span>Buku Wali Kelas</span>
               </button>
               <button
+                type="button"
                 onClick={() => handleTabChange('result_publication')}
-                className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+                className={`-mb-px flex items-center gap-2 border-b-2 px-4 py-3 whitespace-nowrap transition-colors text-[13px] ${
                   activeTab === 'result_publication'
-                    ? 'bg-blue-50 text-blue-700'
-                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                    ? 'border-blue-600 text-blue-600 font-medium'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
               >
-                <div className="flex items-center gap-2">
-                  <GraduationCap size={16} />
-                  <span>Publikasi Nilai</span>
-                </div>
+                <GraduationCap size={16} />
+                <span>Publikasi Nilai</span>
               </button>
             </div>
           </div>
 
           {activeTab === 'exam_restrictions' && (
-            <div className="flex flex-col sm:flex-row items-center gap-4 w-full sm:w-auto justify-end">
+            <div className="flex flex-col sm:flex-row items-center gap-4 w-full sm:w-auto justify-end py-4">
               <div className="flex items-center gap-2">
                 <span className="text-sm font-medium text-gray-700">Semester</span>
                 <select
@@ -546,7 +542,7 @@ export const HomeroomPermissionsPage = () => {
           )}
 
           {activeTab === 'result_publication' && (
-            <div className="flex flex-col sm:flex-row items-center gap-4 w-full sm:w-auto justify-end">
+            <div className="flex flex-col sm:flex-row items-center gap-4 w-full sm:w-auto justify-end py-4">
               <div className="flex items-center gap-2">
                 <span className="text-sm font-medium text-gray-700">Semester</span>
                 <select
@@ -616,55 +612,39 @@ export const HomeroomPermissionsPage = () => {
           </div>
         ) : activeTab === 'result_publication' ? (
           <div className="p-4 space-y-4">
-            <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
-              Default publikasi tetap mengikuti jadwal Wakakur. Gunakan kontrol ini jika wali kelas perlu menahan hasil nilai program tertentu agar belum tampil ke akun siswa.
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-              {[
-                {
-                  key: 'total',
-                  title: 'Program Semester',
-                  value: String(resultPublicationSummary.total),
-                  subtitle: selectedSemester === 'EVEN' ? 'Program semester genap' : 'Program semester ganjil',
-                  tone: 'border-blue-200 bg-blue-50 text-blue-700',
-                },
-                {
-                  key: 'visible',
-                  title: 'Sudah Tampil',
-                  value: String(resultPublicationSummary.visible),
-                  subtitle: 'Saat ini bisa dibuka siswa',
-                  tone: 'border-emerald-200 bg-emerald-50 text-emerald-700',
-                },
-                {
-                  key: 'blocked',
-                  title: 'Ditahan Wali',
-                  value: String(resultPublicationSummary.blocked),
-                  subtitle: 'Ditahan manual wali kelas',
-                  tone: 'border-rose-200 bg-rose-50 text-rose-700',
-                },
-                {
-                  key: 'waiting',
-                  title: 'Menunggu Wakakur',
-                  value: String(resultPublicationSummary.waitingWakakur),
-                  subtitle: 'Masih ikut jadwal rilis global',
-                  tone: 'border-amber-200 bg-amber-50 text-amber-700',
-                },
-              ].map((item) => (
-                <div key={item.key} className={`rounded-xl border p-4 ${item.tone}`}>
-                  <p className="text-xs font-semibold uppercase tracking-[0.16em]">{item.title}</p>
-                  <p className="mt-2 text-2xl font-bold">{item.value}</p>
-                  <p className="mt-2 text-xs">{item.subtitle}</p>
-                </div>
-              ))}
+            <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-[11px] leading-relaxed text-blue-800">
+              <span className="font-semibold">Panduan:</span> default publikasi tetap mengikuti jadwal Wakakur.
+              Gunakan tabel ini jika wali kelas perlu menahan hasil nilai program tertentu agar belum tampil ke akun siswa.
+              <div className="mt-2 flex flex-wrap gap-2 text-[11px]">
+                <span className="rounded-full bg-white/80 px-2 py-0.5 text-blue-700">
+                  Program: {resultPublicationSummary.total}
+                </span>
+                <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-emerald-700">
+                  Sudah tampil: {resultPublicationSummary.visible}
+                </span>
+                <span className="rounded-full bg-rose-50 px-2 py-0.5 text-rose-700">
+                  Ditahan wali: {resultPublicationSummary.blocked}
+                </span>
+                <span className="rounded-full bg-amber-50 px-2 py-0.5 text-amber-700">
+                  Menunggu Wakakur: {resultPublicationSummary.waitingWakakur}
+                </span>
+              </div>
             </div>
 
             {isLoadingResultPublications ? (
-              <div className="rounded-xl border border-gray-200 bg-white px-4 py-10 text-center text-gray-500">
-                Memuat kontrol publikasi nilai...
+              <div className="rounded-lg border border-gray-200">
+                <table className="w-full table-fixed text-xs">
+                  <tbody>
+                    <tr>
+                      <td className="px-4 py-10 text-center text-gray-500">
+                        Memuat kontrol publikasi nilai...
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
               </div>
             ) : isResultPublicationsError ? (
-              <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-10 text-center text-rose-700">
+              <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-10 text-center text-rose-700">
                 <p className="font-medium">Gagal memuat kontrol publikasi nilai.</p>
                 <button
                   type="button"
@@ -675,85 +655,100 @@ export const HomeroomPermissionsPage = () => {
                 </button>
               </div>
             ) : resultPublicationPrograms.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-gray-300 bg-white px-4 py-10 text-center text-gray-500">
+              <div className="rounded-lg border border-dashed border-gray-300 bg-white px-4 py-10 text-center text-gray-500">
                 Tidak ada program ujian siswa yang relevan untuk semester ini.
               </div>
             ) : (
-              <div className="grid gap-4 lg:grid-cols-2">
-                {resultPublicationPrograms.map((program) => {
-                  const isBlocked = program.homeroomPublication.mode === 'BLOCKED';
-                  const effectiveTone =
-                    program.effectiveVisibility.tone === 'green'
-                      ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                      : program.effectiveVisibility.tone === 'amber'
-                        ? 'border-amber-200 bg-amber-50 text-amber-700'
-                        : 'border-rose-200 bg-rose-50 text-rose-700';
+              <div className="overflow-x-auto rounded-lg border border-gray-200">
+                <table className="min-w-[1120px] w-full table-fixed text-xs">
+                  <thead className="bg-gray-50">
+                    <tr className="text-left uppercase tracking-wide text-gray-500">
+                      <th className="px-3 py-2 w-10">No</th>
+                      <th className="px-3 py-2 w-[25%]">Program</th>
+                      <th className="px-3 py-2 w-[19%]">Rilis Wakakur</th>
+                      <th className="px-3 py-2 w-[18%]">Gate Wali Kelas</th>
+                      <th className="px-3 py-2 w-[18%]">Status ke Siswa</th>
+                      <th className="px-3 py-2 w-[12%]">Kebijakan Aktif</th>
+                      <th className="px-3 py-2 text-right w-[8%]">Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 bg-white">
+                    {resultPublicationPrograms.map((program, index) => {
+                      const isBlocked = program.homeroomPublication.mode === 'BLOCKED';
+                      const visibilityTone =
+                        program.effectiveVisibility.tone === 'green'
+                          ? 'bg-emerald-50 text-emerald-700'
+                          : program.effectiveVisibility.tone === 'amber'
+                            ? 'bg-amber-50 text-amber-700'
+                            : 'bg-rose-50 text-rose-700';
 
-                  return (
-                    <div key={program.publicationCode} className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-                      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                        <div>
-                          <div className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-xs font-semibold text-gray-600">
-                            <span>{program.publicationCode}</span>
-                            <span>•</span>
-                            <span>
-                              {program.fixedSemester === 'EVEN'
-                                ? 'Semester Genap'
-                                : program.fixedSemester === 'ODD'
-                                  ? 'Semester Ganjil'
-                                  : 'Semua Semester'}
+                      return (
+                        <tr key={program.publicationCode} className="align-top">
+                          <td className="px-3 py-3 text-gray-500">{index + 1}</td>
+                          <td className="px-3 py-3">
+                            <p className="font-semibold text-gray-900">{program.label}</p>
+                            <p className="text-gray-500">Kode: {program.publicationCode}</p>
+                            <div className="mt-1 flex flex-wrap gap-1 text-[11px]">
+                              <span className="rounded-full bg-gray-100 px-2 py-0.5 text-gray-600">
+                                {program.fixedSemester === 'EVEN'
+                                  ? 'Semester Genap'
+                                  : program.fixedSemester === 'ODD'
+                                    ? 'Semester Ganjil'
+                                    : 'Semua Semester'}
+                              </span>
+                              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-slate-600">
+                                {program.baseTypeCode || program.shortLabel}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="px-3 py-3 text-gray-700">
+                            <p className="font-medium text-gray-900">{program.globalRelease.label}</p>
+                            <p className="mt-1 text-gray-500">{program.globalRelease.description}</p>
+                            <p className="mt-1 text-gray-500">
+                              {program.globalRelease.effectiveDate
+                                ? `Efektif ${formatDateTime(program.globalRelease.effectiveDate)}`
+                                : 'Tanpa tanggal khusus'}
+                            </p>
+                          </td>
+                          <td className="px-3 py-3 text-gray-700">
+                            <p className="font-medium text-gray-900">{program.homeroomPublication.label}</p>
+                            <p className="mt-1 text-gray-500">{program.homeroomPublication.description}</p>
+                            <p className="mt-1 text-gray-500">
+                              {program.homeroomPublication.updatedAt
+                                ? `Diperbarui ${formatDateTime(program.homeroomPublication.updatedAt)}`
+                                : 'Belum ada override manual'}
+                            </p>
+                          </td>
+                          <td className="px-3 py-3">
+                            <span className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ${visibilityTone}`}>
+                              {program.effectiveVisibility.label}
                             </span>
-                          </div>
-                          <h3 className="mt-3 text-lg font-semibold text-gray-900">{program.label}</h3>
-                          <p className="mt-1 text-sm text-gray-500">{program.globalRelease.description}</p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => handleToggleResultPublication(program)}
-                          disabled={updateResultPublicationMutation.isPending}
-                          className={`inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-semibold transition ${
-                            isBlocked
-                              ? 'bg-emerald-600 text-white hover:bg-emerald-700'
-                              : 'bg-rose-600 text-white hover:bg-rose-700'
-                          } disabled:cursor-not-allowed disabled:opacity-60`}
-                        >
-                          {isBlocked ? 'Ikuti Jadwal Wakakur' : 'Tahan Publikasi'}
-                        </button>
-                      </div>
-
-                      <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                        <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
-                          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500">Rilis Wakakur</p>
-                          <p className="mt-2 text-sm font-semibold text-gray-900">{program.globalRelease.label}</p>
-                          <p className="mt-1 text-xs text-gray-500">
-                            {program.globalRelease.effectiveDate
-                              ? `Efektif ${formatDateTime(program.globalRelease.effectiveDate)}`
-                              : 'Tanpa tanggal khusus'}
-                          </p>
-                        </div>
-                        <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
-                          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500">Gate Wali Kelas</p>
-                          <p className="mt-2 text-sm font-semibold text-gray-900">{program.homeroomPublication.label}</p>
-                          <p className="mt-1 text-xs text-gray-500">
-                            {program.homeroomPublication.updatedAt
-                              ? `Diperbarui ${formatDateTime(program.homeroomPublication.updatedAt)}`
-                              : 'Belum ada override manual'}
-                          </p>
-                        </div>
-                        <div className={`rounded-xl border p-3 ${effectiveTone}`}>
-                          <p className="text-xs font-semibold uppercase tracking-[0.14em]">Status ke Siswa</p>
-                          <p className="mt-2 text-sm font-semibold">{program.effectiveVisibility.label}</p>
-                          <p className="mt-1 text-xs">{program.effectiveVisibility.description}</p>
-                        </div>
-                      </div>
-
-                      <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
-                        <p className="font-medium text-slate-900">Kebijakan aktif</p>
-                        <p className="mt-1">{program.homeroomPublication.description}</p>
-                      </div>
-                    </div>
-                  );
-                })}
+                            <p className="mt-2 text-gray-600">{program.effectiveVisibility.description}</p>
+                          </td>
+                          <td className="px-3 py-3 text-gray-700">
+                            <p>{program.homeroomPublication.description}</p>
+                          </td>
+                          <td className="px-3 py-3">
+                            <div className="flex justify-end">
+                              <button
+                                type="button"
+                                onClick={() => handleToggleResultPublication(program)}
+                                disabled={updateResultPublicationMutation.isPending}
+                                className={`inline-flex items-center justify-center rounded-lg px-3 py-2 text-xs font-semibold transition ${
+                                  isBlocked
+                                    ? 'bg-emerald-600 text-white hover:bg-emerald-700'
+                                    : 'bg-rose-600 text-white hover:bg-rose-700'
+                                } disabled:cursor-not-allowed disabled:opacity-60`}
+                              >
+                                {isBlocked ? 'Ikuti Wakakur' : 'Tahan'}
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
             )}
           </div>
