@@ -5,39 +5,43 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-04-28 10:12 WIB
-- Current status: refinement fullscreen monitor QR presensi sudah selesai dan live. Fullscreen kini dibuat satu viewport tanpa scroll, warna monitor tidak lagi hardcoded gelap dan mengikuti theme aplikasi, serta kolom QR dibuat fixed agar panel kanan rapat tanpa celah kosong besar.
+- Last updated: 2026-04-28 10:30 WIB
+- Current status: desain panel sambutan monitor QR presensi sudah diperbarui dan live. Teks `Selamat Datang` dibuat center, subtitle diganti menjadi nama sekolah dari payload backend, dan informasi scan sekarang menampilkan foto profil serta detail role/jabatan tambahan peserta yang melakukan presensi.
 - Objective/task aktif:
-  - Merapikan fullscreen monitor QR presensi agar proporsional untuk layar monitor/TV TU.
+  - Menyempurnakan UI sambutan monitor QR presensi agar lebih jelas saat peserta scan di monitor TU.
 - Batch terakhir selesai:
-  - `Batch QR monitor fullscreen refinement`
+  - `Batch QR monitor welcome panel`
 - Progress batch ini:
   - `100%`
 - Last completed repo work:
-  - Commit: `pending current branch push`
-  - Title: `fix(attendance): refine qr monitor fullscreen layout`
+  - Commit: `c8e5367`
+  - Title: `feat(attendance): enrich qr monitor welcome panel`
   - Summary:
-    - fullscreen monitor memakai `100dvh`, `overflow: hidden`, dan layout fixed agar tidak perlu scroll
-    - card statistik bawah disembunyikan saat fullscreen, tetapi tetap tersedia pada tampilan normal
-    - monitor QR dan panel sambutan sekarang memakai warna light/default dan tetap mengikuti dark mode global jika user memang memilih mode gelap
-    - kolom QR fullscreen dibuat fixed `320-380px` sehingga panel kanan langsung mengisi sisa layar tanpa celah kosong besar
+    - payload session monitor QR sekarang membawa nama sekolah dari source backend terpusat
+    - recent event presensi mengirim `photo` untuk siswa/guru/staf serta `additionalDuties` untuk detail role user
+    - panel sambutan menampilkan judul center, nama sekolah, foto profil, nama peserta, identitas, role lengkap, waktu, detail scan, sumber, dan checkpoint
+    - role guru/staf dilengkapi `ptkType` dan tugas tambahan bila tersedia; siswa dilengkapi kelas
 - Area/file disentuh:
   - `frontend/src/pages/staff/StaffDailyPresencePage.tsx`
-  - `frontend/src/index.css`
+  - `frontend/src/services/attendance.service.ts`
+  - `backend/src/controllers/dailyPresence.controller.ts`
+  - `backend/src/utils/standardSchoolDocumentHeader.ts`
   - `docs/CODEX_CONTINUITY.md`
 - Verifikasi batch ini:
-  - `git diff --check`
+  - `cd backend && npm run build`
   - `cd frontend && npm run build`
+  - `cd backend && npm run service:restart`
+  - `cd backend && npm run service:health` -> `Backend:200`, `Backend API:200`
   - `cd frontend && npm run deploy`
   - `curl -I https://siskgb2.id/staff/administration/presence` -> `200`
 - Publish/live status:
   - Web live
-  - Backend tidak berubah
+  - Backend live/reloaded dan health check normal
   - Mobile/OTA tidak terdampak
 - Remaining work:
   - tidak ada pekerjaan setengah jadi pada batch ini
 - Residual risk:
-  - validasi visual langsung pada browser tester tetap diperlukan untuk memastikan proporsi tepat pada resolusi monitor TU; build dan deploy sudah lolos
+  - validasi visual langsung setelah scan tetap diperlukan untuk memastikan foto/role tampil sesuai data profil produksi masing-masing peserta
 
 ## Status Saat Ini
 
