@@ -5,46 +5,50 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-04-28 15:02 WIB
-- Current status: Batch 9 dan Batch 10 penutup sweep UI/UX data-first web sudah selesai dan sudah live. Batch 9 mengubah daftar ruangan inventaris dari card-list menjadi table view, sedangkan Batch 10 merapikan overlay modal approval PKL agar mengikuti standar popup ringan dan menyelesaikan audit klasifikasi kandidat tersisa.
+- Last updated: 2026-04-28 15:21 WIB
+- Current status: Batch 11 penyeragaman modal overlay web sudah selesai dan sudah live. Seluruh temuan `bg-black/*` pada overlay modal di `frontend/src/pages` dan `frontend/src/components` sudah diganti ke overlay slate transparan dengan blur ringan agar sesuai standar popup AGENTS.md.
 - Objective/task aktif:
-  - Menyeragamkan halaman isi menu sidebar yang berupa data operasional agar default memakai table/table-like view dengan hirarki font yang konsisten, dikerjakan bertahap per role/module.
+  - Menyeragamkan UI/UX web lintas role berdasarkan policy AGENTS.md: data operasional memakai table/table-like view, tab/filter/dropdown konsisten, dan modal/popup memakai overlay ringan yang tetap menjaga konteks halaman.
 - Batch terakhir selesai:
-  - `Batch 10 - Final UI data-first sweep close-out`
+  - `Batch 11 - Global modal overlay standardization`
 - Progress batch ini:
   - `100%`
 - Progress roadmap UI data-first:
   - `100%` untuk kandidat utama hasil sweep prioritas (`17 dari sekitar 17` slice/halaman sudah diselesaikan atau diklasifikasikan sebagai exception valid)
   - estimasi compliance web data-page keseluruhan sekitar `90%+`; sisa card yang masih ada terutama termasuk exception yang memang diperbolehkan policy: dashboard/statistik, quick action, notice/empty state, voting/candidate UI, dokumen/print preview, dan panel detail yang bukan data-list tabular
+- Progress roadmap modal overlay:
+  - `100%` untuk sweep `bg-black/*` overlay modal di `frontend/src/pages` dan `frontend/src/components`
+  - hasil audit `rg "fixed inset-0.*bg-black|bg-black/[0-9]+" frontend/src/components frontend/src/pages` sudah bersih
 - Last completed repo work:
-  - Commit: `7f13ee6`
-  - Title: `style(internship): soften approval modal overlays`
+  - Commit: `e6b0850`
+  - Title: `style(ui): standardize modal overlays`
   - Summary:
-    - Batch 9 commit `5db3ae9` mengubah daftar ruangan pada `InventoryHubPage` menjadi table view dengan kolom ruangan, lokasi, kapasitas, item, penanggung jawab, kondisi, dan aksi
-    - perubahan inventaris berlaku untuk route yang memakai komponen yang sama: Sarpras, Kepala Lab, Kepala Perpustakaan, dan inventaris tugas
-    - Batch 10 commit `7f13ee6` mengganti backdrop hitam pekat modal approval PKL menjadi overlay slate transparan dengan blur ringan
-    - audit penutup menandai card tersisa yang bukan data-list tabular sebagai exception valid, bukan target yang aman untuk dipaksa menjadi tabel
+    - modal overlay lintas role admin, teacher, wakasek, wali kelas, student, staff, principal, tutor, dan shared component diganti dari `bg-black/*` menjadi `bg-slate-950/20-25` + `backdrop-blur`
+    - perubahan hanya visual class overlay; logic form, API, query, mutation, route, dan state modal tidak diubah
+    - Batch 9-10 sebelumnya tetap selesai: data-first sweep prioritas `100%`
 - Area/file disentuh:
-  - `frontend/src/pages/teacher/wakasek/sarpras/InventoryHubPage.tsx`
-  - `frontend/src/pages/teacher/internship/InternshipApprovalPage.tsx`
+  - `frontend/src/components/**` modal/shared overlay terkait
+  - `frontend/src/pages/**` modal overlay lintas role terkait
   - `docs/CODEX_CONTINUITY.md`
 - Verifikasi batch ini:
+  - `rg -n "fixed inset-0[^\n]*bg-black|bg-black/[0-9]+" frontend/src/components frontend/src/pages || true`
   - `git diff --check`
   - `cd frontend && npm run build`
   - `cd frontend && npm run deploy`
-  - `curl -I -s https://siskgb2.id/teacher/sarpras/inventory`
-  - `curl -I -s https://siskgb2.id/teacher/head-lab/inventory`
-  - `curl -I -s https://siskgb2.id/teacher/head-library/inventory`
-  - `curl -I -s https://siskgb2.id/teacher/internship/approval`
+  - `curl -I -s https://siskgb2.id/student/exams`
+  - `curl -I -s https://siskgb2.id/teacher/exams`
+  - `curl -I -s https://siskgb2.id/teacher/work-program`
+  - `curl -I -s https://siskgb2.id/staff/finance`
+  - `curl -I -s https://siskgb2.id/principal`
   - `git status --short`
 - Publish/live status:
   - Web sudah deploy live ke `/var/www/html/` lewat `npm run deploy`
-  - Mobile OTA tidak dijalankan karena Batch 9-10 hanya menyentuh web
+  - Mobile OTA tidak dijalankan karena Batch 11 hanya menyentuh web
 - Remaining work:
-  - tidak ada batch lanjutan wajib untuk sweep kandidat prioritas UI data-first saat ini
-  - jika user ingin menyempurnakan lebih jauh, kandidat aman berikutnya adalah cleanup modal overlay global lain yang masih memakai backdrop hitam, tetapi itu di luar target table-first batch ini
+  - tidak ada batch lanjutan wajib untuk sweep kandidat prioritas data-first maupun overlay modal saat ini
+  - kandidat aman berikutnya jika user ingin lanjut: audit komponen form/dropdown/searchable select lintas role, atau audit polling/refetch pre-existing yang berpotensi berat
 - Residual risk:
-  - perubahan sudah lolos build/deploy dan smoke check route, tetapi tetap perlu user smoke test visual langsung di akun role terkait untuk memastikan tabel inventaris nyaman dibaca pada data nyata
+  - perubahan sudah lolos build/deploy dan smoke check route, tetapi tetap perlu user smoke test visual langsung saat membuka beberapa modal penting untuk memastikan overlay terasa proporsional di browser/perangkat asli
   - ditemukan pola polling 5 detik pre-existing pada dashboard PKL siswa; tidak diubah pada batch ini karena bukan bagian dari refactor visual table-first dan perlu task stabilitas terpisah bila ingin dirapikan
 
 ## Status Saat Ini
