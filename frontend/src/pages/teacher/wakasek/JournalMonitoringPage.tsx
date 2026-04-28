@@ -45,6 +45,46 @@ type InternshipJournalRow = {
   createdAt?: string | null;
 };
 
+function formatJournalDate(date: string, options?: Intl.DateTimeFormatOptions) {
+  return new Date(date).toLocaleDateString('id-ID', options ?? {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
+}
+
+function formatJournalDateTime(date?: string | null) {
+  return date ? new Date(date).toLocaleString('id-ID') : '-';
+}
+
+function getJournalStatusLabel(status?: string | null) {
+  switch (status) {
+    case 'VERIFIED':
+    case 'APPROVED':
+      return 'Disetujui';
+    case 'REJECTED':
+      return 'Ditolak';
+    case 'PENDING':
+      return 'Menunggu';
+    default:
+      return status || '-';
+  }
+}
+
+function getJournalStatusClassName(status?: string | null) {
+  switch (status) {
+    case 'VERIFIED':
+    case 'APPROVED':
+      return 'bg-green-100 text-green-700';
+    case 'REJECTED':
+      return 'bg-red-100 text-red-700';
+    case 'PENDING':
+      return 'bg-yellow-100 text-yellow-700';
+    default:
+      return 'bg-gray-100 text-gray-600';
+  }
+}
+
 const JournalMonitoringPage = () => {
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(10);
@@ -297,8 +337,8 @@ const JournalMonitoringPage = () => {
 
       {/* Journal Detail Modal */}
       {isModalOpen && selectedInternship && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl w-full max-w-4xl h-[90vh] flex flex-col shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/30 p-4 backdrop-blur-[2px]">
+          <div className="flex max-h-[calc(100vh-7rem)] w-full max-w-5xl flex-col rounded-xl bg-white shadow-2xl">
             {/* Modal Header */}
             <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center bg-gray-50 rounded-t-xl">
               <div>
@@ -320,7 +360,7 @@ const JournalMonitoringPage = () => {
             </div>
 
             {/* Modal Content */}
-            <div className="flex-1 overflow-y-auto p-6 bg-gray-100">
+            <div className="flex-1 overflow-y-auto bg-gray-100 p-6">
               {isLoadingJournals ? (
                 <div className="flex flex-col items-center justify-center h-64 text-gray-500">
                   <Loader2 className="w-8 h-8 animate-spin mb-3 text-blue-600" />
@@ -333,71 +373,79 @@ const JournalMonitoringPage = () => {
                   <p className="text-sm">Siswa ini belum mengisi jurnal harian PKL.</p>
                 </div>
               ) : (
-                <div className="space-y-4">
-                  {journals.map((journal) => (
-                    <div key={journal.id} className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 flex flex-col md:flex-row gap-6">
-                      {/* Date Section */}
-                      <div className="flex-shrink-0 md:w-24 flex flex-row md:flex-col items-center md:items-start gap-2 md:gap-0 md:border-r md:border-gray-100 md:pr-6">
-                        <div className="text-sm font-bold text-gray-500 uppercase">
-                          {new Date(journal.date).toLocaleDateString('id-ID', { month: 'short' })}
-                        </div>
-                        <div className="text-3xl font-bold text-gray-900">
-                          {new Date(journal.date).getDate()}
-                        </div>
-                        <div className="text-xs text-gray-400 mt-1">
-                          {new Date(journal.date).toLocaleDateString('id-ID', { weekday: 'long' })}
-                        </div>
-                      </div>
-
-                      {/* Content Section */}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex justify-between items-start mb-2">
-                          <h3 className="text-lg font-semibold text-gray-900 line-clamp-2">{journal.activity}</h3>
-                          <span className={`px-2 py-1 rounded text-xs font-medium whitespace-nowrap ml-2 ${
-                            journal.status === 'VERIFIED' ? 'bg-green-100 text-green-700' : 
-                            journal.status === 'REJECTED' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'
-                          }`}>
-                            {journal.status === 'VERIFIED' ? 'Disetujui' : 
-                             journal.status === 'REJECTED' ? 'Ditolak' : 'Menunggu'}
-                          </span>
-                        </div>
-                        
-                        <p className="text-gray-600 whitespace-pre-line mb-4 text-sm leading-relaxed">
-                          {journal.description || '-'}
-                        </p>
-
-                        {/* Image */}
-                        {journal.imageUrl && (
-                          <div className="mb-4">
-                            <img 
-                              src={journal.imageUrl} 
-                              alt="Dokumentasi" 
-                              className="h-48 w-auto rounded-lg object-cover border border-gray-100 shadow-sm"
-                            />
-                          </div>
-                        )}
-
-                        {/* Feedback */}
-                        {journal.feedback && (
-                          <div className="bg-blue-50 p-3 rounded-lg border border-blue-100">
-                            <p className="text-sm text-blue-800">
-                              <span className="font-semibold">Catatan Pembimbing:</span> {journal.feedback}
-                            </p>
-                          </div>
-                        )}
-                        
-                        <div className="mt-3 pt-3 border-t border-gray-50 text-xs text-gray-400 flex items-center gap-1">
-                          <ClockIcon className="w-3 h-3" />
-                          <span>
-                            Diinput pada{' '}
-                            {journal.createdAt
-                              ? new Date(journal.createdAt).toLocaleString('id-ID')
-                              : '-'}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
+                <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[960px] text-left">
+                      <thead className="bg-gray-50">
+                        <tr className="border-b border-gray-200">
+                          <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">
+                            Tanggal
+                          </th>
+                          <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">
+                            Kegiatan
+                          </th>
+                          <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">
+                            Dokumentasi
+                          </th>
+                          <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">
+                            Feedback
+                          </th>
+                          <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">
+                            Status
+                          </th>
+                          <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">
+                            Diinput
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {journals.map((journal) => (
+                          <tr key={journal.id} className="align-top">
+                            <td className="whitespace-nowrap px-4 py-4 text-sm font-medium text-gray-900">
+                              <div>{formatJournalDate(journal.date)}</div>
+                              <div className="mt-1 text-xs font-normal text-gray-500">
+                                {formatJournalDate(journal.date, { weekday: 'long' })}
+                              </div>
+                            </td>
+                            <td className="px-4 py-4">
+                              <p className="text-sm font-semibold text-gray-900">{journal.activity || '-'}</p>
+                              <p className="mt-1 whitespace-pre-line text-sm leading-relaxed text-gray-600">
+                                {journal.description || '-'}
+                              </p>
+                            </td>
+                            <td className="px-4 py-4">
+                              {journal.imageUrl ? (
+                                <a
+                                  href={journal.imageUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="inline-flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
+                                >
+                                  <img
+                                    src={journal.imageUrl}
+                                    alt="Dokumentasi jurnal"
+                                    className="h-10 w-10 rounded-md object-cover"
+                                  />
+                                  Lihat foto
+                                </a>
+                              ) : (
+                                <span className="text-sm text-gray-500">-</span>
+                              )}
+                            </td>
+                            <td className="px-4 py-4 text-sm text-gray-600">{journal.feedback || '-'}</td>
+                            <td className="whitespace-nowrap px-4 py-4">
+                              <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${getJournalStatusClassName(journal.status)}`}>
+                                {getJournalStatusLabel(journal.status)}
+                              </span>
+                            </td>
+                            <td className="whitespace-nowrap px-4 py-4 text-sm text-gray-500">
+                              {formatJournalDateTime(journal.createdAt)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               )}
             </div>
@@ -417,22 +465,5 @@ const JournalMonitoringPage = () => {
     </div>
   );
 };
-
-// Helper Icon Component
-const ClockIcon = ({ className }: { className?: string }) => (
-  <svg 
-    xmlns="http://www.w3.org/2000/svg" 
-    viewBox="0 0 24 24" 
-    fill="none" 
-    stroke="currentColor" 
-    strokeWidth="2" 
-    strokeLinecap="round" 
-    strokeLinejoin="round" 
-    className={className}
-  >
-    <circle cx="12" cy="12" r="10" />
-    <polyline points="12 6 12 12 16 14" />
-  </svg>
-);
 
 export default JournalMonitoringPage;
