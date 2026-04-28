@@ -5,45 +5,39 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-04-28 10:00 WIB
-- Current status: monitor QR presensi web staff administrasi sudah diperbarui. Saat staff membuka sesi dari tab `Monitor QR`, panel monitor otomatis mencoba masuk fullscreen. Layout monitor tetap QR di kiri, sementara sisi kanan kini menampilkan sambutan `Selamat Datang` dan identitas peserta presensi terbaru pada sesi aktif.
+- Last updated: 2026-04-28 10:12 WIB
+- Current status: refinement fullscreen monitor QR presensi sudah selesai dan live. Fullscreen kini dibuat satu viewport tanpa scroll, warna monitor tidak lagi hardcoded gelap dan mengikuti theme aplikasi, serta kolom QR dibuat fixed agar panel kanan rapat tanpa celah kosong besar.
 - Objective/task aktif:
-  - Menjadikan monitor QR presensi lebih siap untuk layar TV/monitor TU dengan fullscreen otomatis dan panel identitas peserta terbaru.
+  - Merapikan fullscreen monitor QR presensi agar proporsional untuk layar monitor/TV TU.
 - Batch terakhir selesai:
-  - `Batch QR monitor fullscreen + welcome identity`
+  - `Batch QR monitor fullscreen refinement`
 - Progress batch ini:
   - `100%`
 - Last completed repo work:
-  - Commit: `f706435`
-  - Title: `feat(attendance): improve qr monitor welcome display`
+  - Commit: `pending current branch push`
+  - Title: `fix(attendance): refine qr monitor fullscreen layout`
   - Summary:
-    - panel `Monitor QR Bersama` memakai visual monitor gelap yang lebih cocok untuk display TU
-    - tombol `Buka Sesi` pada tab `Monitor QR` memanggil fullscreen pada panel monitor secara langsung dari user action
-    - sisi kanan QR menampilkan `Selamat Datang`, nama, jenis peserta, identitas, waktu scan, detail kelas/role, sumber presensi, dan checkpoint
-    - event yang ditampilkan difilter berdasarkan `createdAt` sesi aktif agar tidak mengambil presensi lama sebelum sesi dibuka
-    - overview presensi hanya auto-refresh ringan saat tab `Monitor QR` aktif
+    - fullscreen monitor memakai `100dvh`, `overflow: hidden`, dan layout fixed agar tidak perlu scroll
+    - card statistik bawah disembunyikan saat fullscreen, tetapi tetap tersedia pada tampilan normal
+    - monitor QR dan panel sambutan sekarang memakai warna light/default dan tetap mengikuti dark mode global jika user memang memilih mode gelap
+    - kolom QR fullscreen dibuat fixed `320-380px` sehingga panel kanan langsung mengisi sisa layar tanpa celah kosong besar
 - Area/file disentuh:
-  - `backend/src/utils/dailyPresenceSelfScan.ts`
   - `frontend/src/pages/staff/StaffDailyPresencePage.tsx`
-  - `frontend/src/services/attendance.service.ts`
   - `frontend/src/index.css`
   - `docs/CODEX_CONTINUITY.md`
 - Verifikasi batch ini:
   - `git diff --check`
-  - `cd backend && npm run build`
-  - `cd backend && npm run service:restart`
-  - `cd backend && npm run service:health`
   - `cd frontend && npm run build`
   - `cd frontend && npm run deploy`
   - `curl -I https://siskgb2.id/staff/administration/presence` -> `200`
 - Publish/live status:
-  - Backend live dan sehat
   - Web live
+  - Backend tidak berubah
   - Mobile/OTA tidak terdampak
 - Remaining work:
   - tidak ada pekerjaan setengah jadi pada batch ini
 - Residual risk:
-  - fullscreen browser tetap bergantung izin browser/user gesture; jika browser menolak fullscreen, sesi tetap terbuka dan panel monitor tetap bisa dipakai secara normal
+  - validasi visual langsung pada browser tester tetap diperlukan untuk memastikan proporsi tepat pada resolusi monitor TU; build dan deploy sudah lolos
 
 ## Status Saat Ini
 
