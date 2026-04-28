@@ -5,12 +5,12 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-04-28 16:18 WIB
-- Current status: perapihan UI kurikulum untuk halaman `Program Perangkat Ajar` sudah selesai dan sudah live. Elemen panduan atas yang memenuhi halaman sudah dihapus, `Mode Teknisi` tidak lagi muncul di jalur UI utama, dan form tambah/edit sekarang menampilkan `Kode Program`.
+- Last updated: 2026-04-28 16:30 WIB
+- Current status: perapihan UI role guru web untuk halaman `Perangkat Ajar` sudah selesai dan sudah live, dimulai dari program `Capaian Pembelajaran (CP)`. Header guru sekarang lebih ringkas, filter lebih proporsional, tombol `Tambah Dokumen` membuka popup konfigurasi, dan daftar dokumen bergeser ke table view yang lebih operasional.
 - Objective/task aktif:
-  - Merapikan pengalaman Wakakur agar halaman lebih ringkas, lebih tenang dibaca, dan lebih konsisten antara tabel daftar program dengan form tambah/edit.
+  - Merapikan pengalaman guru agar halaman dokumen perangkat ajar lebih fokus, mengikuti tahun ajaran aktif dari header tanpa duplikasi, dan lebih nyaman dipakai untuk konfigurasi/edit dokumen.
 - Batch terakhir selesai:
-  - `Batch 20 - Rapikan UI kurikulum Program Perangkat Ajar`
+  - `Batch 21 - Rapikan halaman guru perangkat ajar (web)`
 - Progress batch ini:
   - `100%`
 - Progress roadmap perangkat ajar dinamis:
@@ -19,29 +19,31 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
   - `100%` untuk reference picker guru lintas dokumen pada scope roadmap saat ini
 - Last completed repo work:
-  - Commit: `9d1670f`
-  - Title: `refactor(curriculum): simplify teaching resource program setup`
+  - Commit: `eeb83b6`
+  - Title: `refactor(teacher): streamline learning resource document flow`
   - Summary:
-    - tombol `Panduan Penggunaan` dan panel `Alur aman untuk Wakakur` di header halaman dihapus agar area atas lebih lega
-    - jalur `Mode Teknisi` disembunyikan dari UI kurikulum; halaman sekarang efektif tinggal jalur siap pakai
-    - field `Kode Program` sekarang tampil langsung di form tambah/edit, lengkap dengan sinkronisasi aman ke schema/source sheet saat kode berubah
+    - tombol `Muat Ulang` dan badge `Tahun ajaran aktif` di header guru dihapus karena konteks tahun ajaran sudah mengikuti header aplikasi
+    - tombol `Tambah Dokumen` kini membuka popup konfigurasi, tidak lagi mendorong user ke page editor penuh
+    - filter `Status` dan `Mode Tampilan` dibuat lebih proporsional terhadap area pencarian
+    - daftar dokumen guru di web diubah ke table view operasional agar lebih mudah discan
 - Area/file disentuh:
-  - `frontend/src/pages/teacher/wakasek/curriculum/TeachingResourceProgramManagementPage.tsx`
+  - `frontend/src/pages/teacher/learning-resources/LearningResourceGenerator.tsx`
   - `docs/CODEX_CONTINUITY.md`
 - Verifikasi batch ini:
   - `cd frontend && npm run build`
+  - `cd mobile-app && npm run audit:parity:check`
   - `git diff --check`
   - `cd frontend && npm run deploy`
-  - `curl -I https://siskgb2.id/teacher/wakasek/teaching-resource-programs`
+  - `curl -I https://siskgb2.id/teacher/learning-resources/cp`
 - Publish/live status:
   - Web sudah deploy live ke `/var/www/html/` lewat `npm run deploy`
-  - Web route `https://siskgb2.id/teacher/wakasek/teaching-resource-programs` merespons `HTTP/1.1 200 OK`
-  - Mobile tidak disentuh pada batch ini, jadi tidak ada OTA baru
+  - Web route `https://siskgb2.id/teacher/learning-resources/cp` merespons `HTTP/1.1 200 OK`
+  - Mobile source code tidak berubah pada batch ini; parity audit tetap dijalankan untuk sanity check dan lolos
 - Remaining work:
-  - Jika user ingin lanjut merapikan pengalaman, fokus aman berikutnya adalah audit tampilan guru/print berdasarkan program nyata yang sudah dibuat dari builder yang lebih ringkas ini.
+  - Jika user ingin lanjut, langkah aman berikutnya adalah merapikan pengalaman popup editor guru saat data nyata sudah mulai banyak, misalnya grouping aksi review atau penyederhanaan ringkasan meta dokumen.
 - Residual risk:
-  - mesin advanced/schema detail masih tetap ada di balik layar untuk menjaga kompatibilitas data existing, tetapi sekarang tidak dibuka dari UI utama Wakakur
-  - tetap perlu uji manual singkat untuk memastikan alur tambah/edit program terasa cukup jelas setelah area panduan atas dipangkas
+  - route `/new` untuk editor penuh masih tetap ada demi kompatibilitas direct access yang lama, tetapi tombol utama dari list sekarang sudah memakai popup
+  - tetap perlu uji manual singkat untuk memastikan table view baru terasa cukup nyaman saat jumlah dokumen bertambah
 
 ## Status Saat Ini
 
