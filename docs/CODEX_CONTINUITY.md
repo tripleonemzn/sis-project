@@ -5,41 +5,41 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-04-28 14:23 WIB
-- Current status: Batch 5 refactor UI/UX data-first untuk role Siswa web sudah selesai dan sudah live. Perubahan fokus pada halaman `Ekstrakurikuler` siswa yang sebelumnya masih memakai card-list untuk riwayat aktivitas dan program kerja OSIS agar menjadi table/table-like view.
+- Last updated: 2026-04-28 14:34 WIB
+- Current status: Batch 6 refactor UI/UX data-first untuk role Siswa web sudah selesai dan sudah live. Perubahan fokus pada halaman `Jurnal Harian PKL` siswa yang sebelumnya memakai card-list jurnal agar menjadi table/table-like view, sekaligus menyesuaikan backdrop modal tambah jurnal ke standar overlay ringan.
 - Objective/task aktif:
   - Menyeragamkan halaman isi menu sidebar yang berupa data operasional agar default memakai table/table-like view dengan hirarki font yang konsisten, dikerjakan bertahap per role/module.
 - Batch terakhir selesai:
-  - `Batch 5 - Siswa extracurricular table-first refactor`
+  - `Batch 6 - Siswa internship journal table-first refactor`
 - Progress batch ini:
   - `100%`
 - Progress roadmap UI data-first:
-  - `41%` untuk kandidat utama card-list prioritas hasil sweep (`7 dari sekitar 17` slice/halaman prioritas sudah distandarkan)
-  - estimasi compliance web data-page keseluruhan sekitar `71%` karena banyak halaman data sudah table-first sebelum refactor batch ini
+  - `47%` untuk kandidat utama card-list prioritas hasil sweep (`8 dari sekitar 17` slice/halaman prioritas sudah distandarkan)
+  - estimasi compliance web data-page keseluruhan sekitar `72%` karena banyak halaman data sudah table-first sebelum refactor batch ini
 - Last completed repo work:
-  - Commit: `14d9dce`
-  - Title: `refactor(student): standardize extracurricular data tables`
+  - Commit: `f76cb12`
+  - Title: `refactor(student): standardize internship journal table`
   - Summary:
-    - bagian `Aktivitas Terakhir` pada presensi ekskul siswa diubah dari stacked card menjadi tabel ringkas dengan kolom minggu/sesi, status, dan catatan
-    - daftar `Program Kerja OSIS` diubah dari card-list menjadi tabel dengan kolom program, semester, periode, dan agenda terdekat
-    - summary/status/action card tetap dipertahankan karena bukan data-list utama dan masih sesuai pola dashboard/CTA
-    - source data, query, mutation, dan alur aksi ekskul siswa tidak diubah
+    - daftar `Jurnal Harian PKL` siswa diubah dari card-list menjadi tabel dengan kolom tanggal, kegiatan, dokumentasi, feedback, dan status
+    - status jurnal sekarang ditampilkan dengan label user-friendly seperti `Menunggu`, `Disetujui`, dan `Ditolak`
+    - modal `Tambah Jurnal Kegiatan` memakai backdrop slate transparan dan tinggi popup dibatasi agar tidak melewati area layar
+    - source data, query, submit jurnal, dan alur upload/link dokumentasi tidak diubah
 - Area/file disentuh:
-  - `frontend/src/pages/student/StudentExtracurricularPage.tsx`
+  - `frontend/src/pages/student/internship/StudentInternshipJournal.tsx`
   - `docs/CODEX_CONTINUITY.md`
 - Verifikasi batch ini:
   - `git diff --check`
   - `cd frontend && npm run build`
   - `cd frontend && npm run deploy`
-  - `curl -I -s https://siskgb2.id/student/extracurricular`
+  - `curl -I -s https://siskgb2.id/student/internship/journals`
   - `git status --short`
 - Publish/live status:
   - Web sudah deploy live ke `/var/www/html/` lewat `npm run deploy`
-  - Mobile OTA tidak dijalankan karena Batch 5 hanya menyentuh web role Siswa
+  - Mobile OTA tidak dijalankan karena Batch 6 hanya menyentuh web role Siswa
 - Remaining work:
-  - lanjut Batch 6 untuk modul/role berikutnya dari hasil sweep, terutama halaman data yang masih card-list dan tab/dropdown yang belum konsisten
+  - lanjut Batch 7 untuk modul/role berikutnya dari hasil sweep, terutama halaman data yang masih card-list dan tab/dropdown yang belum konsisten
 - Residual risk:
-  - perubahan sudah lolos build/deploy dan smoke check, tetapi tetap perlu user smoke test visual langsung di akun siswa untuk memastikan tabel ekskul nyaman dibaca pada data nyata
+  - perubahan sudah lolos build/deploy dan smoke check, tetapi tetap perlu user smoke test visual langsung di akun siswa PKL untuk memastikan tabel jurnal nyaman dibaca pada data nyata
 
 ## Status Saat Ini
 
