@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, Plus, Printer, RefreshCw, Save, Send, X } from 'lucide-react';
+import { AlertTriangle, Plus, Printer, Save, Send, X } from 'lucide-react';
 import { useNavigate, useOutletContext } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { useActiveAcademicYear } from '../../../hooks/useActiveAcademicYear';
@@ -1765,6 +1765,10 @@ export const LearningResourceGenerator = ({
     setIsEditorOpen(openAsModal);
   };
 
+  const openCreate = () => {
+    initializeCreate(true);
+  };
+
   const openEdit = (entry: TeachingResourceEntry) => {
     const matchedContext =
       assignmentContextOptions.find(
@@ -2877,36 +2881,24 @@ export const LearningResourceGenerator = ({
     <div className="space-y-4">
       {!isPageEditor ? (
         <div className="rounded-xl border border-gray-200 bg-white p-4">
-        <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
-          <div>
-            <h2 className="text-lg font-semibold text-gray-900">{effectiveTitle}</h2>
-            <p className="text-sm text-gray-500">{effectiveDescription}</p>
-          </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900">{effectiveTitle}</h2>
+              <p className="text-sm text-gray-500">{effectiveDescription}</p>
+            </div>
             <button
               type="button"
-              onClick={() => {
-                setPage(1);
-                entryQuery.refetch();
-              }}
-              className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
-            >
-              <RefreshCw size={14} />
-              Muat Ulang
-            </button>
-            <button
-              type="button"
-              onClick={() => navigate(`${listPath}/new`)}
-              className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+              onClick={openCreate}
+              disabled={programConfigQuery.isLoading || assignmentsQuery.isLoading}
+              className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
             >
               <Plus size={14} />
               Tambah Dokumen
             </button>
           </div>
-        </div>
 
-        <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-5">
-          <div className="md:col-span-2">
+          <div className="mt-4 grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1.6fr)_minmax(240px,1fr)_minmax(240px,1fr)]">
+            <div>
             <label className="mb-1 block text-xs font-medium text-gray-500">Cari Dokumen</label>
             <div className="flex items-center gap-2">
               <input
@@ -2919,7 +2911,7 @@ export const LearningResourceGenerator = ({
                   }
                 }}
                 placeholder="Judul, ringkasan, atau kelas..."
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                className="h-[42px] w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
               />
               <button
                 type="button"
@@ -2927,7 +2919,7 @@ export const LearningResourceGenerator = ({
                   setPage(1);
                   setSearch(searchInput.trim());
                 }}
-                className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100"
+                className="h-[42px] shrink-0 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100"
               >
                 Terapkan
               </button>
@@ -2941,7 +2933,7 @@ export const LearningResourceGenerator = ({
                 setPage(1);
                 setStatusFilter(event.target.value as EntryFilterStatus);
               }}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+              className="h-[42px] w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
             >
               <option value="ALL">Semua Status</option>
               <option value="DRAFT">Draft</option>
@@ -2959,189 +2951,196 @@ export const LearningResourceGenerator = ({
                 setViewMode(event.target.value as EntryViewMode);
               }}
               disabled={!canReview}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none disabled:bg-gray-100"
+              className="h-[42px] w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none disabled:bg-gray-100"
             >
               <option value="mine">Dokumen Saya</option>
               <option value="review">Mode Review</option>
             </select>
           </div>
-          <div className="flex items-end">
-            <div className="w-full rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
-              Tahun ajaran aktif: <span className="font-semibold">{activeAcademicYear?.name || '-'}</span>
-            </div>
-          </div>
         </div>
 
-        <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
-          {(['DRAFT', 'SUBMITTED', 'APPROVED', 'REJECTED'] as TeachingResourceEntryStatus[]).map((statusKey) => (
-            <div key={statusKey} className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
-              <p className="text-xs text-gray-500">{STATUS_META[statusKey].label}</p>
-              <p className="text-xl font-semibold text-gray-900">{statusTotals[statusKey]}</p>
-            </div>
-          ))}
-        </div>
+          <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
+            {(['DRAFT', 'SUBMITTED', 'APPROVED', 'REJECTED'] as TeachingResourceEntryStatus[]).map((statusKey) => (
+              <div key={statusKey} className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
+                <p className="text-xs text-gray-500">{STATUS_META[statusKey].label}</p>
+                <p className="text-xl font-semibold text-gray-900">{statusTotals[statusKey]}</p>
+              </div>
+            ))}
+          </div>
         </div>
       ) : null}
 
       {!isPageEditor ? (
         <div className="rounded-xl border border-gray-200 bg-white p-4">
-        {entryQuery.isLoading ? (
-          <div className="py-16 text-center text-sm text-gray-500">Memuat dokumen {effectiveTitle.toLowerCase()}...</div>
-        ) : entryQuery.isError ? (
-          <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-            Gagal memuat dokumen. Silakan muat ulang.
-          </div>
-        ) : rows.length === 0 ? (
-          <div className="py-16 text-center">
-            <AlertTriangle className="mx-auto mb-3 h-7 w-7 text-amber-600" />
-            <p className="text-sm text-gray-500">
-              Belum ada dokumen {effectiveTitle.toLowerCase()} untuk filter yang dipilih.
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {rows.map((entry) => {
-              const statusMeta = STATUS_META[entry.status] || STATUS_META.DRAFT;
-              const isOwner = Number(entry.teacherId) === Number(user?.id || 0);
-              const contextLabel = resolveEntryContextLabel(entry, assignmentLabelMap);
-              const coveredClasses = extractCoveredClasses(entry);
-              const showReviewActions = canReview && viewMode === 'review' && !isOwner;
-              const canSubmit = isOwner && (entry.status === 'DRAFT' || entry.status === 'REJECTED');
-              const canEdit = isOwner && entry.status !== 'APPROVED';
-              const canDelete = isOwner && entry.status !== 'APPROVED';
+          {entryQuery.isLoading ? (
+            <div className="py-16 text-center text-sm text-gray-500">Memuat dokumen {effectiveTitle.toLowerCase()}...</div>
+          ) : entryQuery.isError ? (
+            <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+              Gagal memuat dokumen. Silakan coba lagi beberapa saat lagi.
+            </div>
+          ) : rows.length === 0 ? (
+            <div className="py-16 text-center">
+              <AlertTriangle className="mx-auto mb-3 h-7 w-7 text-amber-600" />
+              <p className="text-sm text-gray-500">
+                Belum ada dokumen {effectiveTitle.toLowerCase()} untuk filter yang dipilih.
+              </p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="min-w-full table-fixed text-sm">
+                <thead>
+                  <tr className="border-b border-gray-200 bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
+                    <th className="px-3 py-2">Dokumen</th>
+                    <th className="px-3 py-2">Status</th>
+                    <th className="px-3 py-2">Mapel & Tingkat</th>
+                    <th className="px-3 py-2">Cakupan</th>
+                    <th className="px-3 py-2">Diperbarui</th>
+                    <th className="px-3 py-2 text-right">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((entry) => {
+                    const statusMeta = STATUS_META[entry.status] || STATUS_META.DRAFT;
+                    const isOwner = Number(entry.teacherId) === Number(user?.id || 0);
+                    const contextLabel = resolveEntryContextLabel(entry, assignmentLabelMap);
+                    const coveredClasses = extractCoveredClasses(entry);
+                    const showReviewActions = canReview && viewMode === 'review' && !isOwner;
+                    const canSubmit = isOwner && (entry.status === 'DRAFT' || entry.status === 'REJECTED');
+                    const canEdit = isOwner && entry.status !== 'APPROVED';
+                    const canDelete = isOwner && entry.status !== 'APPROVED';
 
-              return (
-                <div key={entry.id} className="rounded-lg border border-gray-200 bg-white px-4 py-3">
-                  <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <h3 className="text-base font-semibold text-gray-900">{entry.title}</h3>
-                        <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${statusMeta.pillClass}`}>
-                          {statusMeta.label}
-                        </span>
-                      </div>
-                      {entry.summary ? <p className="mt-1 text-sm text-gray-600">{entry.summary}</p> : null}
-                      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
-                        <span>Mapel & Tingkat: {contextLabel}</span>
-                        {coveredClasses.length > 0 ? (
-                          <span>
-                            Cakupan: {coveredClasses.length} rombel ({coveredClasses.join(', ')})
+                    return (
+                      <tr key={entry.id} className="border-b border-gray-100 align-top last:border-b-0">
+                        <td className="px-3 py-3">
+                          <div className="min-w-0">
+                            <div className="font-semibold text-gray-900">{entry.title}</div>
+                            {entry.summary ? <p className="mt-1 text-sm text-gray-600">{entry.summary}</p> : null}
+                            <div className="mt-2 text-xs text-gray-500">Guru: {entry.teacher?.name || '-'}</div>
+                            {entry.reviewNote ? (
+                              <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs text-amber-700">
+                                Catatan review: {entry.reviewNote}
+                              </div>
+                            ) : null}
+                          </div>
+                        </td>
+                        <td className="px-3 py-3">
+                          <span className={`inline-flex rounded-full px-2 py-1 text-xs font-medium ${statusMeta.pillClass}`}>
+                            {statusMeta.label}
                           </span>
-                        ) : null}
-                        <span>Guru: {entry.teacher?.name || '-'}</span>
-                        <span>Diperbarui: {formatDateTime(entry.updatedAt)}</span>
-                      </div>
-                      {entry.reviewNote ? (
-                        <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs text-amber-700">
-                          Catatan review: {entry.reviewNote}
-                        </div>
-                      ) : null}
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => handlePrintEntry(entry)}
-                        className="inline-flex items-center gap-1 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
-                      >
-                        <Printer size={12} />
-                        Print
-                      </button>
-                      {canEdit ? (
-                        <button
-                          type="button"
-                          onClick={() => openEdit(entry)}
-                          className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
-                        >
-                          Edit
-                        </button>
-                      ) : null}
-                      {canDelete ? (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const confirmed = window.confirm('Hapus dokumen ini? Tindakan ini tidak bisa dibatalkan.');
-                            if (!confirmed) return;
-                            deleteMutation.mutate(entry.id);
-                          }}
-                          className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-100"
-                        >
-                          Hapus
-                        </button>
-                      ) : null}
-                      {canSubmit ? (
-                        <button
-                          type="button"
-                          onClick={() => submitMutation.mutate(entry.id)}
-                          disabled={submitMutation.isPending}
-                          className="inline-flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
-                        >
-                          <Send size={12} />
-                          Kirim Review
-                        </button>
-                      ) : null}
-                      {showReviewActions ? (
-                        <>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              reviewMutation.mutate({
-                                entryId: entry.id,
-                                action: 'APPROVE',
-                              })
-                            }
-                            disabled={reviewMutation.isPending}
-                            className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-60"
-                          >
-                            Setujui
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const note = window.prompt('Catatan revisi (opsional):', '') || '';
-                              reviewMutation.mutate({
-                                entryId: entry.id,
-                                action: 'REJECT',
-                                reviewNote: note.trim() || undefined,
-                              });
-                            }}
-                            disabled={reviewMutation.isPending}
-                            className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-100 disabled:opacity-60"
-                          >
-                            Revisi
-                          </button>
-                        </>
-                      ) : null}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
+                        </td>
+                        <td className="px-3 py-3 text-sm text-gray-700">{contextLabel || '-'}</td>
+                        <td className="px-3 py-3 text-sm text-gray-700">
+                          {coveredClasses.length > 0 ? `${coveredClasses.length} rombel (${coveredClasses.join(', ')})` : '-'}
+                        </td>
+                        <td className="px-3 py-3 text-sm text-gray-700">{formatDateTime(entry.updatedAt)}</td>
+                        <td className="px-3 py-3">
+                          <div className="flex flex-wrap items-center justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handlePrintEntry(entry)}
+                              className="inline-flex items-center gap-1 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                            >
+                              <Printer size={12} />
+                              Print
+                            </button>
+                            {canEdit ? (
+                              <button
+                                type="button"
+                                onClick={() => openEdit(entry)}
+                                className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                              >
+                                Edit
+                              </button>
+                            ) : null}
+                            {canDelete ? (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const confirmed = window.confirm('Hapus dokumen ini? Tindakan ini tidak bisa dibatalkan.');
+                                  if (!confirmed) return;
+                                  deleteMutation.mutate(entry.id);
+                                }}
+                                className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-100"
+                              >
+                                Hapus
+                              </button>
+                            ) : null}
+                            {canSubmit ? (
+                              <button
+                                type="button"
+                                onClick={() => submitMutation.mutate(entry.id)}
+                                disabled={submitMutation.isPending}
+                                className="inline-flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+                              >
+                                <Send size={12} />
+                                Kirim Review
+                              </button>
+                            ) : null}
+                            {showReviewActions ? (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    reviewMutation.mutate({
+                                      entryId: entry.id,
+                                      action: 'APPROVE',
+                                    })
+                                  }
+                                  disabled={reviewMutation.isPending}
+                                  className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-60"
+                                >
+                                  Setujui
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const note = window.prompt('Catatan revisi (opsional):', '') || '';
+                                    reviewMutation.mutate({
+                                      entryId: entry.id,
+                                      action: 'REJECT',
+                                      reviewNote: note.trim() || undefined,
+                                    });
+                                  }}
+                                  disabled={reviewMutation.isPending}
+                                  className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-100 disabled:opacity-60"
+                                >
+                                  Revisi
+                                </button>
+                              </>
+                            ) : null}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
 
-        <div className="mt-4 flex items-center justify-between border-t border-gray-100 pt-3 text-sm">
-          <span className="text-gray-500">
-            Halaman {Math.min(page, totalPages)} / {totalPages}
-          </span>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setPage((prev) => Math.max(1, prev - 1))}
-              disabled={page <= 1}
-              className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-            >
-              Sebelumnya
-            </button>
-            <button
-              type="button"
-              onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
-              disabled={page >= totalPages}
-              className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-            >
-              Berikutnya
-            </button>
+          <div className="mt-4 flex items-center justify-between border-t border-gray-100 pt-3 text-sm">
+            <span className="text-gray-500">
+              Halaman {Math.min(page, totalPages)} / {totalPages}
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+                disabled={page <= 1}
+                className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              >
+                Sebelumnya
+              </button>
+              <button
+                type="button"
+                onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
+                disabled={page >= totalPages}
+                className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              >
+                Berikutnya
+              </button>
+            </div>
           </div>
-        </div>
         </div>
       ) : null}
 
@@ -3157,9 +3156,13 @@ export const LearningResourceGenerator = ({
             <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
               <div>
                 <h3 className="text-lg font-semibold text-gray-900">
-                  {editingEntry ? `Edit Dokumen ${effectiveTitle}` : `Tambah Dokumen ${effectiveTitle}`}
+                  {editingEntry ? `Edit Dokumen ${effectiveTitle}` : `Konfigurasi Dokumen ${effectiveTitle}`}
                 </h3>
-                <p className="text-sm text-gray-500">{effectiveTitle}</p>
+                <p className="text-sm text-gray-500">
+                  {editingEntry
+                    ? 'Rapikan isi dokumen dan sesuaikan per kolom atau baris yang dibutuhkan.'
+                    : 'Atur konteks, judul, lalu sesuaikan kebutuhan baris dan kolom sebelum dokumen dibuat.'}
+                </p>
               </div>
               <button
                 type="button"
@@ -3462,7 +3465,7 @@ export const LearningResourceGenerator = ({
                 className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
               >
                 <Save size={14} />
-                {isSaving ? 'Menyimpan...' : 'Simpan Dokumen'}
+                {isSaving ? 'Menyimpan...' : editingEntry ? 'Simpan Perubahan' : 'Simpan & Buat Dokumen'}
               </button>
             </div>
           </div>
