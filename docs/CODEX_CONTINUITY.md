@@ -5,12 +5,12 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-04-28 17:15 WIB
-- Current status: batch lanjutan sisi guru web untuk `Perangkat Ajar` sudah selesai dan sudah live. Fokus batch ini: judul dokumen kini bisa diformat rich-text, print sudah pindah ke pola iframe seperti fitur walas/rapor, susunan tanda tangan print dibetulkan, output print diringkas agar tidak ambigu, dan daftar dokumen guru sekarang punya `Tabel Kerja Cepat` yang langsung editable untuk bagian tabel utama.
+- Last updated: 2026-04-28 17:28 WIB
+- Current status: follow-up print guru web untuk `Perangkat Ajar` sudah selesai dan sudah live. Header print kini hanya memakai judul manual dokumen, section `Konteks Dokumen`/tabel konteks sistem tidak lagi dobel tercetak, margin print disetel rata 2cm, tanda tangan dibuat center dan lebih dekat ke tengah halaman, serta editor judul punya pilihan ukuran font.
 - Objective/task aktif:
   - Menyelesaikan perapihan UX role guru pada halaman dokumen perangkat ajar agar lebih fleksibel saat menulis judul, lebih aman saat print, dan lebih operasional saat mengedit isi tabel.
 - Batch terakhir selesai:
-  - `Batch 22 - Rich title, print iframe, dan tabel kerja cepat guru (web)`
+  - `Batch 23 - Rapikan output print guru dan font size judul (web)`
 - Progress batch ini:
   - `100%`
 - Progress roadmap perangkat ajar dinamis:
@@ -22,15 +22,13 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - Commit: `pending commit`
   - Title: `pending commit`
   - Summary:
-    - judul dokumen di popup guru sekarang memakai editor rich-text ringan berbasis Quill dengan alignment, bold, italic, dan underline
-    - print tidak lagi memakai `window.open('', '_blank')`, tetapi mengikuti pola iframe print dari fitur walas/rapor agar tidak rawan popup blocker
-    - header print kini mengambil judul dokumen sebagai heading utama, menyederhanakan blok meta, dan menukar posisi tanda tangan menjadi kepala sekolah di kiri dan guru mapel di kanan
-    - list dokumen guru kini menyediakan `Tabel Kerja Cepat` yang menampilkan bagian tabel utama secara ringkas dan editable langsung dari table view
-    - policy print di `AGENTS.md` diperjelas agar fitur print operasional berikutnya mengikuti pola walas yang sama
+    - header print menghapus institution/year otomatis agar judul dokumen tetap manual sesuai editor guru
+    - section konteks sistem dan tabel konteks yang dobel dengan informasi atas tidak lagi dicetak
+    - margin print memakai `@page` 2cm untuk atas, bawah, kiri, dan kanan
+    - blok tanda tangan dibuat center, tidak menempel sisi luar, dan underline mengikuti panjang nama
+    - editor judul dokumen menambah dropdown ukuran font Quill
 - Area/file disentuh:
   - `frontend/src/pages/teacher/learning-resources/LearningResourceGenerator.tsx`
-  - `frontend/src/index.css`
-  - `AGENTS.md`
   - `docs/CODEX_CONTINUITY.md`
 - Verifikasi batch ini:
   - `cd frontend && npm run build`
@@ -44,8 +42,7 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 - Remaining work:
   - Lanjut hanya jika user ingin QA/rapikan lebih jauh, misalnya memperdalam mode `Tabel Kerja Cepat` untuk multi-section atau parity mobile untuk pola rich title/print yang sama.
 - Residual risk:
-  - `Tabel Kerja Cepat` saat ini sengaja dibatasi ke tampilan tabel utama yang diringkas supaya halaman tidak penuh; struktur lengkap tetap tersedia di popup editor penuh
-  - nama sekolah pada print guru saat ini membaca source profil user yang tersedia di frontend, sehingga tetap perlu QA manual untuk memastikan nilainya konsisten pada akun production
+  - preview print tetap mengikuti dialog browser pengguna; margin CSS sudah 2cm, tetapi browser masih bisa mengubah hasil jika user memilih margin custom di dialog print
 
 ## Status Saat Ini
 
