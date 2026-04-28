@@ -5,41 +5,41 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-04-28 14:34 WIB
-- Current status: Batch 6 refactor UI/UX data-first untuk role Siswa web sudah selesai dan sudah live. Perubahan fokus pada halaman `Jurnal Harian PKL` siswa yang sebelumnya memakai card-list jurnal agar menjadi table/table-like view, sekaligus menyesuaikan backdrop modal tambah jurnal ke standar overlay ringan.
+- Last updated: 2026-04-28 14:42 WIB
+- Current status: Batch 7 refactor UI/UX data-first untuk role Wakasek/Humas web sudah selesai dan sudah live. Perubahan fokus pada modal detail `Monitoring Jurnal PKL` yang sebelumnya memakai card-list jurnal agar menjadi table/table-like view, sekaligus menyesuaikan backdrop modal ke standar overlay ringan.
 - Objective/task aktif:
   - Menyeragamkan halaman isi menu sidebar yang berupa data operasional agar default memakai table/table-like view dengan hirarki font yang konsisten, dikerjakan bertahap per role/module.
 - Batch terakhir selesai:
-  - `Batch 6 - Siswa internship journal table-first refactor`
+  - `Batch 7 - Wakasek journal monitoring table-first refactor`
 - Progress batch ini:
   - `100%`
 - Progress roadmap UI data-first:
-  - `47%` untuk kandidat utama card-list prioritas hasil sweep (`8 dari sekitar 17` slice/halaman prioritas sudah distandarkan)
-  - estimasi compliance web data-page keseluruhan sekitar `72%` karena banyak halaman data sudah table-first sebelum refactor batch ini
+  - `53%` untuk kandidat utama card-list prioritas hasil sweep (`9 dari sekitar 17` slice/halaman prioritas sudah distandarkan)
+  - estimasi compliance web data-page keseluruhan sekitar `73%` karena banyak halaman data sudah table-first sebelum refactor batch ini
 - Last completed repo work:
-  - Commit: `f76cb12`
-  - Title: `refactor(student): standardize internship journal table`
+  - Commit: `69081b6`
+  - Title: `refactor(wakasek): standardize journal monitoring table`
   - Summary:
-    - daftar `Jurnal Harian PKL` siswa diubah dari card-list menjadi tabel dengan kolom tanggal, kegiatan, dokumentasi, feedback, dan status
-    - status jurnal sekarang ditampilkan dengan label user-friendly seperti `Menunggu`, `Disetujui`, dan `Ditolak`
-    - modal `Tambah Jurnal Kegiatan` memakai backdrop slate transparan dan tinggi popup dibatasi agar tidak melewati area layar
-    - source data, query, submit jurnal, dan alur upload/link dokumentasi tidak diubah
+    - modal detail `Monitoring Jurnal PKL` Wakasek/Humas diubah dari card-list jurnal menjadi tabel dengan kolom tanggal, kegiatan, dokumentasi, feedback, status, dan waktu input
+    - status jurnal memakai label user-friendly seperti `Menunggu`, `Disetujui`, dan `Ditolak`
+    - backdrop modal detail jurnal memakai overlay slate transparan dan tinggi modal dibatasi agar tidak melewati area layar
+    - source data, query, filter, pagination, dan tombol `Lihat Jurnal` tidak diubah
 - Area/file disentuh:
-  - `frontend/src/pages/student/internship/StudentInternshipJournal.tsx`
+  - `frontend/src/pages/teacher/wakasek/JournalMonitoringPage.tsx`
   - `docs/CODEX_CONTINUITY.md`
 - Verifikasi batch ini:
   - `git diff --check`
   - `cd frontend && npm run build`
   - `cd frontend && npm run deploy`
-  - `curl -I -s https://siskgb2.id/student/internship/journals`
+  - `curl -I -s https://siskgb2.id/teacher/wakasek/journal-monitoring`
   - `git status --short`
 - Publish/live status:
   - Web sudah deploy live ke `/var/www/html/` lewat `npm run deploy`
-  - Mobile OTA tidak dijalankan karena Batch 6 hanya menyentuh web role Siswa
+  - Mobile OTA tidak dijalankan karena Batch 7 hanya menyentuh web role Wakasek/Humas
 - Remaining work:
-  - lanjut Batch 7 untuk modul/role berikutnya dari hasil sweep, terutama halaman data yang masih card-list dan tab/dropdown yang belum konsisten
+  - lanjut Batch 8 untuk modul/role berikutnya dari hasil sweep, terutama halaman data yang masih card-list dan tab/dropdown yang belum konsisten
 - Residual risk:
-  - perubahan sudah lolos build/deploy dan smoke check, tetapi tetap perlu user smoke test visual langsung di akun siswa PKL untuk memastikan tabel jurnal nyaman dibaca pada data nyata
+  - perubahan sudah lolos build/deploy dan smoke check, tetapi tetap perlu user smoke test visual langsung di akun Wakasek/Humas untuk memastikan tabel jurnal nyaman dibaca pada data nyata
 
 ## Status Saat Ini
 
