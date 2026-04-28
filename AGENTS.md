@@ -193,6 +193,8 @@ Dokumen ini adalah policy kerja default untuk setiap sesi baru yang mengerjakan 
    - Popup/modal harus tetap proporsional dan dinamis saat sidebar ditarik, diciutkan, atau berubah lebar; jangan hardcode posisi yang hanya pas pada satu lebar sidebar.
    - Jika isi popup panjang, scroll harus terjadi di body popup, bukan dengan membiarkan popup memanjang melewati header. Jika data sangat banyak, utamakan grouping/collapse yang rapi seperti pola `Jadwal Mengawas` Wakakur agar tetap mudah dibaca.
    - Untuk dokumen cetak/surat yang membutuhkan kop/header institusi, gunakan header surat baku sekolah secara konsisten.
+   - Untuk workflow print dari halaman operasional web, jangan memakai `window.open('', '_blank')` ad-hoc sebagai default karena rawan popup blocker, konteks halaman terputus, dan hasil sulit konsisten. Ikuti pola print yang sudah works pada fitur wali kelas seperti `print rapor` dan `peringkat`: gunakan surface print/iframe tersembunyi atau route print khusus yang tetap dipicu dari halaman aktif.
+   - Jika sebuah fitur print berasal dari list/detail operasional, utamakan pengalaman `klik print -> browser print dialog` dari konteks halaman yang sama. Jendela/tab baru hanya dipakai jika memang ada kebutuhan route print khusus yang jelas.
    - Header dokumen harus bersifat dinamis berdasarkan data existing yang relevan, terutama daftar kompetensi keahlian/jurusan; jangan hardcode per dokumen jika datanya sudah bisa dibaca dari source of truth.
    - Untuk barcode/QR verifikasi dokumen, gunakan standar pola BA/Jadwal Mengawas sebagai default:
      - tautan verifikasi harus sesingkat dan sesederhana mungkin

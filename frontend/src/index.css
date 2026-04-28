@@ -847,6 +847,16 @@ a, button, [role="button"] {
   unicode-bidi: plaintext;
 }
 
+.teaching-resource-title-quill .ql-editor {
+  min-height: 88px;
+  font-size: 16px;
+  line-height: 1.4;
+}
+
+.teaching-resource-title-quill .ql-toolbar {
+  border-bottom: 1px solid #e5e7eb !important;
+}
+
 .question-editor-quill .ql-editor hr {
   display: none;
 }

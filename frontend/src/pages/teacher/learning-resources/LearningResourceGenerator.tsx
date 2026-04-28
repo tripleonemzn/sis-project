@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, Plus, Printer, Save, Send, X } from 'lucide-react';
 import { useNavigate, useOutletContext } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
+import ReactQuill from 'react-quill-new';
+import 'react-quill-new/dist/quill.snow.css';
 import { useActiveAcademicYear } from '../../../hooks/useActiveAcademicYear';
 import { authService } from '../../../services/auth.service';
 import {
@@ -118,6 +120,17 @@ type TeacherAssignmentContextOption = {
   coveredClasses: string[];
   assignmentIds: number[];
 };
+
+const DOCUMENT_TITLE_QUILL_MODULES = {
+  toolbar: [[{ align: [] }], ['bold', 'italic', 'underline'], ['clean']],
+  history: {
+    delay: 300,
+    maxStack: 50,
+    userOnly: true,
+  },
+};
+
+const DOCUMENT_TITLE_QUILL_FORMATS = ['align', 'bold', 'italic', 'underline'];
 
 const ENTRY_LIMIT = 12;
 const TEACHING_RESOURCE_PROGRAM_CONFIG_QUERY_KEY = (academicYearId: number) => [
@@ -715,6 +728,84 @@ const escapeHtml = (value: unknown): string =>
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
 
+const toDocumentTitlePlainText = (value: unknown): string => {
+  const rawValue = String(value || '').trim();
+  if (!rawValue) return '';
+  if (typeof window !== 'undefined' && typeof DOMParser !== 'undefined') {
+    const parsed = new DOMParser().parseFromString(rawValue, 'text/html');
+    return String(parsed.body.textContent || '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+  return rawValue
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+};
+
+const createDocumentTitleHtml = (value: unknown): string => {
+  const plainText = toDocumentTitlePlainText(value);
+  return plainText ? `<p>${escapeHtml(plainText)}</p>` : '';
+};
+
+const sanitizeDocumentTitleHtml = (value: unknown): string => {
+  const rawValue = String(value || '').trim();
+  if (!rawValue) return '';
+
+  if (typeof window === 'undefined' || typeof DOMParser === 'undefined') {
+    return createDocumentTitleHtml(rawValue);
+  }
+
+  const wrapper = new DOMParser().parseFromString(`<div>${rawValue}</div>`, 'text/html').body
+    .firstElementChild as HTMLElement | null;
+  if (!wrapper) return createDocumentTitleHtml(rawValue);
+
+  const allowedTags = new Set(['P', 'DIV', 'SPAN', 'STRONG', 'B', 'EM', 'I', 'U', 'S', 'BR']);
+  const allowedClasses = new Set(['ql-align-center', 'ql-align-right', 'ql-align-justify']);
+
+  const sanitizeNode = (node: Node) => {
+    if (node.nodeType === Node.COMMENT_NODE) {
+      node.parentNode?.removeChild(node);
+      return;
+    }
+    if (node.nodeType !== Node.ELEMENT_NODE) return;
+
+    const element = node as HTMLElement;
+    Array.from(element.childNodes).forEach(sanitizeNode);
+
+    if (!allowedTags.has(element.tagName)) {
+      const fragment = document.createDocumentFragment();
+      while (element.firstChild) {
+        fragment.appendChild(element.firstChild);
+      }
+      element.replaceWith(fragment);
+      return;
+    }
+
+    Array.from(element.attributes).forEach((attribute) => {
+      if (attribute.name === 'class') {
+        const safeClasses = String(attribute.value || '')
+          .split(/\s+/)
+          .map((token) => token.trim())
+          .filter((token) => allowedClasses.has(token));
+        if (safeClasses.length > 0) {
+          element.setAttribute('class', safeClasses.join(' '));
+        } else {
+          element.removeAttribute('class');
+        }
+        return;
+      }
+      element.removeAttribute(attribute.name);
+    });
+  };
+
+  Array.from(wrapper.childNodes).forEach(sanitizeNode);
+  const normalizedHtml = wrapper.innerHTML.trim();
+  const normalizedText = toDocumentTitlePlainText(normalizedHtml);
+  if (!normalizedText) return '';
+  return normalizedHtml || createDocumentTitleHtml(normalizedText);
+};
+
 const formatMultilineHtml = (value: unknown): string => {
   const safe = escapeHtml(value);
   return safe.replace(/\n/g, '<br />');
@@ -1215,11 +1306,15 @@ export const LearningResourceGenerator = ({
   const [pageEditorInitialized, setPageEditorInitialized] = useState(false);
   const [editingEntry, setEditingEntry] = useState<TeachingResourceEntry | null>(null);
   const [selectedContextKey, setSelectedContextKey] = useState<string>('');
-  const [entryTitle, setEntryTitle] = useState('');
+  const [entryTitleHtml, setEntryTitleHtml] = useState('');
   const [entrySummary, setEntrySummary] = useState('');
   const [entryNotes, setEntryNotes] = useState('');
   const [entryTags, setEntryTags] = useState('');
   const [sections, setSections] = useState<EntrySectionForm[]>(() => [createSection()]);
+  const [quickEditEntryId, setQuickEditEntryId] = useState<number | null>(null);
+  const [quickEditSections, setQuickEditSections] = useState<EntrySectionForm[]>([]);
+  const [quickEditActiveSectionId, setQuickEditActiveSectionId] = useState('');
+  const printIframeRef = useRef<HTMLIFrameElement | null>(null);
   const programCode = useMemo(() => normalizeProgramCode(type), [type]);
   const isPageEditor = editorMode === 'create';
   const resolvedRouteSlug = useMemo(() => {
@@ -1398,6 +1493,7 @@ export const LearningResourceGenerator = ({
             : null),
     [meQuery.data?.data, outletUser?.id, outletUser?.role],
   );
+  const currentUserProfile = meQuery.data?.data || null;
 
   const assignmentsQuery = useQuery({
     queryKey: ['learning-resource-assignments', user?.id || 0, academicYearId],
@@ -1722,7 +1818,7 @@ export const LearningResourceGenerator = ({
 
   const resetForm = () => {
     setEditingEntry(null);
-    setEntryTitle('');
+    setEntryTitleHtml('');
     setEntrySummary('');
     setEntryNotes('');
     setEntryTags('');
@@ -1751,15 +1847,17 @@ export const LearningResourceGenerator = ({
     setEntryNotes('');
     setEntryTags('');
     setSelectedContextKey(defaultContextKey);
-    setEntryTitle(
-      usesSheetTemplate
-        ? buildAutoSheetTitle({
-            programLabel: effectiveTitle,
-            context: currentContext,
-            academicYearName,
-            semesterLabel: activeSemesterLabel,
-          })
-        : '',
+    setEntryTitleHtml(
+      createDocumentTitleHtml(
+        usesSheetTemplate
+          ? buildAutoSheetTitle({
+              programLabel: effectiveTitle,
+              context: currentContext,
+              academicYearName,
+              semesterLabel: activeSemesterLabel,
+            })
+          : '',
+      ),
     );
     setSections(normalizeSectionsForEditor(hydratedSections));
     setIsEditorOpen(openAsModal);
@@ -1777,7 +1875,9 @@ export const LearningResourceGenerator = ({
           String(item.className || '').trim().toLowerCase() === String(entry.className || '').trim().toLowerCase(),
       ) || null;
     setEditingEntry(entry);
-    setEntryTitle(String(entry.title || ''));
+    setEntryTitleHtml(
+      sanitizeDocumentTitleHtml(entry.content?.titleHtml) || createDocumentTitleHtml(String(entry.title || '')),
+    );
     setEntrySummary(String(entry.summary || ''));
     setEntryNotes(String((entry.content?.notes as string) || ''));
     setEntryTags((entry.tags || []).join(', '));
@@ -1823,6 +1923,9 @@ export const LearningResourceGenerator = ({
   const handleCloseEditor = () => {
     resetForm();
     setIsEditorOpen(false);
+    setQuickEditEntryId(null);
+    setQuickEditSections([]);
+    setQuickEditActiveSectionId('');
     if (isPageEditor) {
       navigate(listPath);
     }
@@ -1844,8 +1947,10 @@ export const LearningResourceGenerator = ({
       }
       const normalizedSections = buildPayloadSections(normalizeSectionsForEditor(sections));
       const referencePayload = buildReferenceSelectionPayload(normalizeSectionsForEditor(sections));
+      const normalizedTitleHtml = sanitizeDocumentTitleHtml(entryTitleHtml);
+      const normalizedTitle = toDocumentTitlePlainText(normalizedTitleHtml);
 
-      if (!entryTitle.trim()) {
+      if (!normalizedTitle) {
         throw new Error('Judul dokumen wajib diisi.');
       }
       if (normalizedSections.length === 0) {
@@ -1855,7 +1960,7 @@ export const LearningResourceGenerator = ({
       return teachingResourceProgramService.createEntry({
         academicYearId,
         programCode,
-        title: entryTitle.trim(),
+        title: normalizedTitle,
         summary: entrySummary.trim() || undefined,
         subjectId: selectedContext ? Number(selectedContext.subjectId) : undefined,
         classLevel: selectedContext ? selectedContext.classLevel : undefined,
@@ -1865,6 +1970,7 @@ export const LearningResourceGenerator = ({
           .map((token) => token.trim())
           .filter(Boolean),
         content: {
+          titleHtml: normalizedTitleHtml || undefined,
           sections: normalizedSections,
           references: referencePayload.references,
           referenceSelections: referencePayload.referenceSelections,
@@ -1898,7 +2004,9 @@ export const LearningResourceGenerator = ({
       }
       const normalizedSections = buildPayloadSections(normalizeSectionsForEditor(sections));
       const referencePayload = buildReferenceSelectionPayload(normalizeSectionsForEditor(sections));
-      if (!entryTitle.trim()) {
+      const normalizedTitleHtml = sanitizeDocumentTitleHtml(entryTitleHtml);
+      const normalizedTitle = toDocumentTitlePlainText(normalizedTitleHtml);
+      if (!normalizedTitle) {
         throw new Error('Judul dokumen wajib diisi.');
       }
       if (normalizedSections.length === 0) {
@@ -1906,7 +2014,7 @@ export const LearningResourceGenerator = ({
       }
 
       return teachingResourceProgramService.updateEntry(editingEntry.id, {
-        title: entryTitle.trim(),
+        title: normalizedTitle,
         summary: entrySummary.trim(),
         subjectId: selectedContext ? Number(selectedContext.subjectId) : null,
         classLevel: selectedContext ? selectedContext.classLevel : null,
@@ -1916,6 +2024,7 @@ export const LearningResourceGenerator = ({
           .map((token) => token.trim())
           .filter(Boolean),
         content: {
+          titleHtml: normalizedTitleHtml || undefined,
           sections: normalizedSections,
           references: referencePayload.references,
           referenceSelections: referencePayload.referenceSelections,
@@ -1984,6 +2093,44 @@ export const LearningResourceGenerator = ({
   });
 
   const isSaving = createMutation.isPending || updateMutation.isPending;
+  const quickEditMutation = useMutation({
+    mutationFn: async (entry: TeachingResourceEntry) => {
+      const normalizedSections = buildPayloadSections(quickEditSections);
+      return teachingResourceProgramService.updateEntry(entry.id, {
+        title: String(entry.title || '').trim(),
+        summary: String(entry.summary || '').trim() || undefined,
+        subjectId: Number(entry.subjectId || 0) || null,
+        classLevel: String(entry.classLevel || '').trim() || null,
+        className: String(entry.className || '').trim() || null,
+        tags: Array.isArray(entry.tags) ? entry.tags : [],
+        content: {
+          ...(entry.content || {}),
+          titleHtml:
+            sanitizeDocumentTitleHtml(entry.content?.titleHtml) || createDocumentTitleHtml(String(entry.title || '')),
+          sections: normalizedSections,
+          references: Array.isArray(entry.content?.references) ? entry.content.references : undefined,
+          referenceSelections: Array.isArray(entry.content?.referenceSelections)
+            ? entry.content.referenceSelections
+            : undefined,
+          notes: String(entry.content?.notes || '').trim() || undefined,
+          schemaVersion: Number(activeProgramMeta?.schema?.version || entry.content?.schemaVersion || 1),
+          schemaSourceSheet:
+            String(activeProgramMeta?.schema?.sourceSheet || entry.content?.schemaSourceSheet || '').trim() || undefined,
+          contextScope: entry.content?.contextScope,
+        },
+      });
+    },
+    onSuccess: async () => {
+      toast.success('Perubahan tabel cepat berhasil disimpan.');
+      setQuickEditEntryId(null);
+      setQuickEditSections([]);
+      setQuickEditActiveSectionId('');
+      await invalidateEntries();
+    },
+    onError: (error) => {
+      toast.error(toErrorMessage(error, 'Gagal menyimpan perubahan tabel cepat.'));
+    },
+  });
 
   const resolveSectionSchema = (section: EntrySectionForm): TeachingResourceProgramSectionSchema | undefined =>
     activeProgramSchemaMap.get(String(section.schemaKey || '').trim());
@@ -2055,6 +2202,322 @@ export const LearningResourceGenerator = ({
 
   const setSectionsWithDerived = (updater: (prev: EntrySectionForm[]) => EntrySectionForm[]) => {
     setSections((prev) => normalizeSectionsForEditor(updater(prev)));
+  };
+
+  const setQuickEditSectionsWithDerived = (updater: (prev: EntrySectionForm[]) => EntrySectionForm[]) => {
+    setQuickEditSections((prev) => ensureDerivedSections(updater(prev)));
+  };
+
+  const getEntryTableSections = (entry: TeachingResourceEntry): EntrySectionForm[] =>
+    ensureDerivedSections(parseEntrySections(entry, buildDefaultSections(activeProgramMeta))).filter((section) =>
+      isTableSection(section),
+    );
+
+  const openQuickEdit = (entry: TeachingResourceEntry) => {
+    const parsedSections = ensureDerivedSections(parseEntrySections(entry, buildDefaultSections(activeProgramMeta)));
+    const tableSections = parsedSections.filter((section) => isTableSection(section));
+    if (tableSections.length === 0) {
+      toast.error('Dokumen ini belum memiliki tabel yang bisa diedit cepat.');
+      return;
+    }
+    setQuickEditEntryId(entry.id);
+    setQuickEditSections(parsedSections);
+    setQuickEditActiveSectionId(tableSections[0]?.id || '');
+  };
+
+  const closeQuickEdit = () => {
+    setQuickEditEntryId(null);
+    setQuickEditSections([]);
+    setQuickEditActiveSectionId('');
+  };
+
+  const updateQuickEditRowCell = (sectionId: string, rowId: string, columnKey: string, value: string) => {
+    setQuickEditSectionsWithDerived((prev) =>
+      prev.map((item) => {
+        if (item.id !== sectionId) return item;
+        return {
+          ...item,
+          rows: item.rows.map((row) =>
+            row.id === rowId
+              ? {
+                  ...row,
+                  values: {
+                    ...row.values,
+                    [columnKey]: value,
+                  },
+                }
+              : row,
+          ),
+        };
+      }),
+    );
+  };
+
+  const toggleQuickEditRowMark = (sectionId: string, rowId: string, columnKey: string) => {
+    setQuickEditSectionsWithDerived((prev) =>
+      prev.map((item) => {
+        if (item.id !== sectionId) return item;
+        return {
+          ...item,
+          rows: item.rows.map((row) => {
+            if (row.id !== rowId) return row;
+            const current = String(row.values[columnKey] || '');
+            return {
+              ...row,
+              values: {
+                ...row.values,
+                [columnKey]: isTruthyMark(current) ? '' : MARK_VALUE,
+              },
+            };
+          }),
+        };
+      }),
+    );
+  };
+
+  const toggleQuickEditKktpCriteria = (
+    sectionId: string,
+    rowId: string,
+    columnKey: 'kurang_memadai' | 'memadai',
+  ) => {
+    const oppositeKey = columnKey === 'kurang_memadai' ? 'memadai' : 'kurang_memadai';
+    setQuickEditSectionsWithDerived((prev) =>
+      prev.map((item) => {
+        if (item.id !== sectionId) return item;
+        return {
+          ...item,
+          rows: item.rows.map((row) => {
+            if (row.id !== rowId) return row;
+            const activeNow = isTruthyMark(String(row.values[columnKey] || ''));
+            return {
+              ...row,
+              values: {
+                ...row.values,
+                [columnKey]: activeNow ? '' : MARK_VALUE,
+                [oppositeKey]: activeNow ? String(row.values[oppositeKey] || '') : '',
+              },
+            };
+          }),
+        };
+      }),
+    );
+  };
+
+  const renderQuickEditWeekGridControl = (
+    section: EntrySectionForm,
+    row: EntrySectionForm['rows'][number] | undefined,
+    columnKey: string,
+    value: string,
+    readOnly: boolean,
+  ) => {
+    const selectedWeeks = new Set(parseWeekGridValue(value));
+    return (
+      <div className="grid grid-cols-5 gap-1">
+        {WEEK_OPTIONS.map((week) => {
+          const active = selectedWeeks.has(week);
+          return (
+            <button
+              key={`quick-${section.id}-${row?.id || 'row'}-${columnKey}-${week}`}
+              type="button"
+              disabled={readOnly || !row?.id}
+              onClick={() =>
+                row?.id ? updateQuickEditRowCell(section.id, row.id, columnKey, toggleWeekGridValue(value, week)) : null
+              }
+              className={`h-7 rounded border text-[10px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                active
+                  ? 'border-emerald-400 bg-emerald-50 text-emerald-700'
+                  : 'border-gray-300 bg-white text-gray-500 hover:bg-gray-50'
+              }`}
+            >
+              M{week}
+            </button>
+          );
+        })}
+      </div>
+    );
+  };
+
+  const renderQuickEditCellControl = (
+    section: EntrySectionForm,
+    row: EntrySectionForm['rows'][number] | undefined,
+    column: EntrySectionColumnForm,
+  ) => {
+    const columnKey = String(column.key || '').trim();
+    const value = String(row?.values?.[columnKey] || '');
+    const dataType = getColumnDataType(column);
+    const readOnly = isSystemManagedColumn(column);
+    const inputClassName = `w-full rounded-md border border-gray-300 px-2 py-1.5 text-xs focus:border-blue-500 focus:outline-none ${
+      readOnly ? 'bg-gray-50 text-gray-500' : 'bg-white'
+    }`;
+    const selectClassName = `${inputClassName} ${readOnly ? 'cursor-not-allowed' : ''}`;
+
+    if (isDocumentReferenceColumn(column)) {
+      return (
+        <div className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1.5 text-xs text-gray-500">
+          {value || row?.referenceSelections?.[columnKey]?.label || 'Edit referensi dari editor lengkap'}
+        </div>
+      );
+    }
+
+    if (isWeekColumnKey(columnKey)) {
+      const isChecked = isTruthyMark(value);
+      return (
+        <button
+          type="button"
+          disabled={readOnly || !row?.id}
+          onClick={() => (row?.id ? toggleQuickEditRowMark(section.id, row.id, columnKey) : null)}
+          className={`inline-flex h-8 w-full items-center justify-center rounded-md border text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
+            isChecked
+              ? 'border-emerald-400 bg-emerald-50 text-emerald-700'
+              : 'border-gray-300 bg-white text-gray-500 hover:bg-gray-50'
+          }`}
+        >
+          {isChecked ? MARK_VALUE : '-'}
+        </button>
+      );
+    }
+
+    if (isKktpCriteriaColumnKey(columnKey)) {
+      const isChecked = isTruthyMark(value);
+      return (
+        <button
+          type="button"
+          disabled={readOnly || !row?.id}
+          onClick={() =>
+            row?.id ? toggleQuickEditKktpCriteria(section.id, row.id, columnKey as 'kurang_memadai' | 'memadai') : null
+          }
+          className={`inline-flex h-8 w-full items-center justify-center rounded-md border text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
+            isChecked
+              ? 'border-blue-400 bg-blue-50 text-blue-700'
+              : 'border-gray-300 bg-white text-gray-500 hover:bg-gray-50'
+          }`}
+        >
+          {isChecked ? MARK_VALUE : '-'}
+        </button>
+      );
+    }
+
+    if (dataType === 'WEEK_GRID') {
+      return renderQuickEditWeekGridControl(section, row, columnKey, value, readOnly);
+    }
+
+    if (dataType === 'MONTH') {
+      return (
+        <select
+          value={value}
+          disabled={readOnly}
+          onChange={(event) => updateQuickEditRowCell(section.id, row?.id || '', columnKey, event.target.value)}
+          className={selectClassName}
+        >
+          <option value="">Pilih Bulan</option>
+          {MONTH_OPTIONS.map((month) => (
+            <option key={month} value={month}>
+              {month}
+            </option>
+          ))}
+        </select>
+      );
+    }
+
+    if (dataType === 'WEEK') {
+      return (
+        <select
+          value={value}
+          disabled={readOnly}
+          onChange={(event) => updateQuickEditRowCell(section.id, row?.id || '', columnKey, event.target.value)}
+          className={selectClassName}
+        >
+          <option value="">Pilih Minggu</option>
+          {WEEK_OPTIONS.map((week) => (
+            <option key={week} value={week}>
+              Minggu {week}
+            </option>
+          ))}
+        </select>
+      );
+    }
+
+    if (dataType === 'SEMESTER') {
+      return (
+        <select
+          value={value}
+          disabled={readOnly}
+          onChange={(event) => updateQuickEditRowCell(section.id, row?.id || '', columnKey, event.target.value)}
+          className={selectClassName}
+        >
+          <option value="">Pilih Semester</option>
+          {SEMESTER_OPTIONS.map((semester) => (
+            <option key={semester} value={semester}>
+              {semester}
+            </option>
+          ))}
+        </select>
+      );
+    }
+
+    if (dataType === 'SELECT' && Array.isArray(column.options) && column.options.length > 0) {
+      return (
+        <select
+          value={value}
+          disabled={readOnly}
+          onChange={(event) => updateQuickEditRowCell(section.id, row?.id || '', columnKey, event.target.value)}
+          className={selectClassName}
+        >
+          <option value="">Pilih</option>
+          {column.options.map((option) => (
+            <option key={option} value={option}>
+              {option}
+            </option>
+          ))}
+        </select>
+      );
+    }
+
+    if (dataType === 'BOOLEAN') {
+      const isChecked = isTruthyMark(value);
+      return (
+        <button
+          type="button"
+          disabled={readOnly || !row?.id}
+          onClick={() =>
+            row?.id ? updateQuickEditRowCell(section.id, row.id, columnKey, isChecked ? '' : MARK_VALUE) : null
+          }
+          className={`inline-flex h-8 w-full items-center justify-center rounded-md border text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
+            isChecked
+              ? 'border-emerald-400 bg-emerald-50 text-emerald-700'
+              : 'border-gray-300 bg-white text-gray-500 hover:bg-gray-50'
+          }`}
+        >
+          {isChecked ? MARK_VALUE : '-'}
+        </button>
+      );
+    }
+
+    if (column.multiline || dataType === 'TEXTAREA') {
+      return (
+        <textarea
+          rows={2}
+          value={value}
+          disabled={readOnly}
+          onChange={(event) => updateQuickEditRowCell(section.id, row?.id || '', columnKey, event.target.value)}
+          placeholder={column.placeholder || ''}
+          className={`w-full resize-y rounded-md border border-gray-300 px-2 py-1.5 text-xs focus:border-blue-500 focus:outline-none ${
+            readOnly ? 'bg-gray-50 text-gray-500' : 'bg-white'
+          }`}
+        />
+      );
+    }
+
+    return (
+      <input
+        type={dataType === 'NUMBER' ? 'number' : 'text'}
+        value={value}
+        disabled={readOnly}
+        onChange={(event) => updateQuickEditRowCell(section.id, row?.id || '', columnKey, event.target.value)}
+        placeholder={column.placeholder || ''}
+        className={inputClassName}
+      />
+    );
   };
 
   const applyDocumentReferenceSelection = (
@@ -2634,13 +3097,15 @@ export const LearningResourceGenerator = ({
     setSelectedContextKey(value);
     if (!usesSheetTemplate || Boolean(editingEntry)) return;
     const nextContext = assignmentContextOptions.find((item) => String(item.key) === String(value || '').trim()) || null;
-    setEntryTitle(
-      buildAutoSheetTitle({
-        programLabel: effectiveTitle,
-        context: nextContext,
-        academicYearName,
-        semesterLabel: activeSemesterLabel,
-      }),
+    setEntryTitleHtml(
+      createDocumentTitleHtml(
+        buildAutoSheetTitle({
+          programLabel: effectiveTitle,
+          context: nextContext,
+          academicYearName,
+          semesterLabel: activeSemesterLabel,
+        }),
+      ),
     );
     setSectionsWithDerived((prev) =>
       hydrateSheetSections({
@@ -2707,8 +3172,11 @@ export const LearningResourceGenerator = ({
 
   const buildPrintHtml = (entry: TeachingResourceEntry): string => {
     const defaultSections = buildDefaultSections(activeProgramMeta);
-    const printableSections = parseEntrySections(entry, defaultSections);
-    const coveredClasses = extractCoveredClasses(entry);
+    const printableSections = parseEntrySections(entry, defaultSections).filter((section) => {
+      const sectionSchema = resolveSectionSchema(section);
+      const blockType = String(sectionSchema?.blockType || '').trim().toUpperCase();
+      return blockType !== 'CONTEXT' && blockType !== 'SIGNATURE';
+    });
     const contextLabelRaw = resolveEntryContextLabel(entry, assignmentLabelMap);
     const contextValues = extractEntryContextValues(entry, {
       mataPelajaran: String(contextLabelRaw.split(' - ')[0] || '').trim(),
@@ -2717,12 +3185,22 @@ export const LearningResourceGenerator = ({
       tahunAjaran: academicYearName,
     });
     const signatureValues = extractEntrySignatureValues(entry, {
-      curriculumTitle: String(signatureDefaultsQuery.data?.curriculum?.roleTitle || 'Wakasek Kurikulum').trim(),
-      curriculumName: String(signatureDefaultsQuery.data?.curriculum?.name || '-').trim(),
+      curriculumTitle: String(signatureDefaultsQuery.data?.teacher?.roleTitle || 'Guru Mata Pelajaran').trim(),
+      curriculumName: String(entry.teacher?.name || currentUserProfile?.name || '-').trim(),
       principalTitle: String(signatureDefaultsQuery.data?.principal?.roleTitle || 'Kepala Sekolah').trim(),
       principalName: String(signatureDefaultsQuery.data?.principal?.name || '-').trim(),
     });
     const printDateLine = signatureValues.placeDate || `Bekasi, ${formatLongDate(new Date())}`;
+    const schoolName = String(currentUserProfile?.institution || 'Sekolah').trim() || 'Sekolah';
+    const programPrintRules = activeProgramMeta?.schema?.printRules;
+    const printTitleHtml =
+      sanitizeDocumentTitleHtml(entry.content?.titleHtml) || createDocumentTitleHtml(entry.title || effectiveTitle);
+    const compactTable = Boolean(programPrintRules?.compactTable);
+    const visibleContextRows = [
+      ['Mata Pelajaran', contextValues.mataPelajaran],
+      ['Tingkat', contextValues.tingkat],
+      ['Program Keahlian', contextValues.programKeahlian],
+    ].filter(([, value]) => String(value || '').trim());
 
     return `
       <!doctype html>
@@ -2734,11 +3212,18 @@ export const LearningResourceGenerator = ({
           * { box-sizing: border-box; }
           body { margin: 24px; font-family: Arial, sans-serif; color: #0f172a; }
           .header { text-align: center; margin-bottom: 14px; }
-          .header .school { font-size: 24px; font-weight: 800; letter-spacing: .4px; }
-          .header .year { font-size: 18px; font-weight: 700; margin-top: 2px; }
-          .doc-context { width: 100%; max-width: 560px; margin-bottom: 12px; font-size: 13px; border-collapse: collapse; }
+          .header .title-wrap { margin-bottom: 4px; }
+          .header .title-wrap p { margin: 0; }
+          .header .title-wrap .ql-align-center { text-align: center; }
+          .header .title-wrap .ql-align-right { text-align: right; }
+          .header .title-wrap .ql-align-justify { text-align: justify; }
+          .header .title-wrap p,
+          .header .title-wrap div { font-size: 18px; font-weight: 800; line-height: 1.3; text-transform: uppercase; }
+          .header .school { font-size: 20px; font-weight: 800; letter-spacing: .3px; text-transform: uppercase; }
+          .header .year { font-size: 15px; font-weight: 700; margin-top: 2px; text-transform: uppercase; }
+          .doc-context { width: 100%; max-width: 520px; margin-bottom: 12px; font-size: 13px; border-collapse: collapse; }
           .doc-context td { border: none; padding: 2px 0; }
-          .doc-context td:first-child { width: 185px; }
+          .doc-context td:first-child { width: 150px; }
           section { margin-bottom: 14px; page-break-inside: avoid; }
           section h3 { margin: 0 0 8px; font-size: 14px; }
           .text-block {
@@ -2746,8 +3231,8 @@ export const LearningResourceGenerator = ({
             font-size: 12px; line-height: 1.6; white-space: normal;
           }
           .table-wrap { overflow: hidden; border: 1px solid #cbd5e1; border-radius: 6px; }
-          table { width: 100%; border-collapse: collapse; font-size: 11px; }
-          th, td { border: 1px solid #e2e8f0; padding: 6px 8px; vertical-align: top; text-align: left; }
+          table { width: 100%; border-collapse: collapse; font-size: ${compactTable ? '10px' : '11px'}; }
+          th, td { border: 1px solid #000; padding: ${compactTable ? '5px 6px' : '6px 8px'}; vertical-align: top; text-align: left; }
           th { background: #f8fafc; font-weight: 700; }
           .print-compact-column {
             text-align: center;
@@ -2785,21 +3270,21 @@ export const LearningResourceGenerator = ({
             font-size: 9px;
             line-height: 1.35;
           }
-          .signature-meta {
-            margin-top: 18px; font-size: 12px; color: #334155;
-          }
           .signature-wrap {
-            margin-top: 14px;
+            margin-top: 22px;
             display: grid;
             grid-template-columns: 1fr 1fr;
             gap: 64px;
           }
           .signature-box {
-            text-align: center;
+            text-align: left;
             font-size: 13px;
           }
+          .signature-box.is-right {
+            text-align: right;
+          }
           .signature-spacer {
-            height: 64px;
+            height: 72px;
           }
           .signature-name {
             display: inline-block;
@@ -2816,40 +3301,36 @@ export const LearningResourceGenerator = ({
       </head>
       <body>
         <div class="header">
-          <div class="school">SMKS KARYA GUNA BHAKTI 2</div>
-          <div class="year">TAHUN AJARAN ${escapeHtml(contextValues.tahunAjaran || academicYearName || '-')}</div>
+          ${
+            programPrintRules?.showDocumentTitle === false
+              ? ''
+              : `<div class="title-wrap">${printTitleHtml}</div>`
+          }
+          ${
+            programPrintRules?.showInstitutionHeader === false
+              ? ''
+              : `<div class="school">${escapeHtml(schoolName)}</div>
+                 <div class="year">TAHUN AJARAN ${escapeHtml(contextValues.tahunAjaran || academicYearName || '-')}</div>`
+          }
         </div>
         <table class="doc-context">
-          <tr><td>Mata Pelajaran</td><td>: ${escapeHtml(contextValues.mataPelajaran || '-')}</td></tr>
-          <tr><td>Tingkat</td><td>: ${escapeHtml(contextValues.tingkat || '-')}</td></tr>
-          <tr><td>Program Keahlian</td><td>: ${escapeHtml(contextValues.programKeahlian || '-')}</td></tr>
-          <tr><td>Semester</td><td>: ${escapeHtml(contextValues.semester || '-')}</td></tr>
-          <tr><td>Cakupan Rombel</td><td>: ${
-            coveredClasses.length > 0
-              ? escapeHtml(`${coveredClasses.length} rombel (${coveredClasses.join(', ')})`)
-              : '-'
-          }</td></tr>
+          ${visibleContextRows
+            .map(([label, value]) => `<tr><td>${escapeHtml(label)}</td><td>: ${escapeHtml(value)}</td></tr>`)
+            .join('')}
         </table>
-        <div class="signature-meta">
-          <div><b>Dokumen:</b> ${escapeHtml(entry.title || effectiveTitle)}</div>
-          <div><b>Status Persetujuan Digital:</b> ${
-            entry.status === 'APPROVED' ? 'Disetujui' : entry.status === 'REJECTED' ? 'Perlu Revisi' : 'Belum final'
-          }</div>
-          <div><b>Reviewer:</b> ${escapeHtml(entry.reviewer?.name || '-')}</div>
-          ${entry.reviewNote ? `<div><b>Catatan Review:</b> ${formatMultilineHtml(entry.reviewNote)}</div>` : ''}
-        </div>
         ${printableSections.map(renderSectionPrintHtml).join('')}
         <div class="signature-wrap">
           <div class="signature-box">
-            <div>${escapeHtml(signatureValues.curriculumTitle)}</div>
-            <div class="signature-spacer"></div>
-            <div class="signature-name">${escapeHtml(signatureValues.curriculumName || '-')}</div>
-          </div>
-          <div class="signature-box">
-            <div>${escapeHtml(printDateLine)}</div>
+            <div>Mengetahui,</div>
             <div>${escapeHtml(signatureValues.principalTitle)}</div>
             <div class="signature-spacer"></div>
             <div class="signature-name">${escapeHtml(signatureValues.principalName || '-')}</div>
+          </div>
+          <div class="signature-box is-right">
+            <div>${escapeHtml(printDateLine)}</div>
+            <div>${escapeHtml(signatureValues.curriculumTitle)}</div>
+            <div class="signature-spacer"></div>
+            <div class="signature-name">${escapeHtml(signatureValues.curriculumName || '-')}</div>
           </div>
         </div>
       </body>
@@ -2860,18 +3341,32 @@ export const LearningResourceGenerator = ({
   const handlePrintEntry = (entry: TeachingResourceEntry) => {
     try {
       const html = buildPrintHtml(entry);
-      const printWindow = window.open('', '_blank', 'width=1100,height=800');
-      if (!printWindow) {
-        toast.error('Popup print diblokir browser. Izinkan popup untuk mencetak dokumen.');
+      const iframe = printIframeRef.current;
+      if (!iframe?.contentWindow) {
+        toast.error('Frame print tidak tersedia. Coba muat ulang halaman.');
         return;
       }
-      printWindow.document.open();
-      printWindow.document.write(html);
-      printWindow.document.close();
+      const printDoc = iframe.contentWindow.document;
+      printDoc.open();
+      printDoc.write(html);
+      printDoc.close();
+      const cleanup = () => {
+        try {
+          iframe.contentWindow?.removeEventListener('afterprint', cleanup);
+        } catch {
+          // no-op
+        }
+      };
+      try {
+        iframe.contentWindow.addEventListener('afterprint', cleanup);
+      } catch {
+        // no-op
+      }
       window.setTimeout(() => {
-        printWindow.focus();
-        printWindow.print();
-      }, 150);
+        iframe.contentWindow?.focus();
+        iframe.contentWindow?.print();
+        window.setTimeout(cleanup, 1200);
+      }, 350);
     } catch (error) {
       toast.error(toErrorMessage(error, 'Gagal menyiapkan dokumen print.'));
     }
@@ -3008,109 +3503,231 @@ export const LearningResourceGenerator = ({
                     const canSubmit = isOwner && (entry.status === 'DRAFT' || entry.status === 'REJECTED');
                     const canEdit = isOwner && entry.status !== 'APPROVED';
                     const canDelete = isOwner && entry.status !== 'APPROVED';
+                    const tableSections = getEntryTableSections(entry);
+                    const canQuickEdit = canEdit && tableSections.length > 0;
+                    const isQuickEditing = quickEditEntryId === entry.id;
+                    const quickSections = isQuickEditing ? quickEditSections.filter((section) => isTableSection(section)) : [];
+                    const activeQuickSection =
+                      quickSections.find((section) => section.id === quickEditActiveSectionId) || quickSections[0] || null;
+                    const visibleQuickColumns = activeQuickSection ? getVisibleSectionColumns(activeQuickSection) : [];
+                    const compactQuickColumns = visibleQuickColumns.slice(0, 6);
+                    const compactQuickRows = activeQuickSection ? activeQuickSection.rows.slice(0, 5) : [];
+                    const hiddenQuickColumnCount = Math.max(0, visibleQuickColumns.length - compactQuickColumns.length);
+                    const hiddenQuickRowCount = Math.max(
+                      0,
+                      (activeQuickSection?.rows.length || 0) - compactQuickRows.length,
+                    );
 
                     return (
-                      <tr key={entry.id} className="border-b border-gray-100 align-top last:border-b-0">
-                        <td className="px-3 py-3">
-                          <div className="min-w-0">
-                            <div className="font-semibold text-gray-900">{entry.title}</div>
-                            {entry.summary ? <p className="mt-1 text-sm text-gray-600">{entry.summary}</p> : null}
-                            <div className="mt-2 text-xs text-gray-500">Guru: {entry.teacher?.name || '-'}</div>
-                            {entry.reviewNote ? (
-                              <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs text-amber-700">
-                                Catatan review: {entry.reviewNote}
-                              </div>
-                            ) : null}
-                          </div>
-                        </td>
-                        <td className="px-3 py-3">
-                          <span className={`inline-flex rounded-full px-2 py-1 text-xs font-medium ${statusMeta.pillClass}`}>
-                            {statusMeta.label}
-                          </span>
-                        </td>
-                        <td className="px-3 py-3 text-sm text-gray-700">{contextLabel || '-'}</td>
-                        <td className="px-3 py-3 text-sm text-gray-700">
-                          {coveredClasses.length > 0 ? `${coveredClasses.length} rombel (${coveredClasses.join(', ')})` : '-'}
-                        </td>
-                        <td className="px-3 py-3 text-sm text-gray-700">{formatDateTime(entry.updatedAt)}</td>
-                        <td className="px-3 py-3">
-                          <div className="flex flex-wrap items-center justify-end gap-2">
-                            <button
-                              type="button"
-                              onClick={() => handlePrintEntry(entry)}
-                              className="inline-flex items-center gap-1 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
-                            >
-                              <Printer size={12} />
-                              Print
-                            </button>
-                            {canEdit ? (
+                      <Fragment key={entry.id}>
+                        <tr key={entry.id} className="border-b border-gray-100 align-top last:border-b-0">
+                          <td className="px-3 py-3">
+                            <div className="min-w-0">
+                              <div className="font-semibold text-gray-900">{entry.title}</div>
+                              {entry.summary ? <p className="mt-1 text-sm text-gray-600">{entry.summary}</p> : null}
+                              <div className="mt-2 text-xs text-gray-500">Guru: {entry.teacher?.name || '-'}</div>
+                              {entry.reviewNote ? (
+                                <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs text-amber-700">
+                                  Catatan review: {entry.reviewNote}
+                                </div>
+                              ) : null}
+                              {tableSections.length > 0 ? (
+                                <p className="mt-2 text-[11px] text-blue-600">
+                                  Tabel kerja tersedia: {tableSections.map((section) => section.title || 'Bagian tabel').join(', ')}
+                                </p>
+                              ) : null}
+                            </div>
+                          </td>
+                          <td className="px-3 py-3">
+                            <span className={`inline-flex rounded-full px-2 py-1 text-xs font-medium ${statusMeta.pillClass}`}>
+                              {statusMeta.label}
+                            </span>
+                          </td>
+                          <td className="px-3 py-3 text-sm text-gray-700">{contextLabel || '-'}</td>
+                          <td className="px-3 py-3 text-sm text-gray-700">
+                            {coveredClasses.length > 0 ? `${coveredClasses.length} rombel (${coveredClasses.join(', ')})` : '-'}
+                          </td>
+                          <td className="px-3 py-3 text-sm text-gray-700">{formatDateTime(entry.updatedAt)}</td>
+                          <td className="px-3 py-3">
+                            <div className="flex flex-wrap items-center justify-end gap-2">
                               <button
                                 type="button"
-                                onClick={() => openEdit(entry)}
-                                className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                                onClick={() => handlePrintEntry(entry)}
+                                className="inline-flex items-center gap-1 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
                               >
-                                Edit
+                                <Printer size={12} />
+                                Print
                               </button>
-                            ) : null}
-                            {canDelete ? (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const confirmed = window.confirm('Hapus dokumen ini? Tindakan ini tidak bisa dibatalkan.');
-                                  if (!confirmed) return;
-                                  deleteMutation.mutate(entry.id);
-                                }}
-                                className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-100"
-                              >
-                                Hapus
-                              </button>
-                            ) : null}
-                            {canSubmit ? (
-                              <button
-                                type="button"
-                                onClick={() => submitMutation.mutate(entry.id)}
-                                disabled={submitMutation.isPending}
-                                className="inline-flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
-                              >
-                                <Send size={12} />
-                                Kirim Review
-                              </button>
-                            ) : null}
-                            {showReviewActions ? (
-                              <>
+                              {canQuickEdit ? (
                                 <button
                                   type="button"
-                                  onClick={() =>
-                                    reviewMutation.mutate({
-                                      entryId: entry.id,
-                                      action: 'APPROVE',
-                                    })
-                                  }
-                                  disabled={reviewMutation.isPending}
-                                  className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-60"
+                                  onClick={() => (isQuickEditing ? closeQuickEdit() : openQuickEdit(entry))}
+                                  className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-1.5 text-xs font-medium text-sky-700 hover:bg-sky-100"
                                 >
-                                  Setujui
+                                  {isQuickEditing ? 'Tutup Tabel' : 'Edit Tabel'}
                                 </button>
+                              ) : null}
+                              {canEdit ? (
+                                <button
+                                  type="button"
+                                  onClick={() => openEdit(entry)}
+                                  className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                                >
+                                  Edit Lengkap
+                                </button>
+                              ) : null}
+                              {canDelete ? (
                                 <button
                                   type="button"
                                   onClick={() => {
-                                    const note = window.prompt('Catatan revisi (opsional):', '') || '';
-                                    reviewMutation.mutate({
-                                      entryId: entry.id,
-                                      action: 'REJECT',
-                                      reviewNote: note.trim() || undefined,
-                                    });
+                                    const confirmed = window.confirm('Hapus dokumen ini? Tindakan ini tidak bisa dibatalkan.');
+                                    if (!confirmed) return;
+                                    deleteMutation.mutate(entry.id);
                                   }}
-                                  disabled={reviewMutation.isPending}
-                                  className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-100 disabled:opacity-60"
+                                  className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-100"
                                 >
-                                  Revisi
+                                  Hapus
                                 </button>
-                              </>
-                            ) : null}
-                          </div>
-                        </td>
-                      </tr>
+                              ) : null}
+                              {canSubmit ? (
+                                <button
+                                  type="button"
+                                  onClick={() => submitMutation.mutate(entry.id)}
+                                  disabled={submitMutation.isPending}
+                                  className="inline-flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+                                >
+                                  <Send size={12} />
+                                  Kirim Review
+                                </button>
+                              ) : null}
+                              {showReviewActions ? (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      reviewMutation.mutate({
+                                        entryId: entry.id,
+                                        action: 'APPROVE',
+                                      })
+                                    }
+                                    disabled={reviewMutation.isPending}
+                                    className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-60"
+                                  >
+                                    Setujui
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const note = window.prompt('Catatan revisi (opsional):', '') || '';
+                                      reviewMutation.mutate({
+                                        entryId: entry.id,
+                                        action: 'REJECT',
+                                        reviewNote: note.trim() || undefined,
+                                      });
+                                    }}
+                                    disabled={reviewMutation.isPending}
+                                    className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-100 disabled:opacity-60"
+                                  >
+                                    Revisi
+                                  </button>
+                                </>
+                              ) : null}
+                            </div>
+                          </td>
+                        </tr>
+                        {isQuickEditing && activeQuickSection ? (
+                          <tr className="border-b border-gray-100 bg-slate-50/60">
+                            <td colSpan={6} className="px-3 py-3">
+                              <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+                                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                                  <div>
+                                    <h4 className="text-sm font-semibold text-slate-900">Tabel Kerja Cepat</h4>
+                                    <p className="mt-1 text-xs text-slate-500">
+                                      Menampilkan bagian tabel utama agar guru bisa langsung edit isi penting tanpa membuka editor penuh.
+                                    </p>
+                                  </div>
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => openEdit(entry)}
+                                      className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                                    >
+                                      Buka Editor Lengkap
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => quickEditMutation.mutate(entry)}
+                                      disabled={quickEditMutation.isPending}
+                                      className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+                                    >
+                                      <Save size={12} />
+                                      {quickEditMutation.isPending ? 'Menyimpan...' : 'Simpan Tabel'}
+                                    </button>
+                                  </div>
+                                </div>
+
+                                {quickSections.length > 1 ? (
+                                  <div className="mt-3 flex flex-wrap gap-2">
+                                    {quickSections.map((section) => (
+                                      <button
+                                        key={`quick-section-${section.id}`}
+                                        type="button"
+                                        onClick={() => setQuickEditActiveSectionId(section.id)}
+                                        className={`rounded-full border px-3 py-1 text-xs font-medium transition ${
+                                          section.id === activeQuickSection.id
+                                            ? 'border-blue-300 bg-blue-50 text-blue-700'
+                                            : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+                                        }`}
+                                      >
+                                        {section.title || 'Bagian tabel'}
+                                      </button>
+                                    ))}
+                                  </div>
+                                ) : null}
+
+                                <div className="mt-3 overflow-x-auto rounded-lg border border-slate-200">
+                                  <table className="min-w-max text-xs">
+                                    <thead className="bg-slate-50">
+                                      <tr>
+                                        {compactQuickColumns.map((column) => (
+                                          <th
+                                            key={`quick-head-${activeQuickSection.id}-${column.key}`}
+                                            className={`whitespace-nowrap border-b border-slate-200 px-2 py-2 text-left font-semibold text-slate-600 ${getColumnWidthClass(column.key, Boolean(column.multiline), column.dataType)}`}
+                                          >
+                                            {column.label}
+                                          </th>
+                                        ))}
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {compactQuickRows.map((row) => (
+                                        <tr key={`quick-row-${row.id}`} className="border-b border-slate-100 last:border-b-0">
+                                          {compactQuickColumns.map((column) => (
+                                            <td
+                                              key={`quick-cell-${row.id}-${column.key}`}
+                                              className={`px-2 py-1.5 align-top ${getColumnWidthClass(column.key, Boolean(column.multiline), column.dataType)}`}
+                                            >
+                                              {renderQuickEditCellControl(activeQuickSection, row, column)}
+                                            </td>
+                                          ))}
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+
+                                {hiddenQuickColumnCount > 0 || hiddenQuickRowCount > 0 ? (
+                                  <p className="mt-2 text-[11px] text-slate-500">
+                                    Tampilan cepat menampilkan {compactQuickColumns.length} kolom dan {compactQuickRows.length} baris terlebih dulu.
+                                    {hiddenQuickColumnCount > 0 ? ` ${hiddenQuickColumnCount} kolom lain tetap tersedia di editor lengkap.` : ''}
+                                    {hiddenQuickRowCount > 0 ? ` ${hiddenQuickRowCount} baris lain tetap tersedia di editor lengkap.` : ''}
+                                  </p>
+                                ) : null}
+                              </div>
+                            </td>
+                          </tr>
+                        ) : null}
+                      </Fragment>
                     );
                   })}
                 </tbody>
@@ -3213,12 +3830,21 @@ export const LearningResourceGenerator = ({
 
               <div>
                 <label className="mb-1 block text-xs font-medium text-gray-500">Judul Dokumen</label>
-                <input
-                  value={entryTitle}
-                  onChange={(event) => setEntryTitle(event.target.value)}
-                  placeholder={activeProgramMeta?.schema?.titleHint || 'Masukkan judul dokumen...'}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                />
+                <div className="overflow-hidden rounded-lg border border-gray-300 bg-white shadow-sm focus-within:border-blue-500">
+                  <ReactQuill
+                    theme="snow"
+                    value={entryTitleHtml}
+                    onChange={(value) => setEntryTitleHtml(sanitizeDocumentTitleHtml(value))}
+                    modules={DOCUMENT_TITLE_QUILL_MODULES}
+                    formats={DOCUMENT_TITLE_QUILL_FORMATS}
+                    placeholder={activeProgramMeta?.schema?.titleHint || 'Masukkan judul dokumen...'}
+                    className="question-editor-quill teaching-resource-title-quill bg-white"
+                  />
+                </div>
+                <p className="mt-1 text-[11px] text-gray-500">
+                  Judul ini ikut menjadi heading utama saat dicetak. Anda bisa atur rata kiri, tengah, kanan, bold,
+                  italic, dan underline.
+                </p>
               </div>
 
               <div>
@@ -3471,6 +4097,7 @@ export const LearningResourceGenerator = ({
           </div>
         </div>
       ) : null}
+      <iframe ref={printIframeRef} title="teaching-resource-print-frame" className="hidden" />
     </div>
   );
 };
