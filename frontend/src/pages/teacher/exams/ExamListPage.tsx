@@ -955,7 +955,7 @@ export const ExamListPage = () => {
 
             {isScheduleModalOpen && (
                 <div
-                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+                    className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/25 p-4 backdrop-blur-[2px]"
                     onClick={closeScheduleModal}
                 >
                     <div
@@ -1082,7 +1082,7 @@ export const ExamListPage = () => {
 
             {isCreateInfoModalOpen && (
                 <div
-                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+                    className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/25 p-4 backdrop-blur-[2px]"
                     onClick={() => setIsCreateInfoModalOpen(false)}
                 >
                     <div

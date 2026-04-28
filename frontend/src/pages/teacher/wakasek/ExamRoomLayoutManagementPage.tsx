@@ -937,7 +937,7 @@ export default function ExamRoomLayoutManagementPage({ forcedProgramCode }: Exam
 
       {isEditorModalOpen && selectedSitting ? (
         <div
-          className="fixed inset-0 z-[70] bg-black/35 p-3 sm:p-5"
+          className="fixed inset-0 z-[70] bg-slate-950/25 p-3 backdrop-blur-[2px] sm:p-5"
           onClick={handleCloseEditor}
         >
           <div
@@ -1288,7 +1288,7 @@ export default function ExamRoomLayoutManagementPage({ forcedProgramCode }: Exam
 
       {isGenerateModalOpen && selectedSitting ? (
         <div
-          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/35 p-4"
+          className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/25 p-4 backdrop-blur-[2px]"
           onClick={() => setIsGenerateModalOpen(false)}
         >
           <div

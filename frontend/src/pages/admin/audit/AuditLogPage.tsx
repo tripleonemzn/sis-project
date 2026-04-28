@@ -301,7 +301,7 @@ export const AuditLogPage = () => {
       </div>
 
       {selectedLog && (
-        <div className="fixed inset-0 bg-black/20 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-slate-950/20 flex items-center justify-center z-50 backdrop-blur-[2px]">
           <div className="bg-white w-[400px] max-w-[90vw] rounded shadow-xl border border-gray-200">
             <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
               <div className="flex items-center gap-2">

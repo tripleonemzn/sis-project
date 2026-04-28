@@ -1806,7 +1806,7 @@ export const WorkProgramPage = () => {
       )}
       {lpjModal.isOpen && lpjModal.budget && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/30"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/25 backdrop-blur-[2px]"
           onClick={() => {
             setLpjModal({ isOpen: false, budget: null });
           }}
@@ -2615,7 +2615,7 @@ export const WorkProgramPage = () => {
 
       {editingItem && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/30"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/25 backdrop-blur-[2px]"
           onClick={() => {
             setEditingItem(null);
             resetEditItemForm();
@@ -2704,7 +2704,7 @@ export const WorkProgramPage = () => {
       )}
 
       {isCreateModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/30" onClick={() => {
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/25 backdrop-blur-[2px]" onClick={() => {
           setIsCreateModalOpen(false);
           resetCreateForm();
         }}>
@@ -2912,7 +2912,7 @@ export const WorkProgramPage = () => {
         </div>
       )}
       {isBudgetModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/30" onClick={() => {
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/25 backdrop-blur-[2px]" onClick={() => {
             setIsBudgetModalOpen(false);
             resetNewBudgetForm();
           }}>
@@ -3079,7 +3079,7 @@ export const WorkProgramPage = () => {
         </div>
       )}
       {isWeekConfigOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/30" onClick={() => setIsWeekConfigOpen(false)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/25 backdrop-blur-[2px]" onClick={() => setIsWeekConfigOpen(false)}>
           <div className="bg-white rounded-xl shadow-xl w-full max-w-lg overflow-hidden max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
             <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/50 flex-shrink-0">
               <h3 className="font-semibold text-gray-900">
@@ -3154,7 +3154,7 @@ export const WorkProgramPage = () => {
       {/* Confirmation Modal */}
       {confirmModal.isOpen && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-          <div className="fixed inset-0 bg-black/10" onClick={() => setConfirmModal({ ...confirmModal, isOpen: false })} />
+          <div className="fixed inset-0 bg-slate-950/10 backdrop-blur-[1px]" onClick={() => setConfirmModal({ ...confirmModal, isOpen: false })} />
           <div className="relative bg-white border border-gray-300 shadow-lg w-full max-w-[400px] rounded p-0">
             <div className="p-4 flex gap-3">
               <div className="flex-shrink-0">

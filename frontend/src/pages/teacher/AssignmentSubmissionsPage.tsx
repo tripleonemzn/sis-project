@@ -256,7 +256,7 @@ export const AssignmentSubmissionsPage = () => {
       ) : null}
 
       {gradingTarget ? (
-        <div className="fixed inset-0 bg-black/35 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-slate-950/25 z-50 flex items-center justify-center p-4 backdrop-blur-[2px]">
           <div className="bg-white w-full max-w-md rounded-xl shadow-xl border border-gray-200 p-5 space-y-4">
             <div>
               <h2 className="text-lg font-bold text-gray-900">Input Nilai</h2>

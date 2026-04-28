@@ -266,7 +266,7 @@ export const HomeroomResultPublicationPanel = ({
       )}
 
       {showGuide ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 px-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/25 px-4 backdrop-blur-[2px]">
           <div className="w-full max-w-lg rounded-2xl border border-yellow-200 bg-white p-6 shadow-xl">
             <div className="flex items-start justify-between gap-4">
               <div>
@@ -291,7 +291,7 @@ export const HomeroomResultPublicationPanel = ({
       ) : null}
 
       {showProgramInfo && selectedProgram ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 px-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/25 px-4 backdrop-blur-[2px]">
           <div className="w-full max-w-lg rounded-2xl border border-blue-200 bg-white p-6 shadow-xl">
             <div className="flex items-start justify-between gap-4">
               <div>

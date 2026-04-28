@@ -97,7 +97,7 @@ export const QuestionBankModal = ({
     };
 
     return (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-slate-950/25 z-50 flex items-center justify-center p-4 backdrop-blur-[2px]">
             <div className="bg-white rounded-xl shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col">
                 {/* Header */}
                 <div className="p-4 border-b border-gray-100 flex items-center justify-between">

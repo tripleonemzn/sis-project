@@ -380,7 +380,7 @@ function CommitteeAssignmentModal({
     (isInternalMember ? Boolean(assignmentForm.userId) : Boolean(assignmentForm.externalName.trim()));
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/25 p-4 backdrop-blur-[2px]">
       <div
         className="flex max-h-[80vh] w-full max-w-5xl flex-col overflow-hidden rounded-xl bg-white shadow-xl"
         onClick={(eventClick) => eventClick.stopPropagation()}
@@ -1158,7 +1158,7 @@ export default function CommitteeEventsPage() {
       </div>
 
       {isFormOpen ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/25 p-4 backdrop-blur-[2px]">
           <div
             className="flex max-h-[80vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl bg-white shadow-xl"
             onClick={(eventClick) => eventClick.stopPropagation()}

@@ -3104,7 +3104,7 @@ export const LearningResourceGenerator = ({
       ) : null}
 
       {isPageEditor || isEditorOpen ? (
-        <div className={isPageEditor ? 'space-y-4' : 'fixed inset-0 z-[1400] flex items-center justify-center bg-black/40 px-4 py-6'}>
+        <div className={isPageEditor ? 'space-y-4' : 'fixed inset-0 z-[1400] flex items-center justify-center bg-slate-950/25 px-4 py-6 backdrop-blur-[2px]'}>
           <div
             className={
               isPageEditor

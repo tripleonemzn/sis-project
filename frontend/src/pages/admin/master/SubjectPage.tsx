@@ -346,7 +346,7 @@ export const SubjectPage = () => {
         </div>
       {showForm && (
         <div 
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/30"
+            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/25 backdrop-blur-[2px]"
             onClick={() => {
                 setShowForm(false);
                 setEditingId(null);

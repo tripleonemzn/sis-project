@@ -1710,7 +1710,7 @@ export const UserProfilePage = () => {
 
       <div className="bg-white rounded-xl shadow-md border-0 overflow-hidden">
         {isCropping && cropImageSrc && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" onClick={handleCancelCrop}>
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/25 p-4 backdrop-blur-[2px]" onClick={handleCancelCrop}>
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in zoom-in duration-200" onClick={(e) => e.stopPropagation()}>
               <div className="p-4 border-b flex justify-between items-center bg-gray-50">
                 <h3 className="font-bold text-lg text-gray-900">Sesuaikan Foto Profil</h3>

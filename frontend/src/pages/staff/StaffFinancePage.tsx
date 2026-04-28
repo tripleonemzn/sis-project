@@ -7385,7 +7385,7 @@ export const StaffFinancePage = ({ activeSection = 'overview' }: StaffFinancePag
 
       {isComponentModalOpen ? (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/30"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/25 backdrop-blur-[2px]"
           onClick={closeComponentModal}
         >
           <div
@@ -7518,7 +7518,7 @@ export const StaffFinancePage = ({ activeSection = 'overview' }: StaffFinancePag
 
       {isTariffModalOpen ? (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/30"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/25 backdrop-blur-[2px]"
           onClick={closeTariffModal}
         >
           <div
@@ -7664,7 +7664,7 @@ export const StaffFinancePage = ({ activeSection = 'overview' }: StaffFinancePag
 
       {isReminderPolicyModalOpen ? (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/30"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/25 backdrop-blur-[2px]"
           onClick={closeReminderPolicyModal}
         >
           <div
@@ -7911,7 +7911,7 @@ export const StaffFinancePage = ({ activeSection = 'overview' }: StaffFinancePag
 
       {selectedInvoice && (
         <div
-            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/30"
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/25 backdrop-blur-[2px]"
             onClick={() => setSelectedInvoice(null)}
         >
           <div
@@ -8260,7 +8260,7 @@ export const StaffFinancePage = ({ activeSection = 'overview' }: StaffFinancePag
 
       {selectedCreditBalance && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/30"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/25 backdrop-blur-[2px]"
           onClick={resetRefundForm}
         >
           <div
@@ -8344,7 +8344,7 @@ export const StaffFinancePage = ({ activeSection = 'overview' }: StaffFinancePag
 
       {reversalTargetPayment ? (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/30"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/25 backdrop-blur-[2px]"
           onClick={resetReversalForm}
         >
           <div
@@ -8406,7 +8406,7 @@ export const StaffFinancePage = ({ activeSection = 'overview' }: StaffFinancePag
 
       {writeOffTargetInvoice ? (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/30"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/25 backdrop-blur-[2px]"
           onClick={resetWriteOffForm}
         >
           <div

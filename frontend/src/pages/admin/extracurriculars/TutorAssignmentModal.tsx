@@ -159,7 +159,7 @@ export const TutorAssignmentModal = ({ ekskul, onClose, onUpdate }: TutorAssignm
   const isLoading = isLoadingYears || (!!selectedAcademicYearId && isLoadingAssignments) || isLoadingTutors;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/30 p-4 pt-16" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-start justify-center bg-slate-950/25 p-4 pt-16 backdrop-blur-[2px]" onClick={onClose}>
       <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
         <div className="p-6 border-b border-gray-100 flex justify-between items-center">
           <div>

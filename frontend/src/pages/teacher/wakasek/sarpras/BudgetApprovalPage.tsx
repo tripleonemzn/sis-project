@@ -606,7 +606,7 @@ export const BudgetApprovalPage = () => {
 
       {selectedForApprove && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/30"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/25 backdrop-blur-[2px]"
           onClick={() => {
             setSelectedForApprove(null);
           }}
@@ -693,7 +693,7 @@ export const BudgetApprovalPage = () => {
 
       {lpjAuditModal.isOpen && lpjAuditModal.budget && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/30"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/25 backdrop-blur-[2px]"
           onClick={() => {
             setLpjAuditModal({ isOpen: false, budget: null });
           }}

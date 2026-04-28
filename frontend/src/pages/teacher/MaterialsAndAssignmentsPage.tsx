@@ -962,7 +962,7 @@ export default function MaterialsAndAssignmentsPage() {
 
       {/* Material Modal */}
       {showMaterialModal && (
-        <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4" onClick={() => setShowMaterialModal(false)}>
+        <div className="fixed inset-0 bg-slate-950/25 z-50 flex items-center justify-center p-4 backdrop-blur-[2px]" onClick={() => setShowMaterialModal(false)}>
           <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="p-6 border-b border-gray-200 flex items-center justify-between sticky top-0 bg-white">
               <h2 className="text-xl font-bold text-gray-900">
@@ -1101,7 +1101,7 @@ export default function MaterialsAndAssignmentsPage() {
 
       {/* Assignment Modal */}
       {showAssignmentModal && (
-        <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4" onClick={() => setShowAssignmentModal(false)}>
+        <div className="fixed inset-0 bg-slate-950/25 z-50 flex items-center justify-center p-4 backdrop-blur-[2px]" onClick={() => setShowAssignmentModal(false)}>
           <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="p-6 border-b border-gray-200 flex items-center justify-between sticky top-0 bg-white">
               <h2 className="text-xl font-bold text-gray-900">
@@ -1272,7 +1272,7 @@ export default function MaterialsAndAssignmentsPage() {
 
       {/* Copy Modal */}
       {showCopyModal && (copyingMaterial || copyingAssignment) && (
-        <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4" onClick={() => setShowCopyModal(false)}>
+        <div className="fixed inset-0 bg-slate-950/25 z-50 flex items-center justify-center p-4 backdrop-blur-[2px]" onClick={() => setShowCopyModal(false)}>
           <div className="bg-white rounded-lg shadow-xl max-w-md w-full" onClick={(e) => e.stopPropagation()}>
             <div className="p-6 border-b border-gray-200 flex items-center justify-between">
               <h2 className="text-xl font-bold text-gray-900">

@@ -5555,7 +5555,7 @@ const PrincipalFinancePage = () => {
 
       {selectedForApprove && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/30"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/25 backdrop-blur-[2px]"
           onClick={() => {
             setSelectedForApprove(null);
           }}
@@ -5611,7 +5611,7 @@ const PrincipalFinancePage = () => {
 
       {selectedForReject && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/30"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/25 backdrop-blur-[2px]"
           onClick={() => {
             setSelectedForReject(null);
             setRejectionReason('');
@@ -6152,7 +6152,7 @@ const PrincipalExamReportsPage = () => {
       {absentModalRow &&
         createPortal(
           <div
-            className="fixed inset-0 z-[1100] flex items-center justify-center bg-black/40 p-4"
+            className="fixed inset-0 z-[1100] flex items-center justify-center bg-slate-950/25 p-4 backdrop-blur-[2px]"
             onClick={() => setAbsentModalRow(null)}
           >
             <div

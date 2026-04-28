@@ -1893,7 +1893,7 @@ const ExamProctorManagementPage = ({ forcedProgramCode }: ExamProctorManagementP
       {absentModalRow &&
         createPortal(
           <div
-            className="fixed inset-0 z-[1100] flex items-center justify-center bg-black/40 p-4"
+            className="fixed inset-0 z-[1100] flex items-center justify-center bg-slate-950/25 p-4 backdrop-blur-[2px]"
             onClick={() => setAbsentModalRow(null)}
           >
             <div

@@ -431,7 +431,7 @@ export const HomeroomExtracurricularsPage = ({
 
       {/* Achievement Modal */}
       {isAchievementModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 px-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/25 px-4 backdrop-blur-[2px]">
           <div className="w-full max-w-md overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl">
             <div className="flex justify-between items-center border-b border-slate-200 p-4">
               <h3 className="text-lg font-medium text-gray-900">Tambah Prestasi</h3>

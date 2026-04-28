@@ -412,7 +412,7 @@ export const AcademicCalendarPage = () => {
 
       {showForm && (
         <div
-          className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4"
+          className="fixed inset-0 bg-slate-950/25 z-50 flex items-center justify-center p-4 backdrop-blur-[2px]"
           onClick={() => {
             setShowForm(false);
             setEditingId(null);

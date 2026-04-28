@@ -425,7 +425,7 @@ export const TeacherSchedulePage = () => {
 
       {/* Modal Detail Jadwal */}
       {selectedDayDetail && (
-        <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4" onClick={() => setSelectedDayDetail(null)}>
+        <div className="fixed inset-0 bg-slate-950/25 z-50 flex items-center justify-center p-4 backdrop-blur-[2px]" onClick={() => setSelectedDayDetail(null)}>
           <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[80vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
             <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-white">
               <div>

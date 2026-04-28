@@ -1057,7 +1057,7 @@ export function TeacherBpBkPage() {
       </div>
 
       {isBehaviorModalOpen ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" onClick={() => setIsBehaviorModalOpen(false)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/25 p-4 backdrop-blur-[2px]" onClick={() => setIsBehaviorModalOpen(false)}>
           <div className="w-full max-w-2xl rounded-xl bg-white shadow-xl" onClick={(event) => event.stopPropagation()}>
             <div className="border-b border-gray-100 px-5 py-4">
               <h3 className="text-lg font-semibold text-gray-900">{behaviorForm.id ? 'Edit Catatan Perilaku' : 'Tambah Catatan Perilaku'}</h3>
@@ -1182,7 +1182,7 @@ export function TeacherBpBkPage() {
       ) : null}
 
       {isCounselingModalOpen ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" onClick={() => setIsCounselingModalOpen(false)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/25 p-4 backdrop-blur-[2px]" onClick={() => setIsCounselingModalOpen(false)}>
           <div className="w-full max-w-3xl rounded-xl bg-white shadow-xl" onClick={(event) => event.stopPropagation()}>
             <div className="border-b border-gray-100 px-5 py-4">
               <h3 className="text-lg font-semibold text-gray-900">{counselingForm.id ? 'Edit Konseling' : 'Tambah Konseling & Tindak Lanjut'}</h3>

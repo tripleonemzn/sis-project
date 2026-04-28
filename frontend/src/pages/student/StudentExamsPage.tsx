@@ -1799,7 +1799,7 @@ export default function StudentExamsPage() {
           )}
         </div>
       {showExamRulesModal ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 px-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/25 px-4 backdrop-blur-[2px]">
           <div className="w-full max-w-lg rounded-2xl border border-yellow-200 bg-white p-6 shadow-xl">
             <div className="flex items-start justify-between gap-4">
               <div>
@@ -1826,7 +1826,7 @@ export default function StudentExamsPage() {
       ) : null}
 
       {showPlacementModal && selectedPlacement ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 px-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/25 px-4 backdrop-blur-[2px]">
           <div className="w-full max-w-2xl rounded-2xl border border-blue-100 bg-white p-6 shadow-xl">
             <div className="flex items-start justify-between gap-4">
               <div>
@@ -1901,7 +1901,7 @@ export default function StudentExamsPage() {
       ) : null}
 
       {showProctorListModal && selectedPlacementGroup ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 px-4 py-6">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/25 px-4 py-6 backdrop-blur-[2px]">
           <div className="flex max-h-[calc(100vh-96px)] w-full max-w-3xl flex-col rounded-2xl border border-emerald-100 bg-white p-6 shadow-xl">
             <div className="flex items-start justify-between gap-4">
               <div>
@@ -1971,7 +1971,7 @@ export default function StudentExamsPage() {
 
       {/* Start Exam Confirmation Modal */}
       {showStartModal && selectedExam && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/35" onClick={() => setShowStartModal(false)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/25 backdrop-blur-[2px]" onClick={() => setShowStartModal(false)}>
           <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6 animate-in fade-in zoom-in duration-200" onClick={(e) => e.stopPropagation()}>
             <div className="text-center mb-6">
               <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
