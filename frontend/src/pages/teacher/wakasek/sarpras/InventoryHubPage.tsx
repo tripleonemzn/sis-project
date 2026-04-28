@@ -10,7 +10,6 @@ import {
   Search, 
   Edit, 
   Trash2, 
-  MapPin, 
   Users, 
   Box, 
   Layers,
@@ -259,6 +258,31 @@ function formatCurrencyIdr(value: number) {
   return new Intl.NumberFormat('id-ID').format(Math.max(0, Math.trunc(value || 0)));
 }
 
+function getRoomConditionMeta(condition?: string | null) {
+  if (condition === 'BAIK') {
+    return {
+      label: 'BAIK',
+      className: 'bg-emerald-50 text-emerald-700 border border-emerald-200',
+    };
+  }
+  if (condition === 'RUSAK_RINGAN') {
+    return {
+      label: 'RUSAK RINGAN',
+      className: 'bg-amber-50 text-amber-700 border border-amber-200',
+    };
+  }
+  if (condition === 'RUSAK_BERAT') {
+    return {
+      label: 'RUSAK BERAT',
+      className: 'bg-rose-50 text-rose-700 border border-rose-200',
+    };
+  }
+  return {
+    label: condition?.replaceAll('_', ' ') || 'BELUM DIISI',
+    className: 'bg-slate-50 text-slate-600 border border-slate-200',
+  };
+}
+
 function getLibraryLoanStatusMeta(loan: LibraryBookLoan, finePerDay = 1000): LibraryLoanStatusMeta {
   const safeFinePerDay = Math.max(0, Math.trunc(finePerDay || 0));
   if (loan.returnStatus === 'RETURNED') {
@@ -308,6 +332,7 @@ const getErrorMessage = (error: unknown, fallback: string) => {
 
 export const InventoryHubPage = () => {
   const location = useLocation();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const currentTabId = searchParams.get('tab');
   const libraryTabParam = String(searchParams.get('libraryTab') || '').toUpperCase();
@@ -471,10 +496,33 @@ export const InventoryHubPage = () => {
     }
   });
 
+  const deleteRoomMutation = useMutation({
+    mutationFn: inventoryService.deleteRoom,
+    onSuccess: () => {
+      toast.success('Ruangan berhasil dihapus');
+      queryClient.invalidateQueries({ queryKey: ['rooms'] });
+      queryClient.invalidateQueries({ queryKey: ['sidebar-assigned-inventory-rooms'] });
+    },
+    onError: (error: unknown) => {
+      toast.error(getErrorMessage(error, 'Gagal menghapus ruangan'));
+    }
+  });
+
   const handleDeleteCategory = () => {
     if (!activeCategory) return;
     if (confirm(`Apakah Anda yakin ingin menghapus kategori "${activeCategory.name}"? Semua ruangan di dalamnya harus dihapus terlebih dahulu.`)) {
       deleteCategoryMutation.mutate(activeCategory.id);
+    }
+  };
+
+  const handleDeleteRoom = (room: Room) => {
+    if (!canEdit) return;
+    if ((room._count?.items || 0) > 0) {
+      toast.error('Ruangan tidak dapat dihapus karena masih memiliki Item/Daftar Inventaris di dalamnya.');
+      return;
+    }
+    if (confirm(`Apakah Anda yakin ingin menghapus ruangan "${room.name}"?`)) {
+      deleteRoomMutation.mutate(room.id);
     }
   };
 
@@ -1100,18 +1148,98 @@ export const InventoryHubPage = () => {
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          {filteredRooms.map((room: Room) => (
-            <RoomCard 
-              key={room.id} 
-              room={room} 
-              canEdit={canEdit}
-              onEdit={(room) => {
-                setEditingRoom(room);
-                setIsEditRoomModalOpen(true);
-              }}
-            />
-          ))}
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+          <div className="px-4 py-3 border-b border-gray-100">
+            <h2 className="text-base font-semibold text-gray-900">
+              Daftar Ruangan
+            </h2>
+            <p className="text-sm text-gray-500">
+              {filteredRooms.length} ruangan ditampilkan
+            </p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[920px] text-sm">
+              <thead className="bg-gray-50 text-xs uppercase tracking-wide text-gray-500">
+                <tr>
+                  <th className="px-4 py-3 text-left font-semibold">Ruangan</th>
+                  <th className="px-4 py-3 text-left font-semibold">Lokasi</th>
+                  <th className="px-4 py-3 text-left font-semibold">Kapasitas</th>
+                  <th className="px-4 py-3 text-left font-semibold">Item</th>
+                  <th className="px-4 py-3 text-left font-semibold">Penanggung Jawab</th>
+                  <th className="px-4 py-3 text-left font-semibold">Kondisi</th>
+                  <th className="px-4 py-3 text-right font-semibold">Aksi</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {filteredRooms.map((room: Room) => {
+                  const conditionMeta = getRoomConditionMeta(room.condition);
+                  return (
+                    <tr key={room.id} className="hover:bg-gray-50/70 transition-colors">
+                      <td className="px-4 py-3">
+                        <div className="font-semibold text-gray-900">{room.name}</div>
+                        {activeCategory?.name ? (
+                          <div className="text-xs text-gray-500 mt-0.5">{activeCategory.name}</div>
+                        ) : null}
+                      </td>
+                      <td className="px-4 py-3 text-gray-700">{room.location || '-'}</td>
+                      <td className="px-4 py-3 text-gray-700">{room.capacity || 0} orang</td>
+                      <td className="px-4 py-3">
+                        <span className="inline-flex items-center rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700 border border-blue-100">
+                          {room._count?.items || 0} item
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-gray-700">{room.managerUser?.name || '-'}</td>
+                      <td className="px-4 py-3">
+                        <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${conditionMeta.className}`}>
+                          {conditionMeta.label}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              navigate({
+                                pathname: String(room.id),
+                                search: location.search,
+                              })
+                            }
+                            className="px-3 py-1.5 rounded-lg border border-blue-200 text-xs font-semibold text-blue-700 hover:bg-blue-50 transition-colors"
+                          >
+                            Detail
+                          </button>
+                          {canEdit ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingRoom(room);
+                                  setIsEditRoomModalOpen(true);
+                                }}
+                                className="p-2 rounded-lg border border-gray-200 text-gray-600 hover:text-blue-700 hover:bg-blue-50 transition-colors"
+                                title="Edit Ruangan"
+                              >
+                                <Edit size={16} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteRoom(room)}
+                                disabled={deleteRoomMutation.isPending}
+                                className="p-2 rounded-lg border border-gray-200 text-gray-600 hover:text-red-700 hover:bg-red-50 transition-colors disabled:opacity-50"
+                                title="Hapus Ruangan"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </>
+                          ) : null}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
@@ -1468,114 +1596,6 @@ const LibraryLoanModal = ({
           </button>
         </div>
       </div>
-    </div>
-  );
-};
-
-const RoomCard = ({ room, canEdit, onEdit }: { room: Room; canEdit: boolean; onEdit?: (room: Room) => void }) => {
-  const queryClient = useQueryClient();
-  const navigate = useNavigate();
-  const location = useLocation();
-  
-  const deleteMutation = useMutation({
-    mutationFn: inventoryService.deleteRoom,
-    onSuccess: () => {
-      toast.success('Ruangan berhasil dihapus');
-      queryClient.invalidateQueries({ queryKey: ['rooms'] });
-    },
-    onError: (error: unknown) => {
-      toast.error(getErrorMessage(error, 'Gagal menghapus ruangan'));
-    }
-  });
-
-  const handleDelete = () => {
-    if ((room._count?.items || 0) > 0) {
-      toast.error('Ruangan tidak dapat dihapus karena masih memiliki Item/Daftar Inventaris di dalamnya.');
-      return;
-    }
-    if (confirm('Apakah Anda yakin ingin menghapus ruangan ini?')) {
-      deleteMutation.mutate(room.id);
-    }
-  };
-
-  return (
-    <div className="bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow p-5">
-      <div className="flex justify-between items-start mb-4">
-        <div className="flex items-start gap-3">
-          <div className="p-2 bg-blue-50 text-blue-600 rounded-lg">
-            <School size={20} />
-          </div>
-          <div>
-            <h3 className="font-semibold text-gray-900">{room.name}</h3>
-            <p className={`text-xs font-bold px-2 py-0.5 rounded-full inline-block mt-1 animate-pulse
-              ${room.condition === 'BAIK' ? 'bg-green-100 text-green-700' : 
-                room.condition === 'RUSAK_RINGAN' ? 'bg-yellow-100 text-yellow-700' : 
-                'bg-red-100 text-red-700'}
-            `}>
-              {room.condition?.replace('_', ' ') || 'KONDISI TIDAK DIKETAHUI'}
-            </p>
-          </div>
-        </div>
-        {canEdit && (
-          <div className="flex items-center gap-1">
-            <button 
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onEdit?.(room);
-              }}
-              className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-              title="Edit Ruangan"
-            >
-              <Edit size={18} />
-            </button>
-            <button 
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                handleDelete();
-              }}
-              className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-              title="Hapus Ruangan"
-            >
-              <Trash2 size={18} />
-            </button>
-          </div>
-        )}
-      </div>
-
-      <div className="space-y-3 text-sm text-gray-600 mb-4">
-        <div className="flex items-center gap-2">
-          <MapPin size={16} className="text-gray-400" />
-          <span>{room.location || '-'}</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <Users size={16} className="text-gray-400" />
-          <span>Kapasitas: {room.capacity || 0} orang</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <Box size={16} className="text-gray-400" />
-          <span>{room._count?.items || 0} Item Inventaris</span>
-        </div>
-        {room.managerUser?.name ? (
-          <div className="flex items-center gap-2">
-            <Users size={16} className="text-gray-400" />
-            <span>PJ: {room.managerUser.name}</span>
-          </div>
-        ) : null}
-      </div>
-
-      <button 
-        onClick={() =>
-          navigate({
-            pathname: String(room.id),
-            search: location.search,
-          })
-        }
-        className="w-full py-2 border border-blue-200 text-blue-600 rounded-lg hover:bg-blue-50 transition-colors text-sm font-medium"
-      >
-        Lihat Detail Inventaris
-      </button>
     </div>
   );
 };
