@@ -5,12 +5,12 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-04-28 17:28 WIB
-- Current status: follow-up print guru web untuk `Perangkat Ajar` sudah selesai dan sudah live. Header print kini hanya memakai judul manual dokumen, section `Konteks Dokumen`/tabel konteks sistem tidak lagi dobel tercetak, margin print disetel rata 2cm, tanda tangan dibuat center dan lebih dekat ke tengah halaman, serta editor judul punya pilihan ukuran font.
+- Last updated: 2026-04-28 17:44 WIB
+- Current status: follow-up UX guru web untuk `Perangkat Ajar` sudah selesai dan sudah live. Header print kini tidak default bold/uppercase dan ukurannya lebih kalem, tombol `Edit Tabel` dihapus agar aksi utama tinggal `Edit Lengkap`, serta tabel hasil konfigurasi otomatis tampil inline agar guru bisa langsung mengisi kolom/baris dari halaman daftar dokumen.
 - Objective/task aktif:
   - Menyelesaikan perapihan UX role guru pada halaman dokumen perangkat ajar agar lebih fleksibel saat menulis judul, lebih aman saat print, dan lebih operasional saat mengedit isi tabel.
 - Batch terakhir selesai:
-  - `Batch 23 - Rapikan output print guru dan font size judul (web)`
+  - `Batch 24 - Sederhanakan input tabel guru dan print title (web)`
 - Progress batch ini:
   - `100%`
 - Progress roadmap perangkat ajar dinamis:
@@ -22,11 +22,11 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - Commit: `pending commit`
   - Title: `pending commit`
   - Summary:
-    - header print menghapus institution/year otomatis agar judul dokumen tetap manual sesuai editor guru
-    - section konteks sistem dan tabel konteks yang dobel dengan informasi atas tidak lagi dicetak
-    - margin print memakai `@page` 2cm untuk atas, bawah, kiri, dan kanan
-    - blok tanda tangan dibuat center, tidak menempel sisi luar, dan underline mengikuti panjang nama
-    - editor judul dokumen menambah dropdown ukuran font Quill
+    - header print dari editor judul tidak lagi dipaksa bold/uppercase; ukuran default diperkecil agar hanya sedikit lebih besar dari teks dokumen
+    - judul rich text di daftar dokumen dibaca sebagai teks normal agar baris Quill tidak menyatu tanpa spasi
+    - tombol `Edit Tabel`/`Tutup Tabel` dihapus dari aksi baris; struktur lengkap tetap lewat `Edit Lengkap`
+    - tabel hasil konfigurasi otomatis terbuka inline untuk dokumen editable pertama, menampilkan semua kolom dan baris agar guru bisa langsung input dari table view
+    - blok tanda tangan tetap hanya dirender sekali di akhir dokumen cetak dan diberi guard CSS agar tidak mudah terpecah halaman
 - Area/file disentuh:
   - `frontend/src/pages/teacher/learning-resources/LearningResourceGenerator.tsx`
   - `docs/CODEX_CONTINUITY.md`
@@ -40,9 +40,9 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - Web route `https://siskgb2.id/teacher/learning-resources/cp` merespons `HTTP/1.1 200 OK`
   - Mobile source code tidak berubah pada batch ini; belum ada OTA baru
 - Remaining work:
-  - Lanjut hanya jika user ingin QA/rapikan lebih jauh, misalnya memperdalam mode `Tabel Kerja Cepat` untuk multi-section atau parity mobile untuk pola rich title/print yang sama.
+  - Lanjut hanya jika user ingin QA/rapikan lebih jauh, misalnya membuka lebih dari satu tabel dokumen sekaligus atau parity mobile untuk pola rich title/print yang sama.
 - Residual risk:
-  - preview print tetap mengikuti dialog browser pengguna; margin CSS sudah 2cm, tetapi browser masih bisa mengubah hasil jika user memilih margin custom di dialog print
+  - input tabel inline otomatis memilih dokumen editable pertama yang punya section tabel; jika dalam satu halaman ada banyak dokumen, hanya satu grid aktif yang ditampilkan pada satu waktu.
 
 ## Status Saat Ini
 

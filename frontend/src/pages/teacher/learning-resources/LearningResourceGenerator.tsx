@@ -733,7 +733,7 @@ const toDocumentTitlePlainText = (value: unknown): string => {
   if (!rawValue) return '';
   if (typeof window !== 'undefined' && typeof DOMParser !== 'undefined') {
     const parsed = new DOMParser().parseFromString(rawValue, 'text/html');
-    return String(parsed.body.textContent || '')
+    return String((parsed.body as HTMLElement).innerText || parsed.body.textContent || '')
       .replace(/\s+/g, ' ')
       .trim();
   }
@@ -2220,23 +2220,34 @@ export const LearningResourceGenerator = ({
       isTableSection(section),
     );
 
-  const openQuickEdit = (entry: TeachingResourceEntry) => {
-    const parsedSections = ensureDerivedSections(parseEntrySections(entry, buildDefaultSections(activeProgramMeta)));
-    const tableSections = parsedSections.filter((section) => isTableSection(section));
-    if (tableSections.length === 0) {
-      toast.error('Dokumen ini belum memiliki tabel yang bisa diedit cepat.');
-      return;
-    }
-    setQuickEditEntryId(entry.id);
-    setQuickEditSections(parsedSections);
-    setQuickEditActiveSectionId(tableSections[0]?.id || '');
-  };
-
   const closeQuickEdit = () => {
     setQuickEditEntryId(null);
     setQuickEditSections([]);
     setQuickEditActiveSectionId('');
   };
+
+  useEffect(() => {
+    if (isPageEditor || isEditorOpen || entryQuery.isLoading) return;
+    const editableEntry =
+      rows.find(
+        (entry) =>
+          Number(entry.teacherId) === Number(user?.id || 0) &&
+          entry.status !== 'APPROVED' &&
+          getEntryTableSections(entry).length > 0,
+      ) || null;
+
+    if (!editableEntry) {
+      if (quickEditEntryId) closeQuickEdit();
+      return;
+    }
+    if (quickEditEntryId === editableEntry.id) return;
+
+    const parsedSections = ensureDerivedSections(parseEntrySections(editableEntry, buildDefaultSections(activeProgramMeta)));
+    const tableSections = parsedSections.filter((section) => isTableSection(section));
+    setQuickEditEntryId(editableEntry.id);
+    setQuickEditSections(parsedSections);
+    setQuickEditActiveSectionId(tableSections[0]?.id || '');
+  }, [activeProgramMeta, entryQuery.isLoading, isEditorOpen, isPageEditor, quickEditEntryId, rows, user?.id]);
 
   const updateQuickEditRowCell = (sectionId: string, rowId: string, columnKey: string, value: string) => {
     setQuickEditSectionsWithDerived((prev) =>
@@ -3238,10 +3249,10 @@ export const LearningResourceGenerator = ({
           .header .title-wrap .ql-align-right { text-align: right; }
           .header .title-wrap .ql-align-justify { text-align: justify; }
           .header .title-wrap p,
-          .header .title-wrap div { font-size: 18px; font-weight: 800; line-height: 1.3; text-transform: uppercase; }
-          .header .title-wrap .ql-size-small { font-size: 14px; }
-          .header .title-wrap .ql-size-large { font-size: 22px; }
-          .header .title-wrap .ql-size-huge { font-size: 28px; }
+          .header .title-wrap div { font-size: 15px; font-weight: 400; line-height: 1.35; }
+          .header .title-wrap .ql-size-small { font-size: 13px; }
+          .header .title-wrap .ql-size-large { font-size: 17px; }
+          .header .title-wrap .ql-size-huge { font-size: 20px; }
           .doc-context { width: 100%; max-width: 520px; margin-bottom: 12px; font-size: 13px; border-collapse: collapse; }
           .doc-context td { border: none; padding: 2px 0; }
           .doc-context td:first-child { width: 150px; }
@@ -3299,6 +3310,8 @@ export const LearningResourceGenerator = ({
             max-width: 760px;
             margin-left: auto;
             margin-right: auto;
+            break-inside: avoid;
+            page-break-inside: avoid;
           }
           .signature-box {
             text-align: center;
@@ -3515,6 +3528,9 @@ export const LearningResourceGenerator = ({
                 <tbody>
                   {rows.map((entry) => {
                     const statusMeta = STATUS_META[entry.status] || STATUS_META.DRAFT;
+                    const displayEntryTitle =
+                      toDocumentTitlePlainText(sanitizeDocumentTitleHtml(entry.content?.titleHtml)) ||
+                      String(entry.title || '').trim();
                     const isOwner = Number(entry.teacherId) === Number(user?.id || 0);
                     const contextLabel = resolveEntryContextLabel(entry, assignmentLabelMap);
                     const coveredClasses = extractCoveredClasses(entry);
@@ -3522,38 +3538,26 @@ export const LearningResourceGenerator = ({
                     const canSubmit = isOwner && (entry.status === 'DRAFT' || entry.status === 'REJECTED');
                     const canEdit = isOwner && entry.status !== 'APPROVED';
                     const canDelete = isOwner && entry.status !== 'APPROVED';
-                    const tableSections = getEntryTableSections(entry);
-                    const canQuickEdit = canEdit && tableSections.length > 0;
                     const isQuickEditing = quickEditEntryId === entry.id;
                     const quickSections = isQuickEditing ? quickEditSections.filter((section) => isTableSection(section)) : [];
                     const activeQuickSection =
                       quickSections.find((section) => section.id === quickEditActiveSectionId) || quickSections[0] || null;
                     const visibleQuickColumns = activeQuickSection ? getVisibleSectionColumns(activeQuickSection) : [];
-                    const compactQuickColumns = visibleQuickColumns.slice(0, 6);
-                    const compactQuickRows = activeQuickSection ? activeQuickSection.rows.slice(0, 5) : [];
-                    const hiddenQuickColumnCount = Math.max(0, visibleQuickColumns.length - compactQuickColumns.length);
-                    const hiddenQuickRowCount = Math.max(
-                      0,
-                      (activeQuickSection?.rows.length || 0) - compactQuickRows.length,
-                    );
+                    const compactQuickColumns = visibleQuickColumns;
+                    const compactQuickRows = activeQuickSection ? activeQuickSection.rows : [];
 
                     return (
                       <Fragment key={entry.id}>
                         <tr key={entry.id} className="border-b border-gray-100 align-top last:border-b-0">
                           <td className="px-3 py-3">
                             <div className="min-w-0">
-                              <div className="font-semibold text-gray-900">{entry.title}</div>
+                              <div className="font-semibold text-gray-900">{displayEntryTitle}</div>
                               {entry.summary ? <p className="mt-1 text-sm text-gray-600">{entry.summary}</p> : null}
                               <div className="mt-2 text-xs text-gray-500">Guru: {entry.teacher?.name || '-'}</div>
                               {entry.reviewNote ? (
                                 <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs text-amber-700">
                                   Catatan review: {entry.reviewNote}
                                 </div>
-                              ) : null}
-                              {tableSections.length > 0 ? (
-                                <p className="mt-2 text-[11px] text-blue-600">
-                                  Tabel kerja tersedia: {tableSections.map((section) => section.title || 'Bagian tabel').join(', ')}
-                                </p>
                               ) : null}
                             </div>
                           </td>
@@ -3577,15 +3581,6 @@ export const LearningResourceGenerator = ({
                                 <Printer size={12} />
                                 Print
                               </button>
-                              {canQuickEdit ? (
-                                <button
-                                  type="button"
-                                  onClick={() => (isQuickEditing ? closeQuickEdit() : openQuickEdit(entry))}
-                                  className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-1.5 text-xs font-medium text-sky-700 hover:bg-sky-100"
-                                >
-                                  {isQuickEditing ? 'Tutup Tabel' : 'Edit Tabel'}
-                                </button>
-                              ) : null}
                               {canEdit ? (
                                 <button
                                   type="button"
@@ -3657,22 +3652,14 @@ export const LearningResourceGenerator = ({
                         {isQuickEditing && activeQuickSection ? (
                           <tr className="border-b border-gray-100 bg-slate-50/60">
                             <td colSpan={6} className="px-3 py-3">
-                              <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+                              <div className="rounded-lg border border-slate-200 bg-white p-3">
                                 <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                                   <div>
-                                    <h4 className="text-sm font-semibold text-slate-900">Tabel Kerja Cepat</h4>
-                                    <p className="mt-1 text-xs text-slate-500">
-                                      Menampilkan bagian tabel utama agar guru bisa langsung edit isi penting tanpa membuka editor penuh.
-                                    </p>
+                                    <h4 className="text-sm font-semibold text-slate-900">
+                                      {activeQuickSection.title || 'Isi Dokumen'}
+                                    </h4>
                                   </div>
                                   <div className="flex flex-wrap items-center gap-2">
-                                    <button
-                                      type="button"
-                                      onClick={() => openEdit(entry)}
-                                      className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
-                                    >
-                                      Buka Editor Lengkap
-                                    </button>
                                     <button
                                       type="button"
                                       onClick={() => quickEditMutation.mutate(entry)}
@@ -3735,13 +3722,6 @@ export const LearningResourceGenerator = ({
                                   </table>
                                 </div>
 
-                                {hiddenQuickColumnCount > 0 || hiddenQuickRowCount > 0 ? (
-                                  <p className="mt-2 text-[11px] text-slate-500">
-                                    Tampilan cepat menampilkan {compactQuickColumns.length} kolom dan {compactQuickRows.length} baris terlebih dulu.
-                                    {hiddenQuickColumnCount > 0 ? ` ${hiddenQuickColumnCount} kolom lain tetap tersedia di editor lengkap.` : ''}
-                                    {hiddenQuickRowCount > 0 ? ` ${hiddenQuickRowCount} baris lain tetap tersedia di editor lengkap.` : ''}
-                                  </p>
-                                ) : null}
                               </div>
                             </td>
                           </tr>
