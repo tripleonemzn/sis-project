@@ -5,36 +5,39 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-04-28 13:13 WIB
-- Current status: policy standar UI/UX data-first sudah ditambahkan ke `AGENTS.md` dan sweep awal lintas web/mobile sudah dilakukan. Dashboard tetap boleh card-based, tetapi halaman isi menu sidebar yang berupa data operasional kini wajib default table/table-like view dengan hirarki font yang konsisten.
+- Last updated: 2026-04-28 13:28 WIB
+- Current status: Batch 1 refactor UI/UX data-first untuk role Administrasi/TU web sudah selesai dan sudah live. Perubahan fokus pada halaman/data yang sebelumnya berupa card-list agar mengikuti standar tabel/data view tanpa mengubah backend, auth, query, atau data flow inti.
 - Objective/task aktif:
-  - Menetapkan standar UI/UX halaman data lintas role dan memetakan area yang belum sesuai untuk batch refactor berikutnya.
+  - Menyeragamkan halaman isi menu sidebar yang berupa data operasional agar default memakai table/table-like view dengan hirarki font yang konsisten, dikerjakan bertahap per role/module.
 - Batch terakhir selesai:
-  - `Batch UI/UX policy + sweep audit`
+  - `Batch 1 - Administrasi/TU table-first refactor`
 - Progress batch ini:
   - `100%`
 - Last completed repo work:
-  - Commit: `pending current branch push`
-  - Title: `docs: standardize data page ui policy`
+  - Commit: `2d35460`
+  - Title: `refactor(staff): standardize tu data tables`
   - Summary:
-    - `AGENTS.md` sekarang menetapkan halaman data sidebar web sebagai default `data-first table view`
-    - card dibatasi untuk dashboard, statistik ringkas, quick action, notice, empty state, monitor/display khusus, dan form/modal
-    - mobile wajib mempertahankan parity data dengan web lewat tabel compact/row-list expandable, bukan card dekoratif
-    - hirarki font page title, section/table title, table header, body, helper text dikunci agar tidak liar antar role
-    - acuan standar UI ditetapkan: `Kelola Ujian`, `Persetujuan Izin`, `Tambah Assignment Guru`, `Buat Jadwal Ujian`, dan `Lihat Detail Mengajar`
+    - queue kepanitiaan TU diubah dari card-list menjadi tabel data dengan kolom `Kegiatan`, `Program`, `Status`, `Anggota`, `Update`, dan `Aksi`
+    - detail anggota panitia dan feature grant diubah menjadi tabel agar lebih mudah discan oleh staf administrasi
+    - daftar kartu ujian siswa TU diubah menjadi tabel semantik dengan row expandable untuk detail status/catatan/cetak
+    - summary cards, filter, form, monitor, dan empty state tetap dipertahankan karena termasuk pengecualian yang sah menurut policy UI
 - Area/file disentuh:
-  - `AGENTS.md`
+  - `frontend/src/pages/staff/CommitteeHeadTuPage.tsx`
+  - `frontend/src/components/staff/HeadTuExamCardsPanel.tsx`
   - `docs/CODEX_CONTINUITY.md`
 - Verifikasi batch ini:
+  - `cd frontend && npm run deploy`
+  - `curl -I -s https://siskgb2.id/staff/head-tu/committees`
+  - `curl -I -s https://siskgb2.id/`
   - `git status --short`
-  - sweep statis dengan pencarian `table`, `map`, `card`, `text-2xl/text-3xl`, `MobileMenuTabBar`, `MobileSelectField`, dan inline font mobile
   - `git diff --check`
 - Publish/live status:
-  - Tidak ada deploy web/OTA karena batch ini hanya dokumentasi policy dan audit statis
+  - Web sudah deploy live ke `/var/www/html/` lewat `npm run deploy`
+  - Mobile OTA tidak dijalankan karena Batch 1 hanya menyentuh web role Administrasi/TU
 - Remaining work:
-  - refactor UI belum dimulai; kandidat prioritas audit sudah siap dibahas/dibatch
+  - lanjut Batch 2 untuk modul/role berikutnya dari hasil sweep, terutama halaman data yang masih card-list dan tab/dropdown yang belum konsisten
 - Residual risk:
-  - hasil sweep adalah audit statis, sehingga perlu validasi visual per halaman saat batch refactor dimulai
+  - perubahan sudah lolos build/deploy dan smoke check, tetapi tetap perlu user smoke test visual langsung di akun staf administrasi/TU untuk memastikan density tabel terasa nyaman di data nyata
 
 ## Status Saat Ini
 
