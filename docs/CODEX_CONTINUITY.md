@@ -5,51 +5,44 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-04-28 15:21 WIB
-- Current status: Batch 11 penyeragaman modal overlay web sudah selesai dan sudah live. Seluruh temuan `bg-black/*` pada overlay modal di `frontend/src/pages` dan `frontend/src/components` sudah diganti ke overlay slate transparan dengan blur ringan agar sesuai standar popup AGENTS.md.
+- Last updated: 2026-04-28 15:31 WIB
+- Current status: Batch 16 preview ringkas Wakakur untuk `Program Perangkat Ajar` sudah selesai dan sudah live. Bagian `Yang Akan Dilihat Guru` di editor kini lebih manusiawi: ada gambaran beban isi guru, alur kerja guru, ringkasan print, dan deskripsi per-section tanpa perlu membaca schema teknis.
 - Objective/task aktif:
-  - Menyeragamkan UI/UX web lintas role berdasarkan policy AGENTS.md: data operasional memakai table/table-like view, tab/filter/dropdown konsisten, dan modal/popup memakai overlay ringan yang tetap menjaga konteks halaman.
+  - Melanjutkan roadmap `Program Perangkat Ajar` agar builder Wakakur makin operasional, netral kebijakan, dan tidak membebani user non-teknis.
 - Batch terakhir selesai:
-  - `Batch 11 - Global modal overlay standardization`
+  - `Batch 16 - Teacher-facing preview refinement`
 - Progress batch ini:
   - `100%`
-- Progress roadmap UI data-first:
-  - `100%` untuk kandidat utama hasil sweep prioritas (`17 dari sekitar 17` slice/halaman sudah diselesaikan atau diklasifikasikan sebagai exception valid)
-  - estimasi compliance web data-page keseluruhan sekitar `90%+`; sisa card yang masih ada terutama termasuk exception yang memang diperbolehkan policy: dashboard/statistik, quick action, notice/empty state, voting/candidate UI, dokumen/print preview, dan panel detail yang bukan data-list tabular
-- Progress roadmap modal overlay:
-  - `100%` untuk sweep `bg-black/*` overlay modal di `frontend/src/pages` dan `frontend/src/components`
-  - hasil audit `rg "fixed inset-0.*bg-black|bg-black/[0-9]+" frontend/src/components frontend/src/pages` sudah bersih
+- Progress roadmap perangkat ajar dinamis:
+  - `100%` untuk rumusan arsitektur generik
+  - `90%` untuk implementasi teknis refactor engine generik
+  - `68%` untuk builder Wakakur generasi baru
+  - `82%` untuk reference picker guru lintas dokumen
 - Last completed repo work:
-  - Commit: `e6b0850`
-  - Title: `style(ui): standardize modal overlays`
+  - Commit: `2429e44`
+  - Title: `feat(curriculum): improve wakakur teacher-facing preview`
   - Summary:
-    - modal overlay lintas role admin, teacher, wakasek, wali kelas, student, staff, principal, tutor, dan shared component diganti dari `bg-black/*` menjadi `bg-slate-950/20-25` + `backdrop-blur`
-    - perubahan hanya visual class overlay; logic form, API, query, mutation, route, dan state modal tidak diubah
-    - Batch 9-10 sebelumnya tetap selesai: data-first sweep prioritas `100%`
+    - ringkasan `Yang Akan Dilihat Guru` kini menampilkan `Gambaran Cepat untuk Guru`, `Beban isi`, `Arah Print`, dan `Alur yang Akan Dijalani Guru`
+    - tiap section sekarang punya narasi `Guru nanti: ...` dan badge jumlah kolom manual/sistem/referensi/otomatis
+    - perubahan hanya di editor Wakakur web; backend, mobile, endpoint, query, polling, dan realtime tidak diubah
 - Area/file disentuh:
-  - `frontend/src/components/**` modal/shared overlay terkait
-  - `frontend/src/pages/**` modal overlay lintas role terkait
+  - `frontend/src/pages/teacher/wakasek/curriculum/TeachingResourceProgramManagementPage.tsx`
   - `docs/CODEX_CONTINUITY.md`
 - Verifikasi batch ini:
-  - `rg -n "fixed inset-0[^\n]*bg-black|bg-black/[0-9]+" frontend/src/components frontend/src/pages || true`
-  - `git diff --check`
   - `cd frontend && npm run build`
   - `cd frontend && npm run deploy`
-  - `curl -I -s https://siskgb2.id/student/exams`
-  - `curl -I -s https://siskgb2.id/teacher/exams`
-  - `curl -I -s https://siskgb2.id/teacher/work-program`
-  - `curl -I -s https://siskgb2.id/staff/finance`
-  - `curl -I -s https://siskgb2.id/principal`
+  - `git diff --check`
+  - `curl -I https://siskgb2.id/`
   - `git status --short`
 - Publish/live status:
   - Web sudah deploy live ke `/var/www/html/` lewat `npm run deploy`
-  - Mobile OTA tidak dijalankan karena Batch 11 hanya menyentuh web
+  - Mobile OTA tidak dijalankan karena Batch 16 hanya menyentuh web
 - Remaining work:
-  - tidak ada batch lanjutan wajib untuk sweep kandidat prioritas data-first maupun overlay modal saat ini
-  - kandidat aman berikutnya jika user ingin lanjut: audit komponen form/dropdown/searchable select lintas role, atau audit polling/refetch pre-existing yang berpotensi berat
+  - builder Wakakur masih bisa dirapikan lagi dengan preview yang lebih visual atau ringkasan “dokumen ini akan berbentuk seperti apa” per block
+  - kandidat aman berikutnya jika user ingin lanjut: tambah preview block-level yang lebih visual atau helper warning jika kombinasi section/kolom terasa membingungkan
 - Residual risk:
-  - perubahan sudah lolos build/deploy dan smoke check route, tetapi tetap perlu user smoke test visual langsung saat membuka beberapa modal penting untuk memastikan overlay terasa proporsional di browser/perangkat asli
-  - ditemukan pola polling 5 detik pre-existing pada dashboard PKL siswa; tidak diubah pada batch ini karena bukan bagian dari refactor visual table-first dan perlu task stabilitas terpisah bila ingin dirapikan
+  - perubahan sudah lolos build/deploy dan smoke check `200 OK`, tetapi tetap perlu user melihat modal editor Wakakur langsung untuk memastikan narasi preview benar-benar membantu user non-teknis
+  - preview ini masih bersifat tekstual/ringkasan; belum sampai render mockup dokumen visual penuh
 
 ## Status Saat Ini
 
