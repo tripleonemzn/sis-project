@@ -1052,7 +1052,7 @@ Adapun nama siswa/i kami adalah:`,
 
       {/* Verification Modal */}
       {isDeleteModalOpen && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-slate-950/25 backdrop-blur-[2px] flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl max-w-sm w-full p-6 shadow-xl transform transition-all">
              <div className="flex flex-col items-center text-center gap-4">
                <div className="p-3 bg-red-100 rounded-full">
@@ -1087,7 +1087,7 @@ Adapun nama siswa/i kami adalah:`,
       )}
 
       {isVerifyModalOpen && selectedInternship && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-slate-950/25 backdrop-blur-[2px] flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
             <div className="p-6 space-y-6">
               <div className="flex justify-between items-center">
@@ -1270,7 +1270,7 @@ Adapun nama siswa/i kami adalah:`,
 
       {/* Assign Examiner Modal */}
       {isAssignExaminerModalOpen && selectedInternship && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-slate-950/25 backdrop-blur-[2px] flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl max-w-md w-full">
             <div className="p-6 space-y-6">
               <div className="flex justify-between items-center">
@@ -1357,7 +1357,7 @@ Adapun nama siswa/i kami adalah:`,
 
       {/* Schedule Defense Modal */}
       {isScheduleDefenseModalOpen && selectedInternship && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-slate-950/25 backdrop-blur-[2px] flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl max-w-md w-full">
             <div className="p-6 space-y-6">
               <div className="flex justify-between items-center">
@@ -1413,7 +1413,7 @@ Adapun nama siswa/i kami adalah:`,
 
       {/* Print Config Modal */}
       {isPrintModalOpen && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-slate-950/25 backdrop-blur-[2px] flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl max-w-5xl w-full max-h-[90vh] overflow-y-auto">
             <div className="p-6 space-y-6">
               <div className="flex justify-between items-center">
@@ -1640,7 +1640,7 @@ Adapun nama siswa/i kami adalah:`,
 
       {/* Individual Print Modal */}
       {isIndividualPrintModalOpen && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
+        <div className="fixed inset-0 bg-slate-950/25 backdrop-blur-[2px] flex items-center justify-center z-[60] p-4">
           <div className="bg-white rounded-xl max-w-5xl w-full max-h-[90vh] overflow-y-auto">
             <div className="p-6 space-y-6">
               <div className="flex justify-between items-center border-b pb-4">
