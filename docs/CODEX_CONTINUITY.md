@@ -5,38 +5,42 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-04-28 13:50 WIB
-- Current status: Batch 3 refactor UI/UX data-first untuk role Siswa web sudah selesai dan sudah live. Perubahan fokus pada halaman jadwal pelajaran siswa yang sebelumnya memakai grid card agar menjadi tabel data harian dengan tab hari standar.
+- Last updated: 2026-04-28 14:05 WIB
+- Current status: Batch 4 refactor UI/UX data-first untuk role Siswa web sudah selesai dan sudah live. Perubahan fokus pada halaman `Materi & Tugas` siswa yang sebelumnya memakai card-list agar menjadi tabel data untuk materi dan tugas/PR.
 - Objective/task aktif:
   - Menyeragamkan halaman isi menu sidebar yang berupa data operasional agar default memakai table/table-like view dengan hirarki font yang konsisten, dikerjakan bertahap per role/module.
 - Batch terakhir selesai:
-  - `Batch 3 - Siswa schedule table-first refactor`
+  - `Batch 4 - Siswa learning table-first refactor`
 - Progress batch ini:
   - `100%`
+- Progress roadmap UI data-first:
+  - `35%` untuk kandidat utama card-list prioritas hasil sweep (`6 dari sekitar 17` slice/halaman prioritas sudah distandarkan)
+  - estimasi compliance web data-page keseluruhan sekitar `70%` karena banyak halaman data sudah table-first sebelum refactor batch ini
 - Last completed repo work:
-  - Commit: `5ab08f3`
-  - Title: `refactor(student): standardize schedule table view`
+  - Commit: `042a77b`
+  - Title: `refactor(student): standardize learning tables`
   - Summary:
-    - halaman `Jadwal Pelajaran` siswa diubah dari grid card menjadi tabel jadwal harian
-    - selector hari diganti ke shared `UnderlineTabBar` agar selaras dengan standar tab horizontal web
-    - tabel memakai kolom `Jam`, `Waktu`, `Mata Pelajaran`, `Guru`, dan `Ruang`
-    - source data, fetch jadwal, konfigurasi waktu pelajaran, dan empty/loading state tetap dipertahankan tanpa mengubah endpoint/query/data flow
+    - tab `Materi Pembelajaran` siswa diubah dari grid card menjadi tabel materi
+    - tab `Tugas & PR` siswa diubah dari card-list menjadi tabel tugas
+    - tab halaman diganti ke shared `UnderlineTabBar` agar selaras dengan standar tab horizontal web
+    - aksi lama tetap dipertahankan: unduh materi/lampiran, buka video, dan kumpulkan atau lihat/edit jawaban tugas
+    - source data, filter, submission modal, dan mutation pengumpulan tugas tidak diubah
 - Area/file disentuh:
-  - `frontend/src/pages/student/StudentSchedulePage.tsx`
+  - `frontend/src/pages/student/StudentLearningPage.tsx`
   - `docs/CODEX_CONTINUITY.md`
 - Verifikasi batch ini:
   - `cd frontend && npm run build`
   - `cd frontend && npm run deploy`
-  - `curl -I -s https://siskgb2.id/student/schedule`
+  - `curl -I -s https://siskgb2.id/student/learning`
   - `git status --short`
   - `git diff --check`
 - Publish/live status:
   - Web sudah deploy live ke `/var/www/html/` lewat `npm run deploy`
-  - Mobile OTA tidak dijalankan karena Batch 3 hanya menyentuh web role Siswa
+  - Mobile OTA tidak dijalankan karena Batch 4 hanya menyentuh web role Siswa
 - Remaining work:
-  - lanjut Batch 4 untuk modul/role berikutnya dari hasil sweep, terutama halaman data yang masih card-list dan tab/dropdown yang belum konsisten
+  - lanjut Batch 5 untuk modul/role berikutnya dari hasil sweep, terutama halaman data yang masih card-list dan tab/dropdown yang belum konsisten
 - Residual risk:
-  - perubahan sudah lolos build/deploy dan smoke check, tetapi tetap perlu user smoke test visual langsung di akun siswa untuk memastikan tabel jadwal nyaman dibaca pada data nyata
+  - perubahan sudah lolos build/deploy dan smoke check, tetapi tetap perlu user smoke test visual langsung di akun siswa untuk memastikan tabel materi/tugas nyaman dibaca pada data nyata
 
 ## Status Saat Ini
 
