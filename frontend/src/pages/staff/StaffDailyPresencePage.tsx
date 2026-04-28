@@ -268,47 +268,47 @@ function WelcomePresencePanel({
   const eventTime = event?.recordedTime || formatTimeLabel(event?.recordedAt);
 
   return (
-    <div className="flex h-full flex-col justify-between rounded-3xl border border-sky-300/20 bg-slate-900/70 p-7 text-white shadow-2xl shadow-slate-950/20">
+    <div className="daily-presence-welcome-card flex h-full flex-col justify-between rounded-3xl border border-slate-200 bg-white p-7 text-slate-900 shadow-sm">
       <div>
-        <p className="text-sm font-semibold uppercase tracking-[0.35em] text-sky-300">Presensi Berhasil</p>
-        <h2 className="mt-5 text-5xl font-extrabold leading-tight text-white">Selamat Datang</h2>
-        <p className="mt-3 text-base text-slate-300">
+        <p className="text-sm font-semibold uppercase tracking-[0.35em] text-sky-600">Presensi Berhasil</p>
+        <h2 className="mt-5 text-5xl font-extrabold leading-tight text-slate-950">Selamat Datang</h2>
+        <p className="mt-3 text-base text-slate-600">
           {event
             ? `Absensi ${getDailyPresenceCheckpointLabel(checkpoint).toLowerCase()} tercatat pukul ${eventTime}.`
             : 'Arahkan peserta untuk scan QR di sisi kiri layar.'}
         </p>
       </div>
 
-      <div className="my-8 rounded-3xl border border-white/10 bg-white/10 p-6">
+      <div className="daily-presence-welcome-identity my-8 rounded-3xl border border-slate-200 bg-slate-50 p-6">
         <div className="flex items-center gap-5">
           <InitialAvatar name={personName} />
           <div className="min-w-0">
-            <p className="truncate text-3xl font-extrabold text-white">{personName}</p>
-            <p className="mt-1 text-lg font-semibold text-sky-200">{roleLabel}</p>
+            <p className="truncate text-3xl font-extrabold text-slate-950">{personName}</p>
+            <p className="mt-1 text-lg font-semibold text-sky-700">{roleLabel}</p>
           </div>
         </div>
 
         <div className="mt-7 grid gap-4 md:grid-cols-2">
-          <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Identitas</p>
-            <p className="mt-2 text-xl font-bold text-white">{idLabel}</p>
+          <div className="rounded-2xl border border-slate-200 bg-white p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Identitas</p>
+            <p className="mt-2 text-xl font-bold text-slate-950">{idLabel}</p>
           </div>
-          <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Waktu</p>
-            <p className="mt-2 text-xl font-bold text-white">{event ? eventTime : '--:--'}</p>
+          <div className="rounded-2xl border border-slate-200 bg-white p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Waktu</p>
+            <p className="mt-2 text-xl font-bold text-slate-950">{event ? eventTime : '--:--'}</p>
           </div>
         </div>
 
-        <div className="mt-4 rounded-2xl border border-white/10 bg-slate-950/40 p-4">
-          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Detail</p>
-          <p className="mt-2 text-lg font-semibold text-white">{detailLabel}</p>
+        <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
+          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Detail</p>
+          <p className="mt-2 text-lg font-semibold text-slate-950">{detailLabel}</p>
           {event?.lateMinutes && event.lateMinutes > 0 ? (
-            <p className="mt-2 text-sm font-semibold text-amber-200">Terlambat {event.lateMinutes} menit</p>
+            <p className="mt-2 text-sm font-semibold text-amber-700">Terlambat {event.lateMinutes} menit</p>
           ) : null}
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-5 text-sm text-slate-300">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-5 text-sm text-slate-600">
         <span>Sumber: {event ? getSourceLabel(event.source) : 'Menunggu scan'}</span>
         <span>Checkpoint: {getDailyPresenceCheckpointLabel(checkpoint)}</span>
       </div>
@@ -473,19 +473,19 @@ function SharedQrMonitorPanel({
   return (
     <div
       ref={monitorRef}
-      className="daily-presence-monitor-shell rounded-2xl border border-slate-800 bg-slate-950 p-5 text-white shadow-sm"
+      className="daily-presence-monitor-shell rounded-2xl border border-slate-200 bg-white p-5 text-slate-900 shadow-sm"
     >
       <div className="daily-presence-monitor-titlebar flex items-start justify-between gap-3">
         <div>
-          <h3 className="text-lg font-semibold text-white">Monitor QR Bersama</h3>
-          <p className="mt-1 text-sm text-sky-100">
+          <h3 className="text-lg font-semibold text-slate-950">Monitor QR Bersama</h3>
+          <p className="mt-1 text-sm text-slate-600">
             Tampilkan QR ini di monitor/TV. QR diperbarui otomatis sesuai konfigurasi presensi aktif.
           </p>
         </div>
         <button
           type="button"
           onClick={onRefresh}
-          className="inline-flex items-center gap-2 rounded-xl border border-white/15 bg-slate-900 px-3 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
+          className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
         >
           <RefreshCcw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
           Muat Ulang
@@ -493,53 +493,53 @@ function SharedQrMonitorPanel({
       </div>
 
       {!session ? (
-        <div className="mt-5 rounded-xl border border-dashed border-slate-700 bg-slate-900 px-4 py-5 text-sm text-slate-300">
+        <div className="mt-5 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm text-slate-500">
           Belum ada sesi aktif untuk monitor QR {getDailyPresenceCheckpointLabel(checkpoint).toLowerCase()}. Buka sesi lebih dulu.
         </div>
       ) : !session.monitor ? (
-        <div className="mt-5 rounded-xl border border-amber-300/30 bg-amber-500/10 px-4 py-5 text-sm text-amber-100">
+        <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-5 text-sm text-amber-700">
           QR monitor belum siap dimuat. Gunakan tombol muat ulang untuk mengambil QR terbaru.
         </div>
       ) : (
         <>
           <div className="daily-presence-monitor-grid mt-5 grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
-            <div className="mx-auto flex w-full max-w-[360px] flex-col justify-center rounded-3xl border border-white/10 bg-slate-900 p-4 xl:mx-0">
-              <div className="flex aspect-square items-center justify-center rounded-2xl bg-white p-4 shadow-inner shadow-slate-950/40">
+            <div className="daily-presence-monitor-qr-card mx-auto flex w-full max-w-[360px] flex-col justify-center rounded-3xl border border-slate-200 bg-slate-50 p-4 xl:mx-0">
+              <div className="daily-presence-monitor-qr-box flex aspect-square items-center justify-center rounded-2xl bg-white p-4 shadow-inner">
                 <img
                   src={session.monitor.qrCodeDataUrl}
                   alt={`QR monitor ${getDailyPresenceCheckpointLabel(checkpoint)}`}
                   className="h-full w-full rounded-2xl object-contain"
                 />
               </div>
-              <p className="mt-3 text-center text-sm font-semibold text-white">
+              <p className="mt-3 text-center text-sm font-semibold text-slate-700">
                 QR aktif {formatCountdownLabel(session.monitor.qrExpiresAt)}
               </p>
-              <p className="mt-1 text-center text-xs text-sky-100">
+              <p className="mt-1 text-center text-xs text-slate-500">
                 Refresh tiap {session.monitor.refreshSeconds} detik.
               </p>
             </div>
 
             <div className="space-y-4">
               <WelcomePresencePanel event={latestEvent} checkpoint={checkpoint} />
-              <div className="grid gap-3 lg:grid-cols-3">
-                <div className="rounded-2xl border border-sky-300/20 bg-sky-500/10 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-[0.22em] text-sky-200">Checkpoint</p>
-                  <p className="mt-2 text-lg font-bold text-white">Absen {getDailyPresenceCheckpointLabel(checkpoint)}</p>
-                  <p className="mt-1 text-xs text-sky-100">
+              <div className="daily-presence-monitor-stats grid gap-3 lg:grid-cols-3">
+                <div className="rounded-2xl border border-sky-200 bg-sky-50 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.22em] text-sky-700">Checkpoint</p>
+                  <p className="mt-2 text-lg font-bold text-slate-950">Absen {getDailyPresenceCheckpointLabel(checkpoint)}</p>
+                  <p className="mt-1 text-xs text-sky-700">
                     {session.gateLabel ? `Gate ${session.gateLabel}` : 'Gate belum diisi'}
                   </p>
                 </div>
-                <div className="rounded-2xl border border-white/10 bg-slate-900 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">Kode Challenge</p>
-                  <p className="mt-2 text-2xl font-extrabold tracking-[0.22em] text-white">{liveChallengeCode}</p>
-                  <p className="mt-1 text-xs text-slate-400">
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Kode Challenge</p>
+                  <p className="mt-2 text-2xl font-extrabold tracking-[0.22em] text-slate-950">{liveChallengeCode}</p>
+                  <p className="mt-1 text-xs text-slate-500">
                     Berganti {formatCountdownLabel(session.challengeWindowExpiresAt)}
                   </p>
                 </div>
-                <div className="rounded-2xl border border-white/10 bg-slate-900 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">Petugas</p>
-                  <p className="mt-2 text-sm font-bold text-white">{session.actor.name}</p>
-                  <p className="mt-1 text-xs text-slate-400">{formatTodayLabel(session.date)}</p>
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Petugas</p>
+                  <p className="mt-2 text-sm font-bold text-slate-950">{session.actor.name}</p>
+                  <p className="mt-1 text-xs text-slate-500">{formatTodayLabel(session.date)}</p>
                 </div>
               </div>
             </div>

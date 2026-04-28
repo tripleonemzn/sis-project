@@ -35,12 +35,14 @@ body { background-color: var(--app-bg); color: var(--app-text-primary); }
 .daily-presence-monitor-shell:fullscreen,
 .daily-presence-monitor-shell:-webkit-full-screen {
   width: 100vw;
-  height: 100vh;
-  overflow: auto;
+  height: 100dvh;
+  overflow: hidden;
+  box-sizing: border-box;
   border: 0;
   border-radius: 0;
-  padding: 22px;
-  background: #0f172a;
+  padding: 18px;
+  background: var(--app-bg);
+  color: var(--app-text-primary);
   display: flex;
   flex-direction: column;
 }
@@ -49,13 +51,47 @@ body { background-color: var(--app-bg); color: var(--app-text-primary); }
 .daily-presence-monitor-shell:-webkit-full-screen .daily-presence-monitor-grid {
   flex: 1;
   min-height: 0;
-  grid-template-columns: minmax(340px, 0.72fr) minmax(0, 1.28fr);
+  grid-template-columns: minmax(320px, 380px) minmax(0, 1fr);
+  gap: 16px;
   align-items: stretch;
 }
 
 .daily-presence-monitor-shell:fullscreen .daily-presence-monitor-titlebar,
 .daily-presence-monitor-shell:-webkit-full-screen .daily-presence-monitor-titlebar {
   flex-shrink: 0;
+}
+
+.daily-presence-monitor-shell:fullscreen .daily-presence-monitor-qr-card,
+.daily-presence-monitor-shell:-webkit-full-screen .daily-presence-monitor-qr-card {
+  width: 100%;
+  max-width: none;
+  height: 100%;
+  min-height: 0;
+  margin: 0;
+}
+
+.daily-presence-monitor-shell:fullscreen .daily-presence-monitor-qr-box,
+.daily-presence-monitor-shell:-webkit-full-screen .daily-presence-monitor-qr-box {
+  width: 100%;
+  max-height: calc(100dvh - 145px);
+}
+
+.daily-presence-monitor-shell:fullscreen .daily-presence-welcome-card,
+.daily-presence-monitor-shell:-webkit-full-screen .daily-presence-welcome-card {
+  min-height: 0;
+  height: 100%;
+  padding: clamp(18px, 2.2vw, 28px);
+}
+
+.daily-presence-monitor-shell:fullscreen .daily-presence-welcome-identity,
+.daily-presence-monitor-shell:-webkit-full-screen .daily-presence-welcome-identity {
+  margin-top: clamp(18px, 4vh, 34px);
+  margin-bottom: clamp(18px, 4vh, 34px);
+}
+
+.daily-presence-monitor-shell:fullscreen .daily-presence-monitor-stats,
+.daily-presence-monitor-shell:-webkit-full-screen .daily-presence-monitor-stats {
+  display: none;
 }
 
 .app-theme-scope select:not([multiple]),
