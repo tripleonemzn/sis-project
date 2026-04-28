@@ -556,27 +556,46 @@ export const StudentExtracurricularPage = () => {
                         Total sesi terekam: {regularEnrollment.attendanceSummary.totalSessions}
                       </div>
 
-                      <div className="mt-4 space-y-2">
+                      <div className="mt-4">
                         <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                           Aktivitas Terakhir
                         </div>
                         {regularEnrollment.attendanceSummary.latestRecords.length > 0 ? (
-                          regularEnrollment.attendanceSummary.latestRecords.map((record, index) => (
-                            <div
-                              key={`${record.weekKey || 'week'}-${record.sessionIndex}-${index}`}
-                              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
-                            >
-                              <div className="font-medium text-slate-900">
-                                {record.weekKey || 'Minggu tidak diketahui'} • Sesi {record.sessionIndex}
-                              </div>
-                              <div className="mt-1 text-slate-600">
-                                Status: {formatAttendanceStatus(record.status)}
-                                {record.note ? ` • Catatan: ${record.note}` : ''}
-                              </div>
-                            </div>
-                          ))
+                          <div className="mt-2 overflow-x-auto rounded-xl border border-slate-200 bg-white">
+                            <table className="min-w-[520px] w-full text-left">
+                              <thead className="bg-slate-50">
+                                <tr className="border-b border-slate-200">
+                                  <th className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                    Minggu / Sesi
+                                  </th>
+                                  <th className="w-28 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                    Status
+                                  </th>
+                                  <th className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                    Catatan
+                                  </th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100">
+                                {regularEnrollment.attendanceSummary.latestRecords.map((record, index) => (
+                                  <tr
+                                    key={`${record.weekKey || 'week'}-${record.sessionIndex}-${index}`}
+                                    className="align-top"
+                                  >
+                                    <td className="px-3 py-2 text-sm font-medium text-slate-900">
+                                      {record.weekKey || 'Minggu tidak diketahui'} • Sesi {record.sessionIndex}
+                                    </td>
+                                    <td className="px-3 py-2 text-sm text-slate-700">
+                                      {formatAttendanceStatus(record.status)}
+                                    </td>
+                                    <td className="px-3 py-2 text-sm text-slate-600">{record.note || '-'}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
                         ) : (
-                          <div className="rounded-xl border border-dashed border-slate-300 bg-white px-3 py-4 text-sm text-slate-500">
+                          <div className="mt-2 rounded-xl border border-dashed border-slate-300 bg-white px-3 py-4 text-sm text-slate-500">
                             Belum ada absensi ekskul yang direkam oleh pembina.
                           </div>
                         )}
@@ -654,54 +673,82 @@ export const StudentExtracurricularPage = () => {
                     </div>
 
                     {osisPrograms.length > 0 ? (
-                      <div className="space-y-3">
-                        {osisPrograms.map((program) => (
-                          <div key={program.id} className="rounded-2xl border border-slate-200 bg-white px-4 py-4">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <div className="text-sm font-semibold text-slate-900">{program.title}</div>
-                              <span className="inline-flex rounded-full bg-blue-100 px-2.5 py-0.5 text-[11px] font-semibold text-blue-700">
-                                {program.semester === 'EVEN' ? 'Semester Genap' : 'Semester Ganjil'}
-                              </span>
-                            </div>
-                            <div className="mt-1 text-xs text-slate-500">
-                              {formatProgramPeriod(
-                                program.startMonth,
-                                program.endMonth,
-                                program.startWeek,
-                                program.endWeek,
-                              )}
-                              {program.owner?.name ? ` • Pembina: ${program.owner.name}` : ''}
-                            </div>
-                            {program.description ? (
-                              <p className="mt-2 text-sm text-slate-700">{program.description}</p>
-                            ) : null}
-                            <div className="mt-3 space-y-2">
-                              {(program.items || []).length > 0 ? (
-                                program.items!.slice(0, 3).map((item) => (
-                                  <div
-                                    key={item.id}
-                                    className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 text-sm text-slate-700"
-                                  >
-                                    <div className="font-medium text-slate-900">{item.description}</div>
-                                    <div className="mt-1 text-xs text-slate-500">
-                                      {item.targetDate ? `Target: ${formatShortDate(item.targetDate)}` : 'Tanpa tanggal target'}
-                                      {item.note ? ` • ${item.note}` : ''}
-                                    </div>
-                                  </div>
-                                ))
-                              ) : (
-                                <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3 py-3 text-sm text-slate-500">
-                                  Program kerja ini belum memiliki rincian agenda.
-                                </div>
-                              )}
-                              {(program.items || []).length > 3 ? (
-                                <div className="text-xs text-slate-500">
-                                  + {(program.items || []).length - 3} agenda OSIS lain sudah disiapkan pembina.
-                                </div>
-                              ) : null}
-                            </div>
-                          </div>
-                        ))}
+                      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+                        <table className="min-w-[720px] w-full text-left">
+                          <thead className="bg-slate-50">
+                            <tr className="border-b border-slate-200">
+                              <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                Program
+                              </th>
+                              <th className="w-36 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                Semester
+                              </th>
+                              <th className="w-40 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                Periode
+                              </th>
+                              <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                Agenda Terdekat
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {osisPrograms.map((program) => {
+                              const programItems = program.items || [];
+                              const visibleItems = programItems.slice(0, 3);
+
+                              return (
+                                <tr key={program.id} className="align-top">
+                                  <td className="px-4 py-3">
+                                    <p className="text-sm font-semibold text-slate-900">{program.title}</p>
+                                    <p className="mt-1 text-xs text-slate-500">
+                                      Pembina: {program.owner?.name || '-'}
+                                    </p>
+                                    {program.description ? (
+                                      <p className="mt-2 line-clamp-2 text-sm text-slate-700">{program.description}</p>
+                                    ) : null}
+                                  </td>
+                                  <td className="px-4 py-3">
+                                    <span className="inline-flex rounded-full bg-blue-100 px-2.5 py-0.5 text-[11px] font-semibold text-blue-700">
+                                      {program.semester === 'EVEN' ? 'Genap' : 'Ganjil'}
+                                    </span>
+                                  </td>
+                                  <td className="px-4 py-3 text-sm text-slate-700">
+                                    {formatProgramPeriod(
+                                      program.startMonth,
+                                      program.endMonth,
+                                      program.startWeek,
+                                      program.endWeek,
+                                    )}
+                                  </td>
+                                  <td className="px-4 py-3 text-sm text-slate-700">
+                                    {visibleItems.length > 0 ? (
+                                      <div className="space-y-2">
+                                        {visibleItems.map((item) => (
+                                          <div key={item.id} className="rounded-lg bg-slate-50 px-3 py-2">
+                                            <p className="font-medium text-slate-900">{item.description}</p>
+                                            <p className="mt-1 text-xs text-slate-500">
+                                              {item.targetDate
+                                                ? `Target: ${formatShortDate(item.targetDate)}`
+                                                : 'Tanpa tanggal target'}
+                                              {item.note ? ` • ${item.note}` : ''}
+                                            </p>
+                                          </div>
+                                        ))}
+                                        {programItems.length > 3 ? (
+                                          <p className="text-xs text-slate-500">
+                                            + {programItems.length - 3} agenda lain sudah disiapkan pembina.
+                                          </p>
+                                        ) : null}
+                                      </div>
+                                    ) : (
+                                      <span className="text-slate-500">Belum memiliki rincian agenda.</span>
+                                    )}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
                       </div>
                     ) : (
                       <div className="rounded-xl border border-dashed border-slate-300 bg-white px-3 py-4 text-sm text-slate-500">
