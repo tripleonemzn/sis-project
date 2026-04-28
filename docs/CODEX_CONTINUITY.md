@@ -5,12 +5,12 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-04-28 15:31 WIB
-- Current status: Batch 16 preview ringkas Wakakur untuk `Program Perangkat Ajar` sudah selesai dan sudah live. Bagian `Yang Akan Dilihat Guru` di editor kini lebih manusiawi: ada gambaran beban isi guru, alur kerja guru, ringkasan print, dan deskripsi per-section tanpa perlu membaca schema teknis.
+- Last updated: 2026-04-28 15:42 WIB
+- Current status: Batch 17 perbaikan error halaman `Kelola Program Perangkat Ajar` sudah selesai dan sudah live. Crash `InternalError: too much recursion` di route `/teacher/wakasek/teaching-resource-programs` berhasil ditutup.
 - Objective/task aktif:
   - Melanjutkan roadmap `Program Perangkat Ajar` agar builder Wakakur makin operasional, netral kebijakan, dan tidak membebani user non-teknis.
 - Batch terakhir selesai:
-  - `Batch 16 - Teacher-facing preview refinement`
+  - `Batch 17 - Stop default schema recursion on management page`
 - Progress batch ini:
   - `100%`
 - Progress roadmap perangkat ajar dinamis:
@@ -19,11 +19,11 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `68%` untuk builder Wakakur generasi baru
   - `82%` untuk reference picker guru lintas dokumen
 - Last completed repo work:
-  - Commit: `2429e44`
-  - Title: `feat(curriculum): improve wakakur teacher-facing preview`
+  - Commit: `62ee339`
+  - Title: `fix(curriculum): stop wakakur program schema recursion`
   - Summary:
-    - ringkasan `Yang Akan Dilihat Guru` kini menampilkan `Gambaran Cepat untuk Guru`, `Beban isi`, `Arah Print`, dan `Alur yang Akan Dijalani Guru`
-    - tiap section sekarang punya narasi `Guru nanti: ...` dan badge jumlah kolom manual/sistem/referensi/otomatis
+    - akar masalah ditemukan di helper schema default: `createDefaultProgramSchema()` dan `applySchemaFoundationDefaults()` saling memanggil saat membentuk fallback
+    - recursion diputus dengan memisahkan base factory schema default dari tahap normalisasi/foundation defaults
     - perubahan hanya di editor Wakakur web; backend, mobile, endpoint, query, polling, dan realtime tidak diubah
 - Area/file disentuh:
   - `frontend/src/pages/teacher/wakasek/curriculum/TeachingResourceProgramManagementPage.tsx`
@@ -32,17 +32,17 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `cd frontend && npm run build`
   - `cd frontend && npm run deploy`
   - `git diff --check`
-  - `curl -I https://siskgb2.id/`
+  - `curl -I https://siskgb2.id/teacher/wakasek/teaching-resource-programs`
   - `git status --short`
 - Publish/live status:
   - Web sudah deploy live ke `/var/www/html/` lewat `npm run deploy`
-  - Mobile OTA tidak dijalankan karena Batch 16 hanya menyentuh web
+  - Mobile OTA tidak dijalankan karena Batch 17 hanya menyentuh web
 - Remaining work:
   - builder Wakakur masih bisa dirapikan lagi dengan preview yang lebih visual atau ringkasan “dokumen ini akan berbentuk seperti apa” per block
   - kandidat aman berikutnya jika user ingin lanjut: tambah preview block-level yang lebih visual atau helper warning jika kombinasi section/kolom terasa membingungkan
 - Residual risk:
-  - perubahan sudah lolos build/deploy dan smoke check `200 OK`, tetapi tetap perlu user melihat modal editor Wakakur langsung untuk memastikan narasi preview benar-benar membantu user non-teknis
-  - preview ini masih bersifat tekstual/ringkasan; belum sampai render mockup dokumen visual penuh
+  - route kini sudah lolos build/deploy dan smoke check `200 OK`, tetapi tetap perlu user membuka halaman nyata untuk memastikan crash recursion benar-benar hilang di browser yang sebelumnya bermasalah
+  - preview Wakakur terbaru masih bersifat tekstual/ringkasan; belum sampai render mockup dokumen visual penuh
 
 ## Status Saat Ini
 
