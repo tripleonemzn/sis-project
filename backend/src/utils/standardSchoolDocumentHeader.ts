@@ -19,6 +19,7 @@ export type StandardSchoolDocumentHeaderSnapshot = {
 
 const SCHOOL_LOGO_PATH = '/logo-kgb2.png';
 const FOUNDATION_LOGO_PATH = '/logo-yayasan.png';
+const SCHOOL_DISPLAY_NAME = 'SMKS Karya Guna Bhakti 2';
 const SCHOOL_FOUNDATION_NAME = 'YAYASAN PENDIDIKAN AL AMIEN';
 const SCHOOL_FORMAL_NAME = 'SEKOLAH MENENGAH KEJURUAN (SMK) KARYA GUNA BHAKTI 2';
 const SCHOOL_NSS = '342026504072';
@@ -45,6 +46,10 @@ const FALLBACK_COMPETENCY_NAMES = [
 function normalizeOptionalText(value?: string | null) {
   const normalized = String(value || '').trim();
   return normalized.length > 0 ? normalized : null;
+}
+
+export function resolveStandardSchoolDisplayName() {
+  return normalizeOptionalText(process.env.SCHOOL_DISPLAY_NAME) || SCHOOL_DISPLAY_NAME;
 }
 
 export async function resolveStandardSchoolDocumentHeaderSnapshot(): Promise<StandardSchoolDocumentHeaderSnapshot> {

@@ -38,6 +38,7 @@ import {
   getDailyPresenceCheckpointLabel,
 } from '../../utils/dailyPresenceSelfScan';
 import { resolveStaffDivision } from '../../utils/staffRole';
+import { formatTeacherDutyLabel } from '../../utils/teacherDuty';
 
 type StaffTabKey = 'SCAN' | 'MONITOR' | 'ASSISTED' | 'HISTORY' | 'CONFIG';
 type AssistedTargetKey = 'STUDENT' | 'PARTICIPANT';
@@ -113,6 +114,18 @@ function getEventPersonName(event: DailyPresenceEventItem) {
   return event.student?.name || event.participant?.name || '-';
 }
 
+function formatDescriptor(value?: string | null) {
+  const normalized = String(value || '')
+    .replace(/_/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!normalized) return '';
+  if (normalized === normalized.toUpperCase()) {
+    return normalized.toLowerCase().replace(/\b\w/g, (char) => char.toUpperCase());
+  }
+  return normalized;
+}
+
 function getEventSecondaryLabel(event: DailyPresenceEventItem) {
   if (event.student) {
     const idLabel = event.student.nisn || event.student.nis || '-';
@@ -123,6 +136,25 @@ function getEventSecondaryLabel(event: DailyPresenceEventItem) {
     const roleLabel = getParticipantRoleLabel(event.participant.role);
     const ptkType = event.participant.ptkType ? ` • ${event.participant.ptkType}` : '';
     return `${roleLabel} • ${idLabel}${ptkType}`;
+  }
+  return '-';
+}
+
+function getEventPhoto(event?: DailyPresenceEventItem | null) {
+  return event?.student?.photo || event?.participant?.photo || null;
+}
+
+function getEventRoleDetail(event?: DailyPresenceEventItem | null) {
+  if (!event) return 'Monitor aktif';
+  if (event.student) {
+    return event.class?.name ? `Siswa • ${event.class.name}` : 'Siswa';
+  }
+  if (event.participant) {
+    const dutyLabels = (event.participant.additionalDuties || [])
+      .map((duty) => formatTeacherDutyLabel(duty))
+      .filter(Boolean);
+    const ptkType = formatDescriptor(event.participant.ptkType);
+    return [getParticipantRoleLabel(event.participant.role), ptkType, ...dutyLabels].filter(Boolean).join(' • ');
   }
   return '-';
 }
@@ -150,14 +182,26 @@ function resolvePhotoUrl(photo?: string | null) {
   return `/api/uploads/${normalized}`;
 }
 
-function InitialAvatar({ name, photo }: { name: string; photo?: string | null }) {
+function InitialAvatar({
+  name,
+  photo,
+  className = 'h-14 w-14',
+  textClassName = 'text-lg',
+}: {
+  name: string;
+  photo?: string | null;
+  className?: string;
+  textClassName?: string;
+}) {
   const photoUrl = resolvePhotoUrl(photo);
   return (
-    <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full border border-blue-100 bg-blue-50">
+    <div
+      className={`flex shrink-0 items-center justify-center overflow-hidden rounded-full border border-blue-100 bg-blue-50 ${className}`}
+    >
       {photoUrl ? (
         <img src={photoUrl} alt={name} className="h-full w-full object-cover" />
       ) : (
-        <span className="text-lg font-bold text-blue-700">{name.slice(0, 1).toUpperCase()}</span>
+        <span className={`font-bold text-blue-700 ${textClassName}`}>{name.slice(0, 1).toUpperCase()}</span>
       )}
     </div>
   );
@@ -253,39 +297,41 @@ function PresenceHistoryTable({
 function WelcomePresencePanel({
   event,
   checkpoint,
+  schoolName,
 }: {
   event: DailyPresenceEventItem | null;
   checkpoint: DailyPresenceEventType;
+  schoolName?: string | null;
 }) {
   const personName = event ? getEventPersonName(event) : 'Menunggu scan presensi';
-  const roleLabel = event?.student ? 'Siswa' : event?.participant ? getParticipantRoleLabel(event.participant.role) : 'Monitor aktif';
+  const roleLabel = getEventRoleDetail(event);
+  const photo = getEventPhoto(event);
+  const schoolLabel = String(schoolName || '').trim() || 'Sekolah';
   const idLabel = event?.student
     ? event.student.nisn || event.student.nis || '-'
     : event?.participant
       ? event.participant.nip || event.participant.username || '-'
       : '-';
-  const detailLabel = event ? getEventSecondaryLabel(event) : 'Data peserta akan tampil otomatis setelah QR berhasil discan.';
   const eventTime = event?.recordedTime || formatTimeLabel(event?.recordedAt);
+  const detailLabel = event
+    ? `Absensi ${getDailyPresenceCheckpointLabel(checkpoint).toLowerCase()} tercatat pukul ${eventTime}.`
+    : 'Data peserta akan tampil otomatis setelah QR berhasil discan.';
 
   return (
     <div className="daily-presence-welcome-card flex h-full flex-col justify-between rounded-3xl border border-slate-200 bg-white p-7 text-slate-900 shadow-sm">
-      <div>
-        <p className="text-sm font-semibold uppercase tracking-[0.35em] text-sky-600">Presensi Berhasil</p>
-        <h2 className="mt-5 text-5xl font-extrabold leading-tight text-slate-950">Selamat Datang</h2>
-        <p className="mt-3 text-base text-slate-600">
-          {event
-            ? `Absensi ${getDailyPresenceCheckpointLabel(checkpoint).toLowerCase()} tercatat pukul ${eventTime}.`
-            : 'Arahkan peserta untuk scan QR di sisi kiri layar.'}
+      <div className="text-center">
+        <p className="text-sm font-semibold uppercase tracking-[0.35em] text-sky-600">
+          {event ? 'Presensi Berhasil' : 'Presensi Siap'}
         </p>
+        <h2 className="mt-5 text-5xl font-extrabold leading-tight text-slate-950">Selamat Datang</h2>
+        <p className="mt-3 text-lg font-semibold text-slate-600">{schoolLabel}</p>
       </div>
 
       <div className="daily-presence-welcome-identity my-8 rounded-3xl border border-slate-200 bg-slate-50 p-6">
-        <div className="flex items-center gap-5">
-          <InitialAvatar name={personName} />
-          <div className="min-w-0">
-            <p className="truncate text-3xl font-extrabold text-slate-950">{personName}</p>
-            <p className="mt-1 text-lg font-semibold text-sky-700">{roleLabel}</p>
-          </div>
+        <div className="flex flex-col items-center text-center">
+          <InitialAvatar name={personName} photo={photo} className="h-24 w-24" textClassName="text-3xl" />
+          <p className="mt-5 max-w-full truncate text-3xl font-extrabold text-slate-950">{personName}</p>
+          <p className="mt-2 max-w-full text-lg font-semibold text-sky-700">{roleLabel}</p>
         </div>
 
         <div className="mt-7 grid gap-4 md:grid-cols-2">
@@ -294,17 +340,23 @@ function WelcomePresencePanel({
             <p className="mt-2 text-xl font-bold text-slate-950">{idLabel}</p>
           </div>
           <div className="rounded-2xl border border-slate-200 bg-white p-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Waktu</p>
-            <p className="mt-2 text-xl font-bold text-slate-950">{event ? eventTime : '--:--'}</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Role</p>
+            <p className="mt-2 text-xl font-bold text-slate-950">{roleLabel}</p>
           </div>
         </div>
 
-        <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
-          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Detail</p>
-          <p className="mt-2 text-lg font-semibold text-slate-950">{detailLabel}</p>
-          {event?.lateMinutes && event.lateMinutes > 0 ? (
-            <p className="mt-2 text-sm font-semibold text-amber-700">Terlambat {event.lateMinutes} menit</p>
-          ) : null}
+        <div className="mt-4 grid gap-4 md:grid-cols-[220px_minmax(0,1fr)]">
+          <div className="rounded-2xl border border-slate-200 bg-white p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Waktu</p>
+            <p className="mt-2 text-xl font-bold text-slate-950">{event ? eventTime : '--:--'}</p>
+          </div>
+          <div className="rounded-2xl border border-slate-200 bg-white p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Detail</p>
+            <p className="mt-2 text-lg font-semibold text-slate-950">{detailLabel}</p>
+            {event?.lateMinutes && event.lateMinutes > 0 ? (
+              <p className="mt-2 text-sm font-semibold text-amber-700">Terlambat {event.lateMinutes} menit</p>
+            ) : null}
+          </div>
         </div>
       </div>
 
@@ -520,7 +572,7 @@ function SharedQrMonitorPanel({
             </div>
 
             <div className="space-y-4">
-              <WelcomePresencePanel event={latestEvent} checkpoint={checkpoint} />
+              <WelcomePresencePanel event={latestEvent} checkpoint={checkpoint} schoolName={session.schoolName} />
               <div className="daily-presence-monitor-stats grid gap-3 lg:grid-cols-3">
                 <div className="rounded-2xl border border-sky-200 bg-sky-50 p-4">
                   <p className="text-xs font-semibold uppercase tracking-[0.22em] text-sky-700">Checkpoint</p>

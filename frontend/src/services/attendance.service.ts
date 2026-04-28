@@ -153,6 +153,7 @@ export interface DailyPresenceEventItem {
   student?: {
     id: number;
     name: string;
+    photo?: string | null;
     nis?: string | null;
     nisn?: string | null;
   };
@@ -160,9 +161,11 @@ export interface DailyPresenceEventItem {
     id: number;
     name: string;
     username?: string | null;
+    photo?: string | null;
     nip?: string | null;
     role: 'TEACHER' | 'STAFF' | 'PRINCIPAL' | 'EXTRACURRICULAR_TUTOR';
     ptkType?: string | null;
+    additionalDuties?: string[];
   };
   class?: {
     id: number;
@@ -268,6 +271,7 @@ export interface DailyPresenceOwnHistoryItem {
 export interface DailyPresenceSelfScanSession {
   sessionId: string;
   checkpoint: DailyPresenceEventType;
+  schoolName?: string | null;
   gateLabel?: string | null;
   date: string;
   createdAt?: string | null;

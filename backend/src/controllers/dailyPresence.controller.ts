@@ -20,6 +20,7 @@ import {
   verifyDailyPresenceSelfScanMonitorQrToken,
   verifyDailyPresenceSelfScanQrToken,
 } from '../utils/dailyPresenceSelfScan';
+import { resolveStandardSchoolDisplayName } from '../utils/standardSchoolDocumentHeader';
 
 function normalizeCode(value?: string | null) {
   return String(value || '')
@@ -533,6 +534,7 @@ function mapStudentPresenceEventItem(
     student?: {
       id: number;
       name: string;
+      photo: string | null;
       nis: string | null;
       nisn: string | null;
     } | null;
@@ -573,9 +575,11 @@ function mapUserPresenceEventItem(
       id: number;
       name: string;
       username: string | null;
+      photo: string | null;
       nip: string | null;
       role: Role;
       ptkType: string | null;
+      additionalDuties: string[];
     } | null;
     actor?: {
       id: number;
@@ -597,9 +601,11 @@ function mapUserPresenceEventItem(
           id: event.user.id,
           name: event.user.name,
           username: event.user.username || null,
+          photo: event.user.photo || null,
           nip: event.user.nip || null,
           role: event.user.role,
           ptkType: event.user.ptkType || null,
+          additionalDuties: event.user.additionalDuties || [],
         }
       : undefined,
     actor: event.actor || null,
@@ -1099,10 +1105,14 @@ async function buildManagerSelfScanSessionPayload(params: {
     now,
   });
 
-  return buildDailyPresenceSelfScanSessionManagerPayload(params.session, {
+  const sessionPayload = buildDailyPresenceSelfScanSessionManagerPayload(params.session, {
     now,
     monitor,
   });
+  return {
+    ...sessionPayload,
+    schoolName: resolveStandardSchoolDisplayName(),
+  };
 }
 
 async function getOperationalStudentOrThrow(studentId: number, activeAcademicYearId: number) {
@@ -1546,6 +1556,7 @@ export const getDailyPresenceOverview = asyncHandler(async (req: Request, res: R
           select: {
             id: true,
             name: true,
+            photo: true,
             nis: true,
             nisn: true,
           },
@@ -1584,9 +1595,11 @@ export const getDailyPresenceOverview = asyncHandler(async (req: Request, res: R
             id: true,
             name: true,
             username: true,
+            photo: true,
             nip: true,
             role: true,
             ptkType: true,
+            additionalDuties: true,
           },
         },
         actor: {
