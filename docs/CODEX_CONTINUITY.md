@@ -5,39 +5,40 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-04-28 13:28 WIB
-- Current status: Batch 1 refactor UI/UX data-first untuk role Administrasi/TU web sudah selesai dan sudah live. Perubahan fokus pada halaman/data yang sebelumnya berupa card-list agar mengikuti standar tabel/data view tanpa mengubah backend, auth, query, atau data flow inti.
+- Last updated: 2026-04-28 13:37 WIB
+- Current status: Batch 2 refactor UI/UX data-first untuk role Guru web sudah selesai dan sudah live. Perubahan fokus pada daftar assignment mengajar yang sebelumnya berupa grid card agar menjadi tabel data operasional yang lebih konsisten.
 - Objective/task aktif:
   - Menyeragamkan halaman isi menu sidebar yang berupa data operasional agar default memakai table/table-like view dengan hirarki font yang konsisten, dikerjakan bertahap per role/module.
 - Batch terakhir selesai:
-  - `Batch 1 - Administrasi/TU table-first refactor`
+  - `Batch 2 - Guru class assignment table-first refactor`
 - Progress batch ini:
   - `100%`
 - Last completed repo work:
-  - Commit: `2d35460`
-  - Title: `refactor(staff): standardize tu data tables`
+  - Commit: `9616306`
+  - Title: `refactor(teacher): standardize class assignment tables`
   - Summary:
-    - queue kepanitiaan TU diubah dari card-list menjadi tabel data dengan kolom `Kegiatan`, `Program`, `Status`, `Anggota`, `Update`, dan `Aksi`
-    - detail anggota panitia dan feature grant diubah menjadi tabel agar lebih mudah discan oleh staf administrasi
-    - daftar kartu ujian siswa TU diubah menjadi tabel semantik dengan row expandable untuk detail status/catatan/cetak
-    - summary cards, filter, form, monitor, dan empty state tetap dipertahankan karena termasuk pengecualian yang sah menurut policy UI
+    - halaman `Kelas & Mata Pelajaran` guru diubah dari grid card menjadi tabel assignment mengajar
+    - halaman `Presensi Siswa` guru diubah dari grid card menjadi tabel kelas presensi
+    - kedua tabel memakai kolom konsisten: `Kelas`, `Tingkat & Jurusan`, `Mata Pelajaran`, `KKM`, `Siswa`, dan `Aksi`
+    - pencarian, empty state, dan action existing tetap dipertahankan tanpa mengubah endpoint/query/data flow
 - Area/file disentuh:
-  - `frontend/src/pages/staff/CommitteeHeadTuPage.tsx`
-  - `frontend/src/components/staff/HeadTuExamCardsPanel.tsx`
+  - `frontend/src/pages/teacher/MyClassesPage.tsx`
+  - `frontend/src/pages/teacher/TeacherAttendanceListPage.tsx`
   - `docs/CODEX_CONTINUITY.md`
 - Verifikasi batch ini:
+  - `cd frontend && npm run build`
   - `cd frontend && npm run deploy`
-  - `curl -I -s https://siskgb2.id/staff/head-tu/committees`
-  - `curl -I -s https://siskgb2.id/`
+  - `curl -I -s https://siskgb2.id/teacher/classes`
+  - `curl -I -s https://siskgb2.id/teacher/attendance`
   - `git status --short`
   - `git diff --check`
 - Publish/live status:
   - Web sudah deploy live ke `/var/www/html/` lewat `npm run deploy`
-  - Mobile OTA tidak dijalankan karena Batch 1 hanya menyentuh web role Administrasi/TU
+  - Mobile OTA tidak dijalankan karena Batch 2 hanya menyentuh web role Guru
 - Remaining work:
-  - lanjut Batch 2 untuk modul/role berikutnya dari hasil sweep, terutama halaman data yang masih card-list dan tab/dropdown yang belum konsisten
+  - lanjut Batch 3 untuk modul/role berikutnya dari hasil sweep, terutama halaman data yang masih card-list dan tab/dropdown yang belum konsisten
 - Residual risk:
-  - perubahan sudah lolos build/deploy dan smoke check, tetapi tetap perlu user smoke test visual langsung di akun staf administrasi/TU untuk memastikan density tabel terasa nyaman di data nyata
+  - perubahan sudah lolos build/deploy dan smoke check, tetapi tetap perlu user smoke test visual langsung di akun guru untuk memastikan density tabel terasa nyaman di data nyata
 
 ## Status Saat Ini
 
