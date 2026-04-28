@@ -1556,6 +1556,137 @@ function summarizeSchema(schema?: TeachingResourceProgramSchema) {
   };
 }
 
+function summarizeSectionTeacherExperience(section: TeachingResourceProgramSectionSchema) {
+  const columns = Array.isArray(section.columns) ? section.columns : [];
+  const editorType = section.editorType || 'TABLE';
+  const systemColumns = columns.filter((column) => inferFieldSourceType(column) === 'SYSTEM');
+  const referencePickerColumns = columns.filter((column) => inferFieldSourceType(column) === 'DOCUMENT_REFERENCE');
+  const snapshotColumns = columns.filter(
+    (column) => inferFieldSourceType(column) === 'DOCUMENT_SNAPSHOT' || String(column.valueSource || '').trim().toUpperCase() === 'BOUND',
+  );
+  const manualColumns = columns.filter((column) => {
+    const sourceType = inferFieldSourceType(column);
+    return sourceType === 'MANUAL' || sourceType === 'STATIC_OPTION' || sourceType === 'DERIVED';
+  });
+
+  let headline = 'Guru mengisi bagian ini secara manual.';
+  if (editorType === 'TEXT') {
+    headline = 'Guru menulis narasi atau catatan pada bagian ini.';
+  } else if (referencePickerColumns.length > 0 && snapshotColumns.length > 0) {
+    headline = 'Guru memilih referensi, lalu kolom turunan ikut terisi otomatis.';
+  } else if (referencePickerColumns.length > 0) {
+    headline = 'Guru memilih data dari dokumen lain pada bagian ini.';
+  } else if (systemColumns.length === columns.length && columns.length > 0) {
+    headline = 'Bagian ini hampir seluruhnya tampil otomatis dari sistem.';
+  } else if (manualColumns.length > 0 && systemColumns.length > 0) {
+    headline = 'Guru melihat konteks sistem lalu melengkapi kolom manual yang diperlukan.';
+  } else if (manualColumns.length > 0) {
+    headline = 'Guru mengisi tabel utama baris per baris.';
+  }
+
+  const chips: string[] = [];
+  if (manualColumns.length > 0) chips.push(`${manualColumns.length} kolom manual`);
+  if (systemColumns.length > 0) chips.push(`${systemColumns.length} kolom sistem`);
+  if (referencePickerColumns.length > 0) chips.push(`${referencePickerColumns.length} picker referensi`);
+  if (snapshotColumns.length > 0) chips.push(`${snapshotColumns.length} kolom otomatis`);
+
+  return {
+    headline,
+    chips,
+    systemColumns: systemColumns.length,
+    referencePickerColumns: referencePickerColumns.length,
+    snapshotColumns: snapshotColumns.length,
+    manualColumns: manualColumns.length,
+  };
+}
+
+function buildTeacherFacingPreview(
+  draft: CreateProgramDraft,
+  schemaSummary: ReturnType<typeof summarizeSchema>,
+): {
+  workloadLabel: string;
+  workloadTone: string;
+  headline: string;
+  steps: string[];
+  printNotes: string[];
+  highlights: string[];
+} {
+  const sections = Array.isArray(draft.schema.sections) ? draft.schema.sections : [];
+  const allColumns = sections.flatMap((section) => (section.editorType || 'TABLE') === 'TABLE' ? section.columns || [] : []);
+  const manualColumns = allColumns.filter((column) => {
+    const sourceType = inferFieldSourceType(column);
+    return sourceType === 'MANUAL' || sourceType === 'STATIC_OPTION' || sourceType === 'DERIVED';
+  }).length;
+  const systemColumns = allColumns.filter((column) => inferFieldSourceType(column) === 'SYSTEM').length;
+  const referencePickerColumns = allColumns.filter((column) => inferFieldSourceType(column) === 'DOCUMENT_REFERENCE').length;
+  const snapshotColumns = allColumns.filter(
+    (column) => inferFieldSourceType(column) === 'DOCUMENT_SNAPSHOT' || String(column.valueSource || '').trim().toUpperCase() === 'BOUND',
+  ).length;
+  const textSections = sections.filter((section) => section.editorType === 'TEXT').length;
+
+  let workloadLabel = 'Ringan';
+  let workloadTone = 'bg-emerald-50 text-emerald-700 border-emerald-200';
+  if (manualColumns >= 8 || schemaSummary.totalSections >= 5) {
+    workloadLabel = 'Sedang';
+    workloadTone = 'bg-amber-50 text-amber-700 border-amber-200';
+  }
+  if (manualColumns >= 14 || schemaSummary.totalSections >= 7) {
+    workloadLabel = 'Padat';
+    workloadTone = 'bg-rose-50 text-rose-700 border-rose-200';
+  }
+
+  const steps: string[] = [];
+  if (systemColumns > 0) {
+    steps.push('Saat membuka dokumen, guru langsung melihat konteks otomatis seperti mapel, tingkat, semester, atau tahun ajaran.');
+  }
+  if (referencePickerColumns > 0) {
+    steps.push('Guru memilih data dari dokumen sumber yang sudah dibuat lebih dulu, lalu sistem membaca referensi yang sesuai.');
+  }
+  if (snapshotColumns > 0) {
+    steps.push('Beberapa kolom akan terisi otomatis dari referensi terpilih, jadi guru tidak perlu mengetik ulang data yang sama.');
+  }
+  if (manualColumns > 0) {
+    steps.push(`Guru tetap mengisi ${manualColumns} kolom manual sesuai kebutuhan operasional dokumen.`);
+  }
+  if (textSections > 0) {
+    steps.push('Bagian narasi atau catatan tetap tersedia untuk arahan, refleksi, atau keterangan tambahan.');
+  }
+  if (steps.length === 0) {
+    steps.push('Dokumen ini masih sangat kosong; guru kemungkinan belum mendapat alur isi yang jelas.');
+  }
+
+  const printNotes: string[] = [];
+  if (draft.schema.printRules?.showInstitutionHeader) printNotes.push('Print memakai header sekolah.');
+  if (draft.schema.printRules?.showDocumentTitle) printNotes.push('Judul dokumen ikut tampil saat dicetak.');
+  if (draft.schema.printRules?.compactTable) printNotes.push('Tabel dibuat lebih ringkas saat print.');
+  if ((draft.schema.printRules?.signatureMode || 'SYSTEM_DEFAULT') === 'MANUAL') {
+    printNotes.push('Tanda tangan print diatur manual.');
+  } else {
+    printNotes.push('Tanda tangan print mengikuti default sistem.');
+  }
+
+  const highlights = [
+    `${schemaSummary.totalSections} bagian dokumen`,
+    `${schemaSummary.totalColumns} kolom total`,
+    `${referencePickerColumns} kolom referensi`,
+    `${snapshotColumns} kolom otomatis`,
+  ];
+
+  return {
+    workloadLabel,
+    workloadTone,
+    headline:
+      manualColumns === 0 && referencePickerColumns === 0
+        ? 'Dokumen ini lebih banyak tampil otomatis dan relatif ringan untuk guru.'
+        : referencePickerColumns > 0
+          ? 'Dokumen ini sudah mulai terasa terintegrasi: guru memilih referensi, lalu melengkapi sisanya.'
+          : 'Dokumen ini masih berfokus pada input manual guru, tetapi sudah bisa diarahkan lebih rapi.',
+    steps,
+    printNotes,
+    highlights,
+  };
+}
+
 function getColumnDataTypeLabel(dataType?: TeachingResourceColumnDataType) {
   return COLUMN_DATA_TYPE_OPTIONS.find((option) => option.value === (dataType || 'TEXT'))?.label || 'Teks Singkat';
 }
@@ -2094,6 +2225,7 @@ export default function TeachingResourceProgramManagementPage() {
   const draftBlueprintMode = inferBlueprintMode(createDraft.schema);
   const draftBlueprint = BLUEPRINT_MODE_OPTIONS.find((option) => option.value === draftBlueprintMode) || BLUEPRINT_MODE_OPTIONS[4];
   const draftSchemaSummary = summarizeSchema(createDraft.schema);
+  const draftTeacherPreview = buildTeacherFacingPreview(createDraft, draftSchemaSummary);
 
   return (
     <div className="space-y-6 w-full pb-28">
@@ -2692,6 +2824,40 @@ export default function TeachingResourceProgramManagementPage() {
                   )}
                 </div>
 
+                <div className="mb-4 grid grid-cols-1 gap-4 xl:grid-cols-[1.2fr_0.8fr]">
+                  <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-semibold text-blue-900">Gambaran Cepat untuk Guru</div>
+                        <p className="mt-1 text-xs leading-5 text-blue-800">{draftTeacherPreview.headline}</p>
+                      </div>
+                      <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${draftTeacherPreview.workloadTone}`}>
+                        Beban isi: {draftTeacherPreview.workloadLabel}
+                      </span>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {draftTeacherPreview.highlights.map((item) => (
+                        <span
+                          key={`teacher-preview-highlight-${item}`}
+                          className="inline-flex rounded-full border border-blue-200 bg-white px-2 py-1 text-xs text-blue-700"
+                        >
+                          {item}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+                    <div className="text-sm font-semibold text-emerald-900">Arah Print</div>
+                    <div className="mt-2 space-y-2">
+                      {draftTeacherPreview.printNotes.map((item) => (
+                        <div key={`print-note-${item}`} className="text-xs leading-5 text-emerald-800">
+                          {item}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
                   <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-3">
                     <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Jumlah Bagian</div>
@@ -2715,9 +2881,25 @@ export default function TeachingResourceProgramManagementPage() {
                   </div>
                 </div>
 
+                <div className="mt-4 rounded-xl border border-gray-200 bg-gray-50 p-4">
+                  <div className="mb-3 text-sm font-semibold text-gray-900">Alur yang Akan Dijalani Guru</div>
+                  <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                    {draftTeacherPreview.steps.map((step, stepIndex) => (
+                      <div key={`teacher-flow-${stepIndex + 1}`} className="rounded-xl border border-gray-200 bg-white px-3 py-3">
+                        <div className="text-[11px] font-semibold uppercase tracking-wide text-blue-700">Langkah {stepIndex + 1}</div>
+                        <div className="mt-1 text-xs leading-5 text-gray-600">{step}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
                 <div className="mt-4 space-y-3">
                   {createDraft.schema.sections.map((section, sectionIndex) => (
                     <div key={`${section.key}-summary-${sectionIndex}`} className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
+                      {(() => {
+                        const teacherExperience = summarizeSectionTeacherExperience(section);
+                        return (
+                          <>
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div>
                           <div className="text-sm font-semibold text-gray-900">
@@ -2725,6 +2907,9 @@ export default function TeachingResourceProgramManagementPage() {
                           </div>
                           <p className="mt-1 text-xs leading-5 text-gray-500">
                             {section.description || 'Belum ada deskripsi section.'}
+                          </p>
+                          <p className="mt-2 text-xs font-medium leading-5 text-gray-700">
+                            Guru nanti: {teacherExperience.headline}
                           </p>
                         </div>
                         <div className="flex flex-wrap gap-2">
@@ -2739,6 +2924,14 @@ export default function TeachingResourceProgramManagementPage() {
                               Bisa ditambah
                             </span>
                           ) : null}
+                          {teacherExperience.chips.map((chip) => (
+                            <span
+                              key={`${section.key}-teacher-chip-${chip}`}
+                              className="inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs text-emerald-700"
+                            >
+                              {chip}
+                            </span>
+                          ))}
                         </div>
                       </div>
 
@@ -2762,6 +2955,9 @@ export default function TeachingResourceProgramManagementPage() {
                           Petunjuk judul: {section.titlePlaceholder || '-'} | Petunjuk isi: {section.bodyPlaceholder || '-'}
                         </div>
                       )}
+                          </>
+                        );
+                      })()}
                     </div>
                   ))}
                 </div>
