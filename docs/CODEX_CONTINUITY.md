@@ -5,41 +5,47 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-04-28 14:51 WIB
-- Current status: Batch 8 refactor UI/UX data-first untuk role Guru Pembimbing PKL web sudah selesai dan sudah live. Perubahan fokus pada halaman `Bimbingan PKL` yang sebelumnya memakai card-list untuk daftar siswa bimbingan dan jurnal harian di modal detail agar menjadi table/table-like view.
+- Last updated: 2026-04-28 15:02 WIB
+- Current status: Batch 9 dan Batch 10 penutup sweep UI/UX data-first web sudah selesai dan sudah live. Batch 9 mengubah daftar ruangan inventaris dari card-list menjadi table view, sedangkan Batch 10 merapikan overlay modal approval PKL agar mengikuti standar popup ringan dan menyelesaikan audit klasifikasi kandidat tersisa.
 - Objective/task aktif:
   - Menyeragamkan halaman isi menu sidebar yang berupa data operasional agar default memakai table/table-like view dengan hirarki font yang konsisten, dikerjakan bertahap per role/module.
 - Batch terakhir selesai:
-  - `Batch 8 - Teacher internship guidance table-first refactor`
+  - `Batch 10 - Final UI data-first sweep close-out`
 - Progress batch ini:
   - `100%`
 - Progress roadmap UI data-first:
-  - `59%` untuk kandidat utama card-list prioritas hasil sweep (`10 dari sekitar 17` slice/halaman prioritas sudah distandarkan)
-  - estimasi compliance web data-page keseluruhan sekitar `74%` karena banyak halaman data sudah table-first sebelum refactor batch ini
+  - `100%` untuk kandidat utama hasil sweep prioritas (`17 dari sekitar 17` slice/halaman sudah diselesaikan atau diklasifikasikan sebagai exception valid)
+  - estimasi compliance web data-page keseluruhan sekitar `90%+`; sisa card yang masih ada terutama termasuk exception yang memang diperbolehkan policy: dashboard/statistik, quick action, notice/empty state, voting/candidate UI, dokumen/print preview, dan panel detail yang bukan data-list tabular
 - Last completed repo work:
-  - Commit: `d57028a`
-  - Title: `refactor(teacher): standardize internship guidance tables`
+  - Commit: `7f13ee6`
+  - Title: `style(internship): soften approval modal overlays`
   - Summary:
-    - daftar siswa `Bimbingan PKL` guru pembimbing diubah dari card-list menjadi tabel dengan kolom siswa, tempat PKL, status, jurnal terakhir, dan aksi
-    - tab `Jurnal Harian` di modal detail siswa diubah dari card-list menjadi tabel dengan kolom tanggal/waktu, kegiatan, dokumentasi, feedback, status, dan aksi validasi
-    - backdrop modal detail memakai overlay slate transparan dan tinggi modal dibatasi agar tidak melewati area layar
-    - source data, query, mutation validasi jurnal, tab absensi, dan alur aksi tidak diubah
+    - Batch 9 commit `5db3ae9` mengubah daftar ruangan pada `InventoryHubPage` menjadi table view dengan kolom ruangan, lokasi, kapasitas, item, penanggung jawab, kondisi, dan aksi
+    - perubahan inventaris berlaku untuk route yang memakai komponen yang sama: Sarpras, Kepala Lab, Kepala Perpustakaan, dan inventaris tugas
+    - Batch 10 commit `7f13ee6` mengganti backdrop hitam pekat modal approval PKL menjadi overlay slate transparan dengan blur ringan
+    - audit penutup menandai card tersisa yang bukan data-list tabular sebagai exception valid, bukan target yang aman untuk dipaksa menjadi tabel
 - Area/file disentuh:
-  - `frontend/src/pages/teacher/internship/TeacherInternshipGuidance.tsx`
+  - `frontend/src/pages/teacher/wakasek/sarpras/InventoryHubPage.tsx`
+  - `frontend/src/pages/teacher/internship/InternshipApprovalPage.tsx`
   - `docs/CODEX_CONTINUITY.md`
 - Verifikasi batch ini:
   - `git diff --check`
   - `cd frontend && npm run build`
   - `cd frontend && npm run deploy`
-  - `curl -I -s https://siskgb2.id/teacher/internship/guidance`
+  - `curl -I -s https://siskgb2.id/teacher/sarpras/inventory`
+  - `curl -I -s https://siskgb2.id/teacher/head-lab/inventory`
+  - `curl -I -s https://siskgb2.id/teacher/head-library/inventory`
+  - `curl -I -s https://siskgb2.id/teacher/internship/approval`
   - `git status --short`
 - Publish/live status:
   - Web sudah deploy live ke `/var/www/html/` lewat `npm run deploy`
-  - Mobile OTA tidak dijalankan karena Batch 8 hanya menyentuh web role Guru Pembimbing PKL
+  - Mobile OTA tidak dijalankan karena Batch 9-10 hanya menyentuh web
 - Remaining work:
-  - lanjut Batch 9 untuk modul/role berikutnya dari hasil sweep, terutama halaman data yang masih card-list dan tab/dropdown yang belum konsisten
+  - tidak ada batch lanjutan wajib untuk sweep kandidat prioritas UI data-first saat ini
+  - jika user ingin menyempurnakan lebih jauh, kandidat aman berikutnya adalah cleanup modal overlay global lain yang masih memakai backdrop hitam, tetapi itu di luar target table-first batch ini
 - Residual risk:
-  - perubahan sudah lolos build/deploy dan smoke check, tetapi tetap perlu user smoke test visual langsung di akun guru pembimbing PKL untuk memastikan tabel bimbingan dan jurnal nyaman dibaca pada data nyata
+  - perubahan sudah lolos build/deploy dan smoke check route, tetapi tetap perlu user smoke test visual langsung di akun role terkait untuk memastikan tabel inventaris nyaman dibaca pada data nyata
+  - ditemukan pola polling 5 detik pre-existing pada dashboard PKL siswa; tidak diubah pada batch ini karena bukan bagian dari refactor visual table-first dan perlu task stabilitas terpisah bila ingin dirapikan
 
 ## Status Saat Ini
 
