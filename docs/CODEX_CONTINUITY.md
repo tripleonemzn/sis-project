@@ -5,42 +5,41 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-04-28 14:05 WIB
-- Current status: Batch 4 refactor UI/UX data-first untuk role Siswa web sudah selesai dan sudah live. Perubahan fokus pada halaman `Materi & Tugas` siswa yang sebelumnya memakai card-list agar menjadi tabel data untuk materi dan tugas/PR.
+- Last updated: 2026-04-28 14:23 WIB
+- Current status: Batch 5 refactor UI/UX data-first untuk role Siswa web sudah selesai dan sudah live. Perubahan fokus pada halaman `Ekstrakurikuler` siswa yang sebelumnya masih memakai card-list untuk riwayat aktivitas dan program kerja OSIS agar menjadi table/table-like view.
 - Objective/task aktif:
   - Menyeragamkan halaman isi menu sidebar yang berupa data operasional agar default memakai table/table-like view dengan hirarki font yang konsisten, dikerjakan bertahap per role/module.
 - Batch terakhir selesai:
-  - `Batch 4 - Siswa learning table-first refactor`
+  - `Batch 5 - Siswa extracurricular table-first refactor`
 - Progress batch ini:
   - `100%`
 - Progress roadmap UI data-first:
-  - `35%` untuk kandidat utama card-list prioritas hasil sweep (`6 dari sekitar 17` slice/halaman prioritas sudah distandarkan)
-  - estimasi compliance web data-page keseluruhan sekitar `70%` karena banyak halaman data sudah table-first sebelum refactor batch ini
+  - `41%` untuk kandidat utama card-list prioritas hasil sweep (`7 dari sekitar 17` slice/halaman prioritas sudah distandarkan)
+  - estimasi compliance web data-page keseluruhan sekitar `71%` karena banyak halaman data sudah table-first sebelum refactor batch ini
 - Last completed repo work:
-  - Commit: `042a77b`
-  - Title: `refactor(student): standardize learning tables`
+  - Commit: `14d9dce`
+  - Title: `refactor(student): standardize extracurricular data tables`
   - Summary:
-    - tab `Materi Pembelajaran` siswa diubah dari grid card menjadi tabel materi
-    - tab `Tugas & PR` siswa diubah dari card-list menjadi tabel tugas
-    - tab halaman diganti ke shared `UnderlineTabBar` agar selaras dengan standar tab horizontal web
-    - aksi lama tetap dipertahankan: unduh materi/lampiran, buka video, dan kumpulkan atau lihat/edit jawaban tugas
-    - source data, filter, submission modal, dan mutation pengumpulan tugas tidak diubah
+    - bagian `Aktivitas Terakhir` pada presensi ekskul siswa diubah dari stacked card menjadi tabel ringkas dengan kolom minggu/sesi, status, dan catatan
+    - daftar `Program Kerja OSIS` diubah dari card-list menjadi tabel dengan kolom program, semester, periode, dan agenda terdekat
+    - summary/status/action card tetap dipertahankan karena bukan data-list utama dan masih sesuai pola dashboard/CTA
+    - source data, query, mutation, dan alur aksi ekskul siswa tidak diubah
 - Area/file disentuh:
-  - `frontend/src/pages/student/StudentLearningPage.tsx`
+  - `frontend/src/pages/student/StudentExtracurricularPage.tsx`
   - `docs/CODEX_CONTINUITY.md`
 - Verifikasi batch ini:
+  - `git diff --check`
   - `cd frontend && npm run build`
   - `cd frontend && npm run deploy`
-  - `curl -I -s https://siskgb2.id/student/learning`
+  - `curl -I -s https://siskgb2.id/student/extracurricular`
   - `git status --short`
-  - `git diff --check`
 - Publish/live status:
   - Web sudah deploy live ke `/var/www/html/` lewat `npm run deploy`
-  - Mobile OTA tidak dijalankan karena Batch 4 hanya menyentuh web role Siswa
+  - Mobile OTA tidak dijalankan karena Batch 5 hanya menyentuh web role Siswa
 - Remaining work:
-  - lanjut Batch 5 untuk modul/role berikutnya dari hasil sweep, terutama halaman data yang masih card-list dan tab/dropdown yang belum konsisten
+  - lanjut Batch 6 untuk modul/role berikutnya dari hasil sweep, terutama halaman data yang masih card-list dan tab/dropdown yang belum konsisten
 - Residual risk:
-  - perubahan sudah lolos build/deploy dan smoke check, tetapi tetap perlu user smoke test visual langsung di akun siswa untuk memastikan tabel materi/tugas nyaman dibaca pada data nyata
+  - perubahan sudah lolos build/deploy dan smoke check, tetapi tetap perlu user smoke test visual langsung di akun siswa untuk memastikan tabel ekskul nyaman dibaca pada data nyata
 
 ## Status Saat Ini
 
