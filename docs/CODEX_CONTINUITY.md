@@ -5,44 +5,54 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-04-28 15:42 WIB
-- Current status: Batch 17 perbaikan error halaman `Kelola Program Perangkat Ajar` sudah selesai dan sudah live. Crash `InternalError: too much recursion` di route `/teacher/wakasek/teaching-resource-programs` berhasil ditutup.
+- Last updated: 2026-04-28 16:05 WIB
+- Current status: Batch 18 dan Batch 19 penutup roadmap aktif `Program Perangkat Ajar` sudah selesai, sudah live di web, dan sudah publish OTA tester. Scope aktif yang sedang dikerjakan untuk builder Wakakur + integrasi referensi guru kini ditutup ke `100%`.
 - Objective/task aktif:
-  - Melanjutkan roadmap `Program Perangkat Ajar` agar builder Wakakur makin operasional, netral kebijakan, dan tidak membebani user non-teknis.
+  - Menutup roadmap aktif `Program Perangkat Ajar` agar Wakakur mendapat builder yang lebih operasional dan guru mendapat fallback referensi yang lebih jelas di web/mobile.
 - Batch terakhir selesai:
-  - `Batch 17 - Stop default schema recursion on management page`
+  - `Batch 18 - Tambah preview block-level dan validator konfigurasi di editor Wakakur`
+  - `Batch 19 - Rapikan guard/fallback picker referensi guru di web dan mobile`
 - Progress batch ini:
   - `100%`
 - Progress roadmap perangkat ajar dinamis:
   - `100%` untuk rumusan arsitektur generik
-  - `90%` untuk implementasi teknis refactor engine generik
-  - `68%` untuk builder Wakakur generasi baru
-  - `82%` untuk reference picker guru lintas dokumen
+  - `100%` untuk implementasi teknis scope aktif engine generik
+  - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
+  - `100%` untuk reference picker guru lintas dokumen pada scope roadmap saat ini
 - Last completed repo work:
-  - Commit: `62ee339`
-  - Title: `fix(curriculum): stop wakakur program schema recursion`
+  - Commit: `3efce76`
+  - Title: `feat(curriculum): finish teaching resource builder guidance`
   - Summary:
-    - akar masalah ditemukan di helper schema default: `createDefaultProgramSchema()` dan `applySchemaFoundationDefaults()` saling memanggil saat membentuk fallback
-    - recursion diputus dengan memisahkan base factory schema default dari tahap normalisasi/foundation defaults
-    - perubahan hanya di editor Wakakur web; backend, mobile, endpoint, query, polling, dan realtime tidak diubah
+    - editor Wakakur sekarang punya preview block-level yang lebih visual, validator error/warning sebelum simpan, serta tombol simpan yang ter-guard bila schema inti masih salah
+    - sisi guru web dan mobile sekarang memberi helper text yang spesifik saat kolom referensi belum dikonfigurasi atau saat dokumen sumber yang cocok belum tersedia
+    - referensi lama yang sudah tersimpan tetap bisa ditampilkan sebagai fallback agar user tidak melihat picker kosong yang membingungkan
 - Area/file disentuh:
   - `frontend/src/pages/teacher/wakasek/curriculum/TeachingResourceProgramManagementPage.tsx`
+  - `frontend/src/pages/teacher/learning-resources/LearningResourceGenerator.tsx`
+  - `mobile-app/src/features/learningResources/TeacherLearningResourceProgramScreen.tsx`
   - `docs/CODEX_CONTINUITY.md`
 - Verifikasi batch ini:
   - `cd frontend && npm run build`
-  - `cd frontend && npm run deploy`
+  - `cd mobile-app && npm run typecheck`
+  - `cd mobile-app && npm run audit:parity:check`
   - `git diff --check`
+  - `cd frontend && npm run deploy`
   - `curl -I https://siskgb2.id/teacher/wakasek/teaching-resource-programs`
-  - `git status --short`
+  - `cd mobile-app && npm run check:ota:testers`
+  - `cd mobile-app && npm run update:testers -- "Penyempurnaan Perangkat Ajar: builder Wakakur dan picker referensi guru kini lebih jelas saat konfigurasi atau data sumber belum lengkap. Silakan perbarui untuk menikmati fitur terbaru."`
 - Publish/live status:
   - Web sudah deploy live ke `/var/www/html/` lewat `npm run deploy`
-  - Mobile OTA tidak dijalankan karena Batch 17 hanya menyentuh web
+  - Web route `https://siskgb2.id/teacher/wakasek/teaching-resource-programs` merespons `HTTP/1.1 200 OK`
+  - OTA tester `pilot-live` sudah publish sukses
+  - Update group: `66089cf1-b0ee-4962-804b-49f731b2544f`
+  - Android update ID: `019dd355-7d74-7428-b758-51e38d688940`
+  - Push notify summary: `recipients=4, sent=4, failed=0, stale=0`
 - Remaining work:
-  - builder Wakakur masih bisa dirapikan lagi dengan preview yang lebih visual atau ringkasan “dokumen ini akan berbentuk seperti apa” per block
-  - kandidat aman berikutnya jika user ingin lanjut: tambah preview block-level yang lebih visual atau helper warning jika kombinasi section/kolom terasa membingungkan
+  - Tidak ada batch implementasi aktif yang tersisa untuk scope roadmap perangkat ajar yang sedang dikerjakan.
+  - Langkah berikutnya yang paling aman adalah QA manual user nyata pada alur `Wakakur buat dokumen sumber -> guru isi dokumen turunan -> review/print`.
 - Residual risk:
-  - route kini sudah lolos build/deploy dan smoke check `200 OK`, tetapi tetap perlu user membuka halaman nyata untuk memastikan crash recursion benar-benar hilang di browser yang sebelumnya bermasalah
-  - preview Wakakur terbaru masih bersifat tekstual/ringkasan; belum sampai render mockup dokumen visual penuh
+  - meski verifikasi build, parity, deploy, dan OTA sudah lolos, alur integrasi tetap perlu uji manual end-to-end dengan konfigurasi dokumen nyata agar wording/helper terbaru benar-benar nyaman untuk user non-teknis
+  - fallback referensi menjaga UX tetap stabil, tetapi kualitas pengalaman tetap bergantung pada konfigurasi field identity dan binding yang dibuat Wakakur
 
 ## Status Saat Ini
 
