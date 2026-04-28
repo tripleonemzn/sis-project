@@ -27,6 +27,40 @@ function getErrorMessage(error: unknown, fallback: string) {
   return fallback;
 }
 
+function formatJournalDate(date: string) {
+  return new Date(date).toLocaleDateString('id-ID', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
+}
+
+function getJournalStatusLabel(status: string) {
+  switch (status) {
+    case 'APPROVED':
+      return 'Disetujui';
+    case 'REJECTED':
+      return 'Ditolak';
+    case 'PENDING':
+      return 'Menunggu';
+    default:
+      return status || '-';
+  }
+}
+
+function getJournalStatusClassName(status: string) {
+  switch (status) {
+    case 'APPROVED':
+      return 'bg-green-100 text-green-700';
+    case 'REJECTED':
+      return 'bg-red-100 text-red-700';
+    case 'PENDING':
+      return 'bg-amber-100 text-amber-700';
+    default:
+      return 'bg-gray-100 text-gray-600';
+  }
+}
+
 const StudentInternshipJournal = () => {
   // Use auth service or just fetch directly as token is handled by interceptor
   const [internship, setInternship] = useState<InternshipRecord | null>(null);
@@ -141,53 +175,72 @@ const StudentInternshipJournal = () => {
         </button>
       </div>
 
-      <div className="space-y-4">
+      <div className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm">
+        <div className="border-b border-gray-100 px-6 py-4">
+          <h2 className="text-lg font-semibold text-gray-900">Daftar Jurnal Harian</h2>
+          <p className="text-sm text-gray-500">
+            {journals.length > 0 ? `${journals.length} jurnal kegiatan sudah dicatat.` : 'Belum ada jurnal kegiatan.'}
+          </p>
+        </div>
         {journals.length === 0 ? (
-          <div className="text-center py-12 bg-white rounded-xl border border-dashed border-gray-300">
+          <div className="m-6 rounded-xl border border-dashed border-gray-300 py-12 text-center">
              <BookOpen className="w-12 h-12 text-gray-300 mx-auto mb-3" />
              <p className="text-gray-500">Belum ada jurnal kegiatan.</p>
           </div>
         ) : (
-          journals.map((journal) => (
-            <div key={journal.id} className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex gap-6">
-               <div className="flex-shrink-0 w-16 text-center">
-                  <div className="text-sm font-bold text-gray-500 uppercase">
-                    {new Date(journal.date).toLocaleDateString('id-ID', { month: 'short' })}
-                  </div>
-                  <div className="text-2xl font-bold text-gray-900">
-                    {new Date(journal.date).getDate()}
-                  </div>
-               </div>
-               <div className="flex-1">
-                 <h3 className="text-lg font-semibold text-gray-900 mb-2">{journal.activity}</h3>
-                 <p className="text-gray-600 whitespace-pre-line">{journal.description || '-'}</p>
-                 {journal.imageUrl && (
-                   <div className="mt-4">
-                      <img src={journal.imageUrl} alt="Dokumentasi" className="h-32 rounded-lg object-cover" />
-                   </div>
-                 )}
-                 {journal.feedback && (
-                   <div className="mt-4 bg-green-50 p-3 rounded-lg text-sm text-green-800">
-                      <strong>Feedback Pembimbing:</strong> {journal.feedback}
-                   </div>
-                 )}
-               </div>
-               <div className="flex-shrink-0">
-                  <span className={`px-2 py-1 rounded text-xs font-medium ${
-                    journal.status === 'APPROVED' ? 'bg-green-100 text-green-700' : 
-                    journal.status === 'REJECTED' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'
-                  }`}>
-                    {journal.status}
-                  </span>
-               </div>
-            </div>
-          ))
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[820px] text-left">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-xs font-medium uppercase tracking-wider text-gray-500">Tanggal</th>
+                  <th className="px-6 py-3 text-xs font-medium uppercase tracking-wider text-gray-500">Kegiatan</th>
+                  <th className="px-6 py-3 text-xs font-medium uppercase tracking-wider text-gray-500">Dokumentasi</th>
+                  <th className="px-6 py-3 text-xs font-medium uppercase tracking-wider text-gray-500">Feedback</th>
+                  <th className="px-6 py-3 text-xs font-medium uppercase tracking-wider text-gray-500">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 bg-white">
+                {journals.map((journal) => (
+                  <tr key={journal.id} className="align-top">
+                    <td className="whitespace-nowrap px-6 py-4 text-sm font-medium text-gray-900">
+                      {formatJournalDate(journal.date)}
+                    </td>
+                    <td className="px-6 py-4">
+                      <p className="text-sm font-semibold text-gray-900">{journal.activity}</p>
+                      <p className="mt-1 whitespace-pre-line text-sm text-gray-600">{journal.description || '-'}</p>
+                    </td>
+                    <td className="px-6 py-4">
+                      {journal.imageUrl ? (
+                        <a
+                          href={journal.imageUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
+                        >
+                          <img src={journal.imageUrl} alt="Dokumentasi jurnal" className="h-10 w-10 rounded-md object-cover" />
+                          Lihat foto
+                        </a>
+                      ) : (
+                        <span className="text-sm text-gray-500">-</span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-600">{journal.feedback || '-'}</td>
+                    <td className="whitespace-nowrap px-6 py-4">
+                      <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${getJournalStatusClassName(journal.status)}`}>
+                        {getJournalStatusLabel(journal.status)}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
 
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl w-full max-w-lg p-6">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/30 p-4 backdrop-blur-[2px]">
+          <div className="max-h-[calc(100vh-7rem)] w-full max-w-lg overflow-y-auto rounded-xl bg-white p-6 shadow-2xl">
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-xl font-bold">Tambah Jurnal Kegiatan</h2>
               <button onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-gray-600">
