@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ArrowDown, ArrowUp, BookOpen, Pencil, Plus, Save, Trash2, X } from 'lucide-react';
+import { AlertTriangle, ArrowDown, ArrowUp, BookOpen, Pencil, Plus, Save, Trash2, X } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -75,6 +75,13 @@ type SectionQuickPreset =
   | 'REFERENCE_PICKER_TABLE'
   | 'SIGNATURE_BLOCK'
   | 'NARRATIVE_NOTE';
+type DraftSchemaIssueSeverity = 'error' | 'warning';
+type DraftSchemaIssue = {
+  severity: DraftSchemaIssueSeverity;
+  message: string;
+  sectionLabel?: string;
+  columnLabel?: string;
+};
 
 const TARGET_CLASS_OPTIONS = [
   { value: 'X', label: 'X' },
@@ -1691,6 +1698,169 @@ function buildTeacherFacingPreview(
   };
 }
 
+function summarizeSectionPreviewLayout(section: TeachingResourceProgramSectionSchema): {
+  title: string;
+  note: string;
+  chips: Array<{ label: string; tone: 'manual' | 'system' | 'reference' | 'snapshot' }>;
+} {
+  const columns = Array.isArray(section.columns) ? section.columns : [];
+  const previewColumns: Array<{ label: string; tone: 'manual' | 'system' | 'reference' | 'snapshot' }> = columns
+    .slice(0, 4)
+    .map((column) => {
+      const sourceType = inferFieldSourceType(column);
+      const tone =
+        sourceType === 'SYSTEM'
+          ? 'system'
+          : sourceType === 'DOCUMENT_REFERENCE'
+          ? 'reference'
+          : sourceType === 'DOCUMENT_SNAPSHOT'
+            ? 'snapshot'
+            : 'manual';
+    return {
+      label: column.label || column.key || 'Kolom',
+      tone,
+    };
+    });
+
+  if ((section.editorType || 'TABLE') === 'TEXT') {
+    return {
+      title: section.label || 'Bagian Narasi',
+      note: section.bodyPlaceholder || 'Guru menulis narasi atau catatan pada area ini.',
+      chips: [],
+    };
+  }
+
+  return {
+    title: section.label || 'Tabel Isian',
+    note:
+      columns.length > 4
+        ? `Menampilkan ${Math.min(columns.length, 4)} kolom awal dari total ${columns.length} kolom.`
+        : 'Pratinjau ringkas header tabel yang akan dilihat guru.',
+    chips: previewColumns,
+  };
+}
+
+function validateProgramDraftSchema(draft: CreateProgramDraft): DraftSchemaIssue[] {
+  const issues: DraftSchemaIssue[] = [];
+  const sections = Array.isArray(draft.schema.sections) ? draft.schema.sections : [];
+  const exposedFieldOwners = new Map<string, string>();
+
+  if (!String(draft.label || '').trim()) {
+    issues.push({
+      severity: 'error',
+      message: 'Nama menu belum diisi.',
+    });
+  }
+  if (sections.length === 0) {
+    issues.push({
+      severity: 'error',
+      message: 'Dokumen belum punya section apa pun.',
+    });
+  }
+  if ((draft.schema.printRules?.showDocumentTitle ?? false) && !String(draft.schema.documentTitle || '').trim()) {
+    issues.push({
+      severity: 'warning',
+      message: 'Judul dokumen print masih kosong, padahal opsi tampilkan judul aktif.',
+    });
+  }
+
+  sections.forEach((section, sectionIndex) => {
+    const sectionLabel = section.label || `Bagian ${sectionIndex + 1}`;
+    const columns = Array.isArray(section.columns) ? section.columns : [];
+    const sectionReferenceColumns = columns.filter((column) => inferFieldSourceType(column) === 'DOCUMENT_REFERENCE');
+
+    if (!String(section.label || '').trim()) {
+      issues.push({
+        severity: 'warning',
+        message: 'Section belum punya nama yang jelas.',
+        sectionLabel,
+      });
+    }
+
+    if ((section.editorType || 'TABLE') === 'TABLE' && columns.length === 0) {
+      issues.push({
+        severity: 'error',
+        message: 'Section tabel belum memiliki kolom apa pun.',
+        sectionLabel,
+      });
+    }
+
+    columns.forEach((column, columnIndex) => {
+      const columnLabel = column.label || `Kolom ${columnIndex + 1}`;
+      const sourceType = inferFieldSourceType(column);
+      const sourceProgramCode = normalizeTeachingResourceProgramCode(column.binding?.sourceProgramCode || '');
+      const sourceFieldIdentity = normalizeSchemaKey(
+        column.binding?.sourceFieldIdentity || column.binding?.sourceDocumentFieldIdentity || '',
+        '',
+      );
+      const fieldIdentity = normalizeSchemaKey(column.fieldIdentity || column.semanticKey || column.key, '');
+
+      if (!String(column.label || '').trim()) {
+        issues.push({
+          severity: 'warning',
+          message: 'Kolom belum punya label yang jelas untuk guru.',
+          sectionLabel,
+          columnLabel,
+        });
+      }
+
+      if (sourceType === 'SYSTEM' && (!column.valueSource || column.valueSource === 'MANUAL' || column.valueSource === 'BOUND')) {
+        issues.push({
+          severity: 'error',
+          message: 'Kolom sistem belum memiliki sumber nilai sistem yang valid.',
+          sectionLabel,
+          columnLabel,
+        });
+      }
+
+      if (sourceType === 'DOCUMENT_REFERENCE' || sourceType === 'DOCUMENT_SNAPSHOT') {
+        if (!sourceProgramCode) {
+          issues.push({
+            severity: 'error',
+            message: 'Kolom referensi belum menentukan Program Sumber.',
+            sectionLabel,
+            columnLabel,
+          });
+        }
+        if (!sourceFieldIdentity) {
+          issues.push({
+            severity: 'error',
+            message: 'Kolom referensi belum menentukan Field Sumber yang akan dibaca.',
+            sectionLabel,
+            columnLabel,
+          });
+        }
+      }
+
+      if (sourceType === 'DOCUMENT_SNAPSHOT' && sectionReferenceColumns.length === 0) {
+        issues.push({
+          severity: 'warning',
+          message: 'Kolom otomatis belum ditemani kolom picker referensi pada section yang sama.',
+          sectionLabel,
+          columnLabel,
+        });
+      }
+
+      if ((column.exposeAsReference || sourceType === 'DOCUMENT_REFERENCE' || sourceType === 'DOCUMENT_SNAPSHOT') && fieldIdentity) {
+        const owner = `${sectionLabel} / ${columnLabel}`;
+        const existingOwner = exposedFieldOwners.get(fieldIdentity);
+        if (existingOwner && existingOwner !== owner) {
+          issues.push({
+            severity: 'warning',
+            message: `Field identity \`${fieldIdentity}\` dipakai lebih dari satu kolom (${existingOwner} dan ${owner}).`,
+            sectionLabel,
+            columnLabel,
+          });
+        } else if (!existingOwner) {
+          exposedFieldOwners.set(fieldIdentity, owner);
+        }
+      }
+    });
+  });
+
+  return issues;
+}
+
 function getColumnDataTypeLabel(dataType?: TeachingResourceColumnDataType) {
   return COLUMN_DATA_TYPE_OPTIONS.find((option) => option.value === (dataType || 'TEXT'))?.label || 'Teks Singkat';
 }
@@ -2064,6 +2234,12 @@ export default function TeachingResourceProgramManagementPage() {
       toast.error('Label program wajib diisi.');
       return;
     }
+    const draftSchemaIssues = validateProgramDraftSchema(createDraft);
+    const blockingIssues = draftSchemaIssues.filter((issue) => issue.severity === 'error');
+    if (blockingIssues.length > 0) {
+      toast.error(`Perbaiki ${blockingIssues.length} masalah konfigurasi dulu sebelum menyimpan program.`);
+      return;
+    }
     if (
       rows.some(
         (row) =>
@@ -2230,6 +2406,9 @@ export default function TeachingResourceProgramManagementPage() {
   const draftBlueprint = BLUEPRINT_MODE_OPTIONS.find((option) => option.value === draftBlueprintMode) || BLUEPRINT_MODE_OPTIONS[4];
   const draftSchemaSummary = summarizeSchema(createDraft.schema);
   const draftTeacherPreview = buildTeacherFacingPreview(createDraft, draftSchemaSummary);
+  const draftSchemaIssues = validateProgramDraftSchema(createDraft);
+  const draftSchemaErrorCount = draftSchemaIssues.filter((issue) => issue.severity === 'error').length;
+  const draftSchemaWarningCount = draftSchemaIssues.filter((issue) => issue.severity === 'warning').length;
 
   return (
     <div className="space-y-6 w-full pb-28">
@@ -2897,11 +3076,60 @@ export default function TeachingResourceProgramManagementPage() {
                   </div>
                 </div>
 
+                {draftSchemaIssues.length > 0 ? (
+                  <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
+                    <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <div className="flex items-center gap-2 text-sm font-semibold text-amber-900">
+                          <AlertTriangle size={16} />
+                          Perlu Diperhatikan Sebelum Simpan
+                        </div>
+                        <p className="mt-1 text-xs leading-5 text-amber-800">
+                          Validator ini membantu Wakakur menangkap binding yang belum lengkap atau susunan dokumen yang masih membingungkan.
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {draftSchemaErrorCount > 0 ? (
+                          <span className="inline-flex rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-700">
+                            {draftSchemaErrorCount} error
+                          </span>
+                        ) : null}
+                        {draftSchemaWarningCount > 0 ? (
+                          <span className="inline-flex rounded-full border border-amber-200 bg-white px-3 py-1 text-xs font-semibold text-amber-700">
+                            {draftSchemaWarningCount} warning
+                          </span>
+                        ) : null}
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      {draftSchemaIssues.map((issue, issueIndex) => (
+                        <div
+                          key={`draft-schema-issue-${issueIndex}`}
+                          className={`rounded-lg border px-3 py-2 text-xs leading-5 ${
+                            issue.severity === 'error'
+                              ? 'border-rose-200 bg-rose-50 text-rose-800'
+                              : 'border-amber-200 bg-white text-amber-900'
+                          }`}
+                        >
+                          <span className="font-semibold">{issue.severity === 'error' ? 'Error' : 'Warning'}:</span> {issue.message}
+                          {issue.sectionLabel ? ` | ${issue.sectionLabel}` : ''}
+                          {issue.columnLabel ? ` | ${issue.columnLabel}` : ''}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-xs leading-5 text-emerald-800">
+                    Struktur dasar dokumen sudah lolos pemeriksaan awal. Wakakur masih boleh menyempurnakan isi, tetapi tidak ada masalah konfigurasi utama yang terdeteksi saat ini.
+                  </div>
+                )}
+
                 <div className="mt-4 space-y-3">
                   {createDraft.schema.sections.map((section, sectionIndex) => (
                     <div key={`${section.key}-summary-${sectionIndex}`} className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
                       {(() => {
                         const teacherExperience = summarizeSectionTeacherExperience(section);
+                        const previewLayout = summarizeSectionPreviewLayout(section);
                         return (
                           <>
                       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -2940,23 +3168,62 @@ export default function TeachingResourceProgramManagementPage() {
                       </div>
 
                       {section.editorType === 'TABLE' ? (
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          {(section.columns || []).length > 0 ? (
-                            (section.columns || []).map((column, columnIndex) => (
-                              <span
-                                key={`${section.key}-${column.key}-summary-${columnIndex}`}
-                                className="inline-flex rounded-full border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700"
-                              >
-                                {column.label || `Kolom ${columnIndex + 1}`} · {getColumnDataTypeLabel(column.dataType)}
-                              </span>
-                            ))
-                          ) : (
-                            <span className="text-xs text-gray-500">Belum ada kolom tabel.</span>
-                          )}
-                        </div>
+                        <>
+                          <div className="mt-3 rounded-xl border border-gray-200 bg-white p-3">
+                            <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Pratinjau Header Tabel</div>
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              {previewLayout.chips.length > 0 ? (
+                                previewLayout.chips.map((chip, chipIndex) => (
+                                  <span
+                                    key={`${section.key}-preview-chip-${chipIndex}`}
+                                    className={`inline-flex rounded-full border px-2 py-1 text-xs ${
+                                      chip.tone === 'system'
+                                        ? 'border-sky-200 bg-sky-50 text-sky-700'
+                                        : chip.tone === 'reference'
+                                          ? 'border-violet-200 bg-violet-50 text-violet-700'
+                                          : chip.tone === 'snapshot'
+                                            ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                                            : 'border-gray-200 bg-gray-50 text-gray-700'
+                                    }`}
+                                  >
+                                    {chip.label}
+                                  </span>
+                                ))
+                              ) : (
+                                <span className="text-xs text-gray-500">Belum ada kolom tabel.</span>
+                              )}
+                            </div>
+                            <div className="mt-2 text-[11px] leading-5 text-gray-500">{previewLayout.note}</div>
+                          </div>
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {(section.columns || []).length > 0 ? (
+                              (section.columns || []).map((column, columnIndex) => (
+                                <span
+                                  key={`${section.key}-${column.key}-summary-${columnIndex}`}
+                                  className="inline-flex rounded-full border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700"
+                                >
+                                  {column.label || `Kolom ${columnIndex + 1}`} · {getColumnDataTypeLabel(column.dataType)}
+                                </span>
+                              ))
+                            ) : (
+                              <span className="text-xs text-gray-500">Belum ada kolom tabel.</span>
+                            )}
+                          </div>
+                        </>
                       ) : (
-                        <div className="mt-3 text-xs text-gray-500">
-                          Petunjuk judul: {section.titlePlaceholder || '-'} | Petunjuk isi: {section.bodyPlaceholder || '-'}
+                        <div className="mt-3 rounded-xl border border-gray-200 bg-white p-3">
+                          <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Pratinjau Blok Narasi</div>
+                          <div className="mt-2 rounded-lg border border-dashed border-gray-200 bg-gray-50 p-3">
+                            <div className="mb-2 h-3 w-40 rounded-full bg-gray-200" />
+                            <div className="space-y-2">
+                              <div className="h-2 w-full rounded-full bg-gray-100" />
+                              <div className="h-2 w-11/12 rounded-full bg-gray-100" />
+                              <div className="h-2 w-8/12 rounded-full bg-gray-100" />
+                            </div>
+                          </div>
+                          <div className="mt-2 text-[11px] leading-5 text-gray-500">
+                            Petunjuk judul: {section.titlePlaceholder || '-'} | Petunjuk isi: {section.bodyPlaceholder || '-'}
+                          </div>
                         </div>
                       )}
                           </>
@@ -3794,11 +4061,17 @@ export default function TeachingResourceProgramManagementPage() {
               <button
                 type="button"
                 onClick={handleCreateProgram}
-                disabled={isSaving}
+                disabled={isSaving || draftSchemaErrorCount > 0}
                 className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {editingRowId ? <Pencil size={14} /> : <Plus size={14} />}
-                {isSaving ? 'Menyimpan...' : editingRowId ? 'Simpan Edit Program' : 'Tambah Program'}
+                {isSaving
+                  ? 'Menyimpan...'
+                  : draftSchemaErrorCount > 0
+                    ? `Perbaiki ${draftSchemaErrorCount} error dulu`
+                    : editingRowId
+                      ? 'Simpan Edit Program'
+                      : 'Tambah Program'}
               </button>
             </div>
           </div>

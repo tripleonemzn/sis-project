@@ -2302,6 +2302,45 @@ export const LearningResourceGenerator = ({
       String(referenceSelection?.selectionToken || '').trim() ||
       referenceOptions.find((option) => option.value === value)?.selectValue ||
       '';
+    const sourceProgramCode = normalizeTeachingResourceProgramCode(column.binding?.sourceProgramCode);
+    const sourceFieldIdentity =
+      String(column.binding?.sourceFieldIdentity || column.binding?.sourceDocumentFieldIdentity || '').trim();
+    const sourceProgramLabel =
+      String(programMetaByCode.get(sourceProgramCode)?.label || '').trim() || sourceProgramCode || 'program sumber';
+    const hasReferenceBinding = Boolean(sourceProgramCode && sourceFieldIdentity);
+    const fallbackReferenceOption =
+      referenceSelectValue &&
+      !referenceOptions.some((option) => option.selectValue === referenceSelectValue)
+        ? {
+            selectValue: referenceSelectValue,
+            value: String(referenceSelection?.value || value || '').trim(),
+            label: String(referenceSelection?.label || referenceSelection?.sourceEntryTitle || value || 'Referensi tersimpan').trim(),
+            sourceProgramCode: sourceProgramCode || String(referenceSelection?.sourceProgramCode || '').trim(),
+            sourceEntryId: Number(referenceSelection?.sourceEntryId || 0),
+            sourceEntryTitle: String(referenceSelection?.sourceEntryTitle || '').trim() || undefined,
+            sourceFieldKey: String(referenceSelection?.sourceFieldKey || '').trim() || undefined,
+            sourceFieldIdentity: String(referenceSelection?.sourceFieldIdentity || '').trim() || undefined,
+            snapshot: {},
+          }
+        : null;
+    const referenceSelectOptions = [...(fallbackReferenceOption ? [fallbackReferenceOption] : []), ...referenceOptions].filter(
+      (option, index, collection) =>
+        collection.findIndex((candidate) => candidate.selectValue === option.selectValue) === index,
+    );
+    const disableReferenceSelect =
+      !row?.id || !hasReferenceBinding || (referenceSelectOptions.length === 0 && !referenceSelectValue);
+    const referencePlaceholder = !hasReferenceBinding
+      ? 'Referensi belum dikonfigurasi'
+      : referenceSelectOptions.length > 0
+        ? 'Pilih Referensi'
+        : 'Belum ada data sumber';
+    const referenceHelperText = !hasReferenceBinding
+      ? 'Wakakur belum melengkapi Program Sumber atau Field Sumber untuk kolom ini.'
+      : referenceOptions.length === 0 && referenceSelectValue
+        ? `Referensi lama tetap ditampilkan, tetapi saat ini belum ada dokumen ${sourceProgramLabel} lain yang cocok pada konteks ini.`
+        : referenceOptions.length === 0
+          ? `Belum ada dokumen ${sourceProgramLabel} yang cocok pada konteks mapel, tingkat, program, atau semester aktif.`
+          : '';
     const inputClassName = `w-full rounded-md border border-gray-300 px-2 py-1.5 text-xs focus:border-blue-500 focus:outline-none ${
       readOnly ? 'bg-gray-50 text-gray-500' : 'bg-white'
     }`;
@@ -2309,19 +2348,22 @@ export const LearningResourceGenerator = ({
 
     if (isDocumentReferenceColumn(column)) {
       return (
-        <select
-          value={referenceSelectValue}
-          disabled={!row?.id}
-          onChange={(event) => applyDocumentReferenceSelection(section.id, row?.id || '', column, event.target.value)}
-          className={selectClassName}
-        >
-          <option value="">{referenceOptions.length > 0 ? 'Pilih Referensi' : 'Belum ada data sumber'}</option>
-          {referenceOptions.map((option) => (
-            <option key={`${columnKey}-${option.selectValue}`} value={option.selectValue}>
-              {option.label}
-            </option>
-          ))}
-        </select>
+        <div className="space-y-1">
+          <select
+            value={referenceSelectValue}
+            disabled={disableReferenceSelect}
+            onChange={(event) => applyDocumentReferenceSelection(section.id, row?.id || '', column, event.target.value)}
+            className={selectClassName}
+          >
+            <option value="">{referencePlaceholder}</option>
+            {referenceSelectOptions.map((option) => (
+              <option key={`${columnKey}-${option.selectValue}`} value={option.selectValue}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+          {referenceHelperText ? <p className="text-[11px] text-gray-500">{referenceHelperText}</p> : null}
+        </div>
       );
     }
 

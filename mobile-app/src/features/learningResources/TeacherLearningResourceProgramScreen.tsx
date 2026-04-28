@@ -1696,6 +1696,45 @@ export function TeacherLearningResourceProgramScreen({
       String(referenceSelection?.selectionToken || '').trim() ||
       referenceOptions.find((option) => option.value === value)?.selectValue ||
       '';
+    const sourceProgramCode = normalizeProgramCode(column.binding?.sourceProgramCode || '');
+    const sourceFieldIdentity =
+      String(column.binding?.sourceFieldIdentity || column.binding?.sourceDocumentFieldIdentity || '').trim();
+    const sourceProgramLabel =
+      String(programMetaByCode.get(sourceProgramCode)?.label || '').trim() || sourceProgramCode || 'program sumber';
+    const hasReferenceBinding = Boolean(sourceProgramCode && sourceFieldIdentity);
+    const fallbackReferenceOption =
+      referenceSelectValue &&
+      !referenceOptions.some((option) => option.selectValue === referenceSelectValue)
+        ? {
+            selectValue: referenceSelectValue,
+            value: String(referenceSelection?.value || value || '').trim(),
+            label: String(referenceSelection?.label || referenceSelection?.sourceEntryTitle || value || 'Referensi tersimpan').trim(),
+            sourceProgramCode: sourceProgramCode || String(referenceSelection?.sourceProgramCode || '').trim(),
+            sourceEntryId: Number(referenceSelection?.sourceEntryId || 0),
+            sourceEntryTitle: String(referenceSelection?.sourceEntryTitle || '').trim() || undefined,
+            sourceFieldKey: String(referenceSelection?.sourceFieldKey || '').trim() || undefined,
+            sourceFieldIdentity: String(referenceSelection?.sourceFieldIdentity || '').trim() || undefined,
+            snapshot: {},
+          }
+        : null;
+    const referenceSelectOptions = [...(fallbackReferenceOption ? [fallbackReferenceOption] : []), ...referenceOptions].filter(
+      (option, index, collection) =>
+        collection.findIndex((candidate) => candidate.selectValue === option.selectValue) === index,
+    );
+    const disableReferenceSelect =
+      !row?.id || !hasReferenceBinding || (referenceSelectOptions.length === 0 && !referenceSelectValue);
+    const referencePlaceholder = !hasReferenceBinding
+      ? 'Referensi belum dikonfigurasi'
+      : referenceSelectOptions.length > 0
+        ? 'Pilih Referensi'
+        : 'Belum ada data sumber';
+    const referenceHelperText = !hasReferenceBinding
+      ? 'Wakakur belum melengkapi Program Sumber atau Field Sumber untuk kolom ini.'
+      : referenceOptions.length === 0 && referenceSelectValue
+        ? `Referensi lama tetap ditampilkan, tetapi saat ini belum ada dokumen ${sourceProgramLabel} lain yang cocok pada konteks ini.`
+        : referenceOptions.length === 0
+          ? `Belum ada dokumen ${sourceProgramLabel} yang cocok pada konteks mapel, tingkat, program, atau semester aktif.`
+          : '';
     const updateValue = (nextValue: string) => {
       if (!row?.id) return;
       updateSectionRow(section.id, row.id, columnKey, nextValue);
@@ -1724,12 +1763,14 @@ export function TeacherLearningResourceProgramScreen({
       return (
         <MobileSelectField
           value={referenceSelectValue}
-          options={referenceOptions.map((option) => ({ value: option.selectValue, label: option.label }))}
+          options={referenceSelectOptions.map((option) => ({ value: option.selectValue, label: option.label }))}
           onChange={(nextValue) => {
             if (!row?.id) return;
             applyDocumentReferenceSelection(section.id, row.id, column, nextValue);
           }}
-          placeholder={referenceOptions.length > 0 ? 'Pilih Referensi' : 'Belum ada data sumber'}
+          placeholder={referencePlaceholder}
+          helperText={referenceHelperText || undefined}
+          disabled={disableReferenceSelect}
           maxHeight={320}
         />
       );
