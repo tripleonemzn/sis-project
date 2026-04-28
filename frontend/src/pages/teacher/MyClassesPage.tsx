@@ -7,7 +7,6 @@ import {
   ClipboardCheck,
   Search,
   Loader2,
-  GraduationCap
 } from 'lucide-react';
 import { teacherAssignmentService } from '../../services/teacherAssignment.service';
 import { useActiveAcademicYear } from '../../hooks/useActiveAcademicYear';
@@ -45,28 +44,6 @@ export const MyClassesPage = () => {
   }, [assignmentsData, searchQuery]);
 
   const isLoading = isLoadingActiveAcademicYear || (!!effectiveAcademicYearId && isLoadingAssignments);
-
-  // Helper function for card colors based on grade level
-  const getGradeColorStyles = (level: string) => {
-    switch (level) {
-      case 'X':
-        return {
-          gradient: 'from-teal-50 to-white',
-          badge: 'bg-teal-100 text-teal-800 border-teal-200',
-        };
-      case 'XII':
-        return {
-          gradient: 'from-orange-50 to-white',
-          badge: 'bg-orange-100 text-orange-800 border-orange-200',
-        };
-      case 'XI':
-      default:
-        return {
-          gradient: 'from-blue-50 to-white',
-          badge: 'bg-blue-100 text-blue-800 border-blue-200',
-        };
-    }
-  };
 
   return (
     <div className="space-y-6">
@@ -122,82 +99,80 @@ export const MyClassesPage = () => {
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {assignments.map((assignment) => {
-            const styles = getGradeColorStyles(assignment.class.level);
-            return (
-            <div
-              key={assignment.id}
-              className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition-shadow duration-200 flex flex-col"
-            >
-              {/* Card Header */}
-              <div className={`p-4 border-b border-gray-50 bg-gradient-to-r ${styles.gradient}`}>
-                <div className="flex justify-between items-start mb-2">
-                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${styles.badge}`}>
-                    {assignment.class.level}
-                  </span>
-                  <div className="text-[10px] text-gray-500 font-medium flex items-center gap-1 bg-white px-1.5 py-0.5 rounded-md border border-gray-100">
-                    <span className="text-gray-400">KKM:</span>
-                    <span className="text-gray-700 font-bold">{assignment.kkm}</span>
-                  </div>
-                </div>
-                <h3 className="text-base font-bold text-gray-900 mb-0.5 line-clamp-1" title={assignment.class.name}>
-                  {assignment.class.name}
-                </h3>
-                <p className="text-xs text-gray-500 flex items-center gap-1">
-                   <GraduationCap className="w-3 h-3" />
-                   {assignment.class.major.name}
-                </p>
-              </div>
-
-              {/* Card Body */}
-              <div className="p-4 flex-1">
-                <div className="mb-3">
-                    <p className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold mb-1">Mata Pelajaran</p>
-                    <div className="flex items-start gap-2">
-                        <div className="p-1.5 bg-indigo-50 rounded-lg text-indigo-600 shrink-0">
-                            <BookOpen className="w-4 h-4" />
+        <section className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm">
+          <div className="border-b border-gray-100 px-5 py-4">
+            <h2 className="text-section-title text-gray-900">Daftar Kelas Mengajar</h2>
+            <p className="mt-1 text-sm text-gray-500">
+              {assignments.length} penugasan mengajar ditemukan pada tahun ajaran aktif.
+            </p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="min-w-[900px] w-full text-left">
+              <thead className="bg-gray-50">
+                <tr className="border-b border-gray-200">
+                  <th className="w-14 px-5 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">No</th>
+                  <th className="px-5 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">Kelas</th>
+                  <th className="px-5 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">Tingkat & Jurusan</th>
+                  <th className="px-5 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">Mata Pelajaran</th>
+                  <th className="w-24 px-5 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">KKM</th>
+                  <th className="w-28 px-5 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">Siswa</th>
+                  <th className="w-64 px-5 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500">Aksi</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {assignments.map((assignment, index) => (
+                  <tr key={assignment.id} className="transition-colors hover:bg-gray-50">
+                    <td className="px-5 py-4 text-sm text-gray-500">{index + 1}</td>
+                    <td className="px-5 py-4">
+                      <p className="text-sm font-semibold text-gray-900">{assignment.class.name}</p>
+                      <p className="mt-0.5 text-xs text-gray-500">ID kelas: {assignment.class.id}</p>
+                    </td>
+                    <td className="px-5 py-4">
+                      <span className="inline-flex rounded-full border border-blue-100 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">
+                        {assignment.class.level}
+                      </span>
+                      <p className="mt-1 text-sm text-gray-700">{assignment.class.major.name}</p>
+                    </td>
+                    <td className="px-5 py-4">
+                      <div className="flex items-start gap-2">
+                        <BookOpen className="mt-0.5 h-4 w-4 shrink-0 text-indigo-500" />
+                        <div>
+                          <p className="text-sm font-medium text-gray-900">{assignment.subject.name}</p>
+                          <p className="mt-0.5 font-mono text-xs text-gray-500">{assignment.subject.code}</p>
                         </div>
-                        <div className="min-w-0">
-                            <p className="font-semibold text-sm text-gray-900 line-clamp-2 leading-tight" title={assignment.subject.name}>
-                                {assignment.subject.name}
-                            </p>
-                            <p className="text-[10px] text-gray-500 font-mono mt-0.5">{assignment.subject.code}</p>
-                        </div>
-                    </div>
-                </div>
-
-                <div className="flex items-center gap-1.5 text-xs text-gray-600 bg-gray-50 p-1.5 rounded-lg">
-                  <Users className="w-3.5 h-3.5 text-gray-400" />
-                  <span>
-                    <span className="font-semibold text-gray-900">
+                      </div>
+                    </td>
+                    <td className="px-5 py-4 text-sm font-semibold text-gray-900">{assignment.kkm}</td>
+                    <td className="px-5 py-4">
+                      <div className="inline-flex items-center gap-1.5 rounded-full bg-gray-50 px-2.5 py-1 text-xs font-medium text-gray-700">
+                        <Users className="h-3.5 w-3.5 text-gray-400" />
                         {assignment.class._count?.students || 0}
-                    </span> Siswa
-                  </span>
-                </div>
-              </div>
-
-              {/* Card Footer (Actions) */}
-              <div className="p-3 bg-gray-50 border-t border-gray-100 flex gap-2">
-                <Link
-                  to={`/teacher/attendance/${assignment.id}`}
-                  className="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-medium text-gray-700 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-200 transition-all"
-                >
-                  <ClipboardCheck className="w-3.5 h-3.5" />
-                  Presensi
-                </Link>
-                <Link
-                  to={`/teacher/classes/${assignment.class.id}/students`}
-                  className="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-medium hover:bg-blue-700 transition-colors shadow-sm"
-                >
-                  <Users className="w-3.5 h-3.5" />
-                  Lihat Daftar Siswa
-                </Link>
-              </div>
-            </div>
-            );
-          })}
-        </div>
+                      </div>
+                    </td>
+                    <td className="px-5 py-4">
+                      <div className="flex justify-end gap-2">
+                        <Link
+                          to={`/teacher/attendance/${assignment.id}`}
+                          className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-700 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+                        >
+                          <ClipboardCheck className="h-3.5 w-3.5" />
+                          Presensi
+                        </Link>
+                        <Link
+                          to={`/teacher/classes/${assignment.class.id}/students`}
+                          className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-blue-700"
+                        >
+                          <Users className="h-3.5 w-3.5" />
+                          Daftar Siswa
+                        </Link>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
       )}
     </div>
   );
