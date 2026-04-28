@@ -5,12 +5,12 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-04-28 16:30 WIB
-- Current status: perapihan UI role guru web untuk halaman `Perangkat Ajar` sudah selesai dan sudah live, dimulai dari program `Capaian Pembelajaran (CP)`. Header guru sekarang lebih ringkas, filter lebih proporsional, tombol `Tambah Dokumen` membuka popup konfigurasi, dan daftar dokumen bergeser ke table view yang lebih operasional.
+- Last updated: 2026-04-28 17:15 WIB
+- Current status: batch lanjutan sisi guru web untuk `Perangkat Ajar` sudah selesai dan sudah live. Fokus batch ini: judul dokumen kini bisa diformat rich-text, print sudah pindah ke pola iframe seperti fitur walas/rapor, susunan tanda tangan print dibetulkan, output print diringkas agar tidak ambigu, dan daftar dokumen guru sekarang punya `Tabel Kerja Cepat` yang langsung editable untuk bagian tabel utama.
 - Objective/task aktif:
-  - Merapikan pengalaman guru agar halaman dokumen perangkat ajar lebih fokus, mengikuti tahun ajaran aktif dari header tanpa duplikasi, dan lebih nyaman dipakai untuk konfigurasi/edit dokumen.
+  - Menyelesaikan perapihan UX role guru pada halaman dokumen perangkat ajar agar lebih fleksibel saat menulis judul, lebih aman saat print, dan lebih operasional saat mengedit isi tabel.
 - Batch terakhir selesai:
-  - `Batch 21 - Rapikan halaman guru perangkat ajar (web)`
+  - `Batch 22 - Rich title, print iframe, dan tabel kerja cepat guru (web)`
 - Progress batch ini:
   - `100%`
 - Progress roadmap perangkat ajar dinamis:
@@ -19,31 +19,33 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
   - `100%` untuk reference picker guru lintas dokumen pada scope roadmap saat ini
 - Last completed repo work:
-  - Commit: `eeb83b6`
-  - Title: `refactor(teacher): streamline learning resource document flow`
+  - Commit: `pending commit`
+  - Title: `pending commit`
   - Summary:
-    - tombol `Muat Ulang` dan badge `Tahun ajaran aktif` di header guru dihapus karena konteks tahun ajaran sudah mengikuti header aplikasi
-    - tombol `Tambah Dokumen` kini membuka popup konfigurasi, tidak lagi mendorong user ke page editor penuh
-    - filter `Status` dan `Mode Tampilan` dibuat lebih proporsional terhadap area pencarian
-    - daftar dokumen guru di web diubah ke table view operasional agar lebih mudah discan
+    - judul dokumen di popup guru sekarang memakai editor rich-text ringan berbasis Quill dengan alignment, bold, italic, dan underline
+    - print tidak lagi memakai `window.open('', '_blank')`, tetapi mengikuti pola iframe print dari fitur walas/rapor agar tidak rawan popup blocker
+    - header print kini mengambil judul dokumen sebagai heading utama, menyederhanakan blok meta, dan menukar posisi tanda tangan menjadi kepala sekolah di kiri dan guru mapel di kanan
+    - list dokumen guru kini menyediakan `Tabel Kerja Cepat` yang menampilkan bagian tabel utama secara ringkas dan editable langsung dari table view
+    - policy print di `AGENTS.md` diperjelas agar fitur print operasional berikutnya mengikuti pola walas yang sama
 - Area/file disentuh:
   - `frontend/src/pages/teacher/learning-resources/LearningResourceGenerator.tsx`
+  - `frontend/src/index.css`
+  - `AGENTS.md`
   - `docs/CODEX_CONTINUITY.md`
 - Verifikasi batch ini:
   - `cd frontend && npm run build`
-  - `cd mobile-app && npm run audit:parity:check`
   - `git diff --check`
   - `cd frontend && npm run deploy`
   - `curl -I https://siskgb2.id/teacher/learning-resources/cp`
 - Publish/live status:
   - Web sudah deploy live ke `/var/www/html/` lewat `npm run deploy`
   - Web route `https://siskgb2.id/teacher/learning-resources/cp` merespons `HTTP/1.1 200 OK`
-  - Mobile source code tidak berubah pada batch ini; parity audit tetap dijalankan untuk sanity check dan lolos
+  - Mobile source code tidak berubah pada batch ini; belum ada OTA baru
 - Remaining work:
-  - Jika user ingin lanjut, langkah aman berikutnya adalah merapikan pengalaman popup editor guru saat data nyata sudah mulai banyak, misalnya grouping aksi review atau penyederhanaan ringkasan meta dokumen.
+  - Lanjut hanya jika user ingin QA/rapikan lebih jauh, misalnya memperdalam mode `Tabel Kerja Cepat` untuk multi-section atau parity mobile untuk pola rich title/print yang sama.
 - Residual risk:
-  - route `/new` untuk editor penuh masih tetap ada demi kompatibilitas direct access yang lama, tetapi tombol utama dari list sekarang sudah memakai popup
-  - tetap perlu uji manual singkat untuk memastikan table view baru terasa cukup nyaman saat jumlah dokumen bertambah
+  - `Tabel Kerja Cepat` saat ini sengaja dibatasi ke tampilan tabel utama yang diringkas supaya halaman tidak penuh; struktur lengkap tetap tersedia di popup editor penuh
+  - nama sekolah pada print guru saat ini membaca source profil user yang tersedia di frontend, sehingga tetap perlu QA manual untuk memastikan nilainya konsisten pada akun production
 
 ## Status Saat Ini
 
