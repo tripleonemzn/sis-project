@@ -122,7 +122,7 @@ type TeacherAssignmentContextOption = {
 };
 
 const DOCUMENT_TITLE_QUILL_MODULES = {
-  toolbar: [[{ align: [] }], ['bold', 'italic', 'underline'], ['clean']],
+  toolbar: [[{ size: ['small', false, 'large', 'huge'] }], [{ align: [] }], ['bold', 'italic', 'underline'], ['clean']],
   history: {
     delay: 300,
     maxStack: 50,
@@ -130,7 +130,7 @@ const DOCUMENT_TITLE_QUILL_MODULES = {
   },
 };
 
-const DOCUMENT_TITLE_QUILL_FORMATS = ['align', 'bold', 'italic', 'underline'];
+const DOCUMENT_TITLE_QUILL_FORMATS = ['align', 'bold', 'italic', 'underline', 'size'];
 
 const ENTRY_LIMIT = 12;
 const TEACHING_RESOURCE_PROGRAM_CONFIG_QUERY_KEY = (academicYearId: number) => [
@@ -761,7 +761,14 @@ const sanitizeDocumentTitleHtml = (value: unknown): string => {
   if (!wrapper) return createDocumentTitleHtml(rawValue);
 
   const allowedTags = new Set(['P', 'DIV', 'SPAN', 'STRONG', 'B', 'EM', 'I', 'U', 'S', 'BR']);
-  const allowedClasses = new Set(['ql-align-center', 'ql-align-right', 'ql-align-justify']);
+  const allowedClasses = new Set([
+    'ql-align-center',
+    'ql-align-right',
+    'ql-align-justify',
+    'ql-size-small',
+    'ql-size-large',
+    'ql-size-huge',
+  ]);
 
   const sanitizeNode = (node: Node) => {
     if (node.nodeType === Node.COMMENT_NODE) {
@@ -3175,7 +3182,19 @@ export const LearningResourceGenerator = ({
     const printableSections = parseEntrySections(entry, defaultSections).filter((section) => {
       const sectionSchema = resolveSectionSchema(section);
       const blockType = String(sectionSchema?.blockType || '').trim().toUpperCase();
-      return blockType !== 'CONTEXT' && blockType !== 'SIGNATURE';
+      const sectionLabel = `${sectionSchema?.label || ''} ${section.title || ''}`.trim().toLowerCase();
+      const visibleColumns = getVisibleSectionColumns(section);
+      const isSystemOnlyContextTable =
+        isTableSection(section) &&
+        visibleColumns.length > 0 &&
+        section.rows.length <= 1 &&
+        visibleColumns.every((column) => isSystemManagedColumn(column));
+      return (
+        blockType !== 'CONTEXT' &&
+        blockType !== 'SIGNATURE' &&
+        !sectionLabel.includes('konteks') &&
+        !isSystemOnlyContextTable
+      );
     });
     const contextLabelRaw = resolveEntryContextLabel(entry, assignmentLabelMap);
     const contextValues = extractEntryContextValues(entry, {
@@ -3191,7 +3210,6 @@ export const LearningResourceGenerator = ({
       principalName: String(signatureDefaultsQuery.data?.principal?.name || '-').trim(),
     });
     const printDateLine = signatureValues.placeDate || `Bekasi, ${formatLongDate(new Date())}`;
-    const schoolName = String(currentUserProfile?.institution || 'Sekolah').trim() || 'Sekolah';
     const programPrintRules = activeProgramMeta?.schema?.printRules;
     const printTitleHtml =
       sanitizeDocumentTitleHtml(entry.content?.titleHtml) || createDocumentTitleHtml(entry.title || effectiveTitle);
@@ -3210,8 +3228,10 @@ export const LearningResourceGenerator = ({
         <title>${escapeHtml(entry.title || effectiveTitle)}</title>
         <style>
           * { box-sizing: border-box; }
-          body { margin: 24px; font-family: Arial, sans-serif; color: #0f172a; }
-          .header { text-align: center; margin-bottom: 14px; }
+          @page { size: A4 landscape; margin: 2cm; }
+          html, body { margin: 0; padding: 0; }
+          body { font-family: Arial, sans-serif; color: #0f172a; }
+          .header { text-align: center; margin-bottom: 20px; }
           .header .title-wrap { margin-bottom: 4px; }
           .header .title-wrap p { margin: 0; }
           .header .title-wrap .ql-align-center { text-align: center; }
@@ -3219,8 +3239,9 @@ export const LearningResourceGenerator = ({
           .header .title-wrap .ql-align-justify { text-align: justify; }
           .header .title-wrap p,
           .header .title-wrap div { font-size: 18px; font-weight: 800; line-height: 1.3; text-transform: uppercase; }
-          .header .school { font-size: 20px; font-weight: 800; letter-spacing: .3px; text-transform: uppercase; }
-          .header .year { font-size: 15px; font-weight: 700; margin-top: 2px; text-transform: uppercase; }
+          .header .title-wrap .ql-size-small { font-size: 14px; }
+          .header .title-wrap .ql-size-large { font-size: 22px; }
+          .header .title-wrap .ql-size-huge { font-size: 28px; }
           .doc-context { width: 100%; max-width: 520px; margin-bottom: 12px; font-size: 13px; border-collapse: collapse; }
           .doc-context td { border: none; padding: 2px 0; }
           .doc-context td:first-child { width: 150px; }
@@ -3274,28 +3295,32 @@ export const LearningResourceGenerator = ({
             margin-top: 22px;
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 64px;
+            gap: 80px;
+            max-width: 760px;
+            margin-left: auto;
+            margin-right: auto;
           }
           .signature-box {
-            text-align: left;
+            text-align: center;
             font-size: 13px;
           }
           .signature-box.is-right {
-            text-align: right;
+            text-align: center;
           }
           .signature-spacer {
             height: 72px;
           }
           .signature-name {
             display: inline-block;
-            min-width: 240px;
+            width: auto;
+            min-width: 0;
             border-bottom: 1px solid #0f172a;
-            padding-bottom: 2px;
+            padding: 0 2px 2px;
             font-weight: 700;
             margin-bottom: 2px;
           }
           @media print {
-            body { margin: 10mm; }
+            body { margin: 0; }
           }
         </style>
       </head>
@@ -3305,12 +3330,6 @@ export const LearningResourceGenerator = ({
             programPrintRules?.showDocumentTitle === false
               ? ''
               : `<div class="title-wrap">${printTitleHtml}</div>`
-          }
-          ${
-            programPrintRules?.showInstitutionHeader === false
-              ? ''
-              : `<div class="school">${escapeHtml(schoolName)}</div>
-                 <div class="year">TAHUN AJARAN ${escapeHtml(contextValues.tahunAjaran || academicYearName || '-')}</div>`
           }
         </div>
         <table class="doc-context">
@@ -3842,8 +3861,8 @@ export const LearningResourceGenerator = ({
                   />
                 </div>
                 <p className="mt-1 text-[11px] text-gray-500">
-                  Judul ini ikut menjadi heading utama saat dicetak. Anda bisa atur rata kiri, tengah, kanan, bold,
-                  italic, dan underline.
+                  Judul ini ikut menjadi heading utama saat dicetak. Anda bisa atur ukuran, rata kiri, tengah, kanan,
+                  bold, italic, dan underline.
                 </p>
               </div>
 
