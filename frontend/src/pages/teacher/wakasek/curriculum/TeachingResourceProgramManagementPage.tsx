@@ -1402,6 +1402,12 @@ function toErrorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
+function normalizeProgramDocumentDescription(value: unknown): string {
+  const normalized = String(value || '').trim();
+  if (!normalized || normalized === DEFAULT_CUSTOM_DESCRIPTION) return '';
+  return normalized;
+}
+
 function toProgramRows(payload: unknown): ProgramFormRow[] {
   if (!payload || typeof payload !== 'object') return [];
   const normalized = payload as {
@@ -1427,7 +1433,7 @@ function toProgramRows(payload: unknown): ProgramFormRow[] {
       code: normalizeTeachingResourceProgramCode(program.code),
       label: String(program.label || '').trim(),
       shortLabel: String(program.shortLabel || '').trim(),
-      description: String(program.description || '').trim(),
+      description: normalizeProgramDocumentDescription(program.description),
       order: Number(program.order || (index + 1) * 10),
       isActive: Boolean(program.isActive),
       showOnTeacherMenu: Boolean(program.showOnTeacherMenu),
@@ -1455,7 +1461,7 @@ function createDefaultDraft(seed: number): CreateProgramDraft {
     code,
     label: `Program Custom ${seed}`,
     shortLabel: `Custom ${seed}`,
-    description: DEFAULT_CUSTOM_DESCRIPTION,
+    description: '',
     isActive: true,
     showOnTeacherMenu: true,
     targetClassLevels: [],
@@ -2187,7 +2193,7 @@ export default function TeachingResourceProgramManagementPage() {
                 code: normalizedCode,
                 label,
                 shortLabel: createDraft.shortLabel.trim() || label,
-                description: createDraft.description.trim() || DEFAULT_CUSTOM_DESCRIPTION,
+                description: createDraft.description.trim(),
                 isActive: createDraft.isActive,
                 showOnTeacherMenu: createDraft.showOnTeacherMenu,
                 targetClassLevels: createDraft.targetClassLevels,
@@ -2205,7 +2211,7 @@ export default function TeachingResourceProgramManagementPage() {
           code: normalizedCode,
           label,
           shortLabel: createDraft.shortLabel.trim() || label,
-          description: createDraft.description.trim() || DEFAULT_CUSTOM_DESCRIPTION,
+          description: createDraft.description.trim(),
           order: (rows.length + 1) * 10,
           isActive: createDraft.isActive,
           showOnTeacherMenu: createDraft.showOnTeacherMenu,
@@ -2387,7 +2393,7 @@ export default function TeachingResourceProgramManagementPage() {
                   <th className="px-3 py-2">Kode</th>
                   <th className="px-3 py-2">Label Program</th>
                   <th className="px-3 py-2">Label Pendek</th>
-                  <th className="px-3 py-2">Deskripsi</th>
+                  <th className="px-3 py-2">Keterangan Dokumen</th>
                   <th className="px-3 py-2">Target Kelas</th>
                   <th className="px-3 py-2">Status</th>
                   <th className="px-3 py-2">Menu Guru</th>
@@ -2567,14 +2573,17 @@ export default function TeachingResourceProgramManagementPage() {
                     </div>
                   </div>
                   <div className="xl:col-span-4">
-                    <label className="mb-1 block text-sm font-medium text-gray-700">Deskripsi</label>
+                    <label className="mb-1 block text-sm font-medium text-gray-700">Keterangan Dokumen</label>
                     <textarea
                       value={createDraft.description}
                       onChange={(event) => setCreateDraft((prev) => ({ ...prev, description: event.target.value }))}
                       rows={2}
                       className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                      placeholder="Deskripsi singkat program"
+                      placeholder="Contoh: CAPAIAN PEMBELAJARAN FASE F"
                     />
+                    <p className="mt-1 text-xs leading-5 text-gray-500">
+                      Opsional. Jika diisi, keterangan ini tampil pada dokumen guru dan hasil print. Baris pertama bisa dipakai sebagai judul blok.
+                    </p>
                   </div>
                   <label className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700">
                     <input

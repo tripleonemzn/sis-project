@@ -134,6 +134,7 @@ const DOCUMENT_TITLE_QUILL_MODULES = {
 const DOCUMENT_TITLE_QUILL_FORMATS = ['align', 'bold', 'italic', 'underline', 'size'];
 
 const ENTRY_LIMIT = 12;
+const LEGACY_DEFAULT_PROGRAM_DESCRIPTION = 'Program perangkat ajar tambahan sesuai kebijakan kurikulum.';
 const TEACHING_RESOURCE_PROGRAM_CONFIG_QUERY_KEY = (academicYearId: number) => [
   'teaching-resource-program-config',
   'teacher',
@@ -749,6 +750,39 @@ const createDocumentTitleHtml = (value: unknown): string => {
   return plainText ? `<p>${escapeHtml(plainText)}</p>` : '';
 };
 
+const normalizeProgramDocumentNoteText = (value: unknown): string => {
+  const normalized = String(value || '')
+    .replace(/\r\n/g, '\n')
+    .trim();
+  if (!normalized) return '';
+  if (normalized === LEGACY_DEFAULT_PROGRAM_DESCRIPTION) return '';
+  return normalized;
+};
+
+const splitProgramDocumentNote = (
+  value: unknown,
+): {
+  title: string;
+  body: string;
+} | null => {
+  const normalized = normalizeProgramDocumentNoteText(value);
+  if (!normalized) return null;
+  const lines = normalized
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (lines.length <= 1) {
+    return {
+      title: '',
+      body: normalized,
+    };
+  }
+  return {
+    title: lines[0],
+    body: lines.slice(1).join('\n'),
+  };
+};
+
 const sanitizeDocumentTitleHtml = (value: unknown): string => {
   const rawValue = String(value || '').trim();
   if (!rawValue) return '';
@@ -1361,9 +1395,13 @@ export const LearningResourceGenerator = ({
   }, [activeProgramMeta?.label, title]);
 
   const effectiveDescription = useMemo(() => {
-    const fromConfig = String(activeProgramMeta?.description || '').trim();
-    return fromConfig || description;
-  }, [activeProgramMeta?.description, description]);
+    return description;
+  }, [description]);
+
+  const programDocumentNote = useMemo(
+    () => splitProgramDocumentNote(activeProgramMeta?.description),
+    [activeProgramMeta?.description],
+  );
 
   const activeProgramSchemaSections = useMemo(
     () =>
@@ -3283,6 +3321,11 @@ export const LearningResourceGenerator = ({
       ['Tingkat', contextValues.tingkat],
       ['Program Keahlian', contextValues.programKeahlian],
     ].filter(([, value]) => String(value || '').trim());
+    const documentNoteHtml = programDocumentNote
+      ? `<section class="document-note">${
+          programDocumentNote.title ? `<h3>${escapeHtml(programDocumentNote.title)}</h3>` : ''
+        }<div>${formatMultilineHtml(programDocumentNote.body)}</div></section>`
+      : '';
 
     return `
       <!doctype html>
@@ -3309,6 +3352,24 @@ export const LearningResourceGenerator = ({
           .doc-context { width: 100%; max-width: 520px; margin-bottom: 12px; font-size: 13px; border-collapse: collapse; }
           .doc-context td { border: none; padding: 2px 0; }
           .doc-context td:first-child { width: 150px; }
+          .document-note {
+            margin: 10px 0 14px;
+            border: 1px solid #000;
+            page-break-inside: avoid;
+          }
+          .document-note h3 {
+            margin: 0;
+            border-bottom: 1px solid #000;
+            background: #f1f5f9;
+            padding: 5px 7px;
+            font-size: 13px;
+            text-transform: uppercase;
+          }
+          .document-note div {
+            padding: 7px;
+            font-size: 12px;
+            line-height: 1.5;
+          }
           section { margin-bottom: 14px; page-break-inside: avoid; }
           section h3 { margin: 0 0 8px; font-size: 14px; }
           .text-block {
@@ -3403,6 +3464,7 @@ export const LearningResourceGenerator = ({
             .map(([label, value]) => `<tr><td>${escapeHtml(label)}</td><td>: ${escapeHtml(value)}</td></tr>`)
             .join('')}
         </table>
+        ${documentNoteHtml}
         ${printableSections.map(renderSectionPrintHtml).join('')}
         <div class="signature-wrap">
           <div class="signature-box">
@@ -3753,6 +3815,19 @@ export const LearningResourceGenerator = ({
                                   </div>
                                 ) : null}
 
+                                {programDocumentNote ? (
+                                  <div className="mt-3 overflow-hidden rounded-lg border border-slate-300 bg-slate-50">
+                                    {programDocumentNote.title ? (
+                                      <div className="border-b border-slate-300 px-3 py-2 text-xs font-semibold uppercase text-slate-800">
+                                        {programDocumentNote.title}
+                                      </div>
+                                    ) : null}
+                                    <div className="whitespace-pre-wrap px-3 py-2 text-xs leading-6 text-slate-700">
+                                      {programDocumentNote.body}
+                                    </div>
+                                  </div>
+                                ) : null}
+
                                 <div className="mt-3 rounded-lg border border-slate-300">
                                   <table className="w-full table-fixed border-collapse text-xs">
                                     <thead className="bg-slate-100">
@@ -3932,6 +4007,19 @@ export const LearningResourceGenerator = ({
                   className="w-full resize-y rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
                 />
               </div>
+
+              {programDocumentNote ? (
+                <div className="overflow-hidden rounded-lg border border-slate-300 bg-slate-50">
+                  {programDocumentNote.title ? (
+                    <div className="border-b border-slate-300 px-3 py-2 text-xs font-semibold uppercase text-slate-800">
+                      {programDocumentNote.title}
+                    </div>
+                  ) : null}
+                  <div className="whitespace-pre-wrap px-3 py-2 text-xs leading-6 text-slate-700">
+                    {programDocumentNote.body}
+                  </div>
+                </div>
+              ) : null}
 
               <div className="space-y-2 rounded-lg border border-gray-200 bg-gray-50 p-3">
                 <div className="flex items-center justify-between">

@@ -5,12 +5,12 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-04-28 17:57 WIB
-- Current status: follow-up UX guru web untuk `Perangkat Ajar` sudah selesai dan siap/live setelah deploy. Inline table editor kini lebih menyerupai tabel kerja murni, tidak memaksa geser horizontal untuk struktur CP umum, semua cell manual seragam sebagai textarea ringan, judul section seperti `Analisis CP` bisa diedit inline, dan tombol `Kirim Review` dibuat dinamis serta center.
+- Last updated: 2026-04-28 21:00 WIB
+- Current status: follow-up keterangan dokumen program perangkat ajar sudah selesai dan siap/live setelah deploy. Field deskripsi program di Wakakur kini difungsikan sebagai `Keterangan Dokumen` opsional; jika kosong tidak tampil, jika diisi tampil pada editor guru, inline table, dan hasil print sebelum tabel utama.
 - Objective/task aktif:
   - Menyelesaikan perapihan UX role guru pada halaman dokumen perangkat ajar agar lebih fleksibel saat menulis judul, lebih aman saat print, dan lebih operasional saat mengedit isi tabel.
 - Batch terakhir selesai:
-  - `Batch 25 - Rapikan inline table editor guru (web)`
+  - `Batch 26 - Fungsikan deskripsi program sebagai keterangan dokumen (web)`
 - Progress batch ini:
   - `100%`
 - Progress roadmap perangkat ajar dinamis:
@@ -22,13 +22,14 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - Commit: `pending commit`
   - Title: `pending commit`
   - Summary:
-    - inline table editor memakai `table-fixed w-full` dan cell border rapat agar tampil seperti tabel kerja, bukan form input berderet
-    - semua cell manual di quick editor memakai textarea ringan/borderless sehingga jenis kolom text tidak terlihat berbeda-beda dan Enter bisa membuat baris teks di cell yang sama
-    - quick editor menambahkan tombol `+ Tambah Baris` untuk menambah row data CP/section langsung dari table view
-    - judul section aktif seperti `Analisis CP` kini bisa diedit inline dan ikut disimpan saat `Simpan Tabel`; sumber awalnya tetap dari schema/program, bukan label hardcode di UI
-    - tombol `Kirim Review` dibuat `w-fit` dan center di bawah tombol aksi utama
+    - field `Deskripsi` pada kelola program Wakakur diganti label menjadi `Keterangan Dokumen`
+    - program baru tidak lagi otomatis diisi deskripsi default generik; legacy default lama juga disembunyikan agar dianggap kosong
+    - keterangan dokumen dari program ditampilkan opsional di sisi guru sebelum isi/tabel dokumen
+    - keterangan yang sama ikut dicetak sebelum tabel utama; baris pertama bisa menjadi judul blok seperti `CAPAIAN PEMBELAJARAN FASE F`
+    - subtitle halaman guru kembali memakai deskripsi route/generic agar keterangan dokumen panjang tidak memenuhi page header
 - Area/file disentuh:
   - `frontend/src/pages/teacher/learning-resources/LearningResourceGenerator.tsx`
+  - `frontend/src/pages/teacher/wakasek/curriculum/TeachingResourceProgramManagementPage.tsx`
   - `docs/CODEX_CONTINUITY.md`
 - Verifikasi batch ini:
   - `cd frontend && npm run build`
@@ -42,7 +43,7 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 - Remaining work:
   - Lanjut hanya jika user ingin QA/rapikan lebih jauh, misalnya membuka lebih dari satu tabel dokumen sekaligus atau parity mobile untuk pola rich title/print yang sama.
 - Residual risk:
-  - table fixed diprioritaskan agar tidak geser samping pada struktur CP umum; jika Wakakur membuat jumlah kolom sangat banyak, teks akan membungkus lebih rapat dalam halaman.
+  - keterangan dokumen masih memakai field program `description` yang sudah ada agar tidak perlu migrasi backend; jika nanti butuh judul dan isi terpisah secara formal, perlu field schema khusus pada batch berikutnya.
 
 ## Status Saat Ini
 
