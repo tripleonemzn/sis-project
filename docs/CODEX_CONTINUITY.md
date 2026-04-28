@@ -5,12 +5,12 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-04-28 17:44 WIB
-- Current status: follow-up UX guru web untuk `Perangkat Ajar` sudah selesai dan sudah live. Header print kini tidak default bold/uppercase dan ukurannya lebih kalem, tombol `Edit Tabel` dihapus agar aksi utama tinggal `Edit Lengkap`, serta tabel hasil konfigurasi otomatis tampil inline agar guru bisa langsung mengisi kolom/baris dari halaman daftar dokumen.
+- Last updated: 2026-04-28 17:57 WIB
+- Current status: follow-up UX guru web untuk `Perangkat Ajar` sudah selesai dan siap/live setelah deploy. Inline table editor kini lebih menyerupai tabel kerja murni, tidak memaksa geser horizontal untuk struktur CP umum, semua cell manual seragam sebagai textarea ringan, judul section seperti `Analisis CP` bisa diedit inline, dan tombol `Kirim Review` dibuat dinamis serta center.
 - Objective/task aktif:
   - Menyelesaikan perapihan UX role guru pada halaman dokumen perangkat ajar agar lebih fleksibel saat menulis judul, lebih aman saat print, dan lebih operasional saat mengedit isi tabel.
 - Batch terakhir selesai:
-  - `Batch 24 - Sederhanakan input tabel guru dan print title (web)`
+  - `Batch 25 - Rapikan inline table editor guru (web)`
 - Progress batch ini:
   - `100%`
 - Progress roadmap perangkat ajar dinamis:
@@ -22,11 +22,11 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - Commit: `pending commit`
   - Title: `pending commit`
   - Summary:
-    - header print dari editor judul tidak lagi dipaksa bold/uppercase; ukuran default diperkecil agar hanya sedikit lebih besar dari teks dokumen
-    - judul rich text di daftar dokumen dibaca sebagai teks normal agar baris Quill tidak menyatu tanpa spasi
-    - tombol `Edit Tabel`/`Tutup Tabel` dihapus dari aksi baris; struktur lengkap tetap lewat `Edit Lengkap`
-    - tabel hasil konfigurasi otomatis terbuka inline untuk dokumen editable pertama, menampilkan semua kolom dan baris agar guru bisa langsung input dari table view
-    - blok tanda tangan tetap hanya dirender sekali di akhir dokumen cetak dan diberi guard CSS agar tidak mudah terpecah halaman
+    - inline table editor memakai `table-fixed w-full` dan cell border rapat agar tampil seperti tabel kerja, bukan form input berderet
+    - semua cell manual di quick editor memakai textarea ringan/borderless sehingga jenis kolom text tidak terlihat berbeda-beda dan Enter bisa membuat baris teks di cell yang sama
+    - quick editor menambahkan tombol `+ Tambah Baris` untuk menambah row data CP/section langsung dari table view
+    - judul section aktif seperti `Analisis CP` kini bisa diedit inline dan ikut disimpan saat `Simpan Tabel`; sumber awalnya tetap dari schema/program, bukan label hardcode di UI
+    - tombol `Kirim Review` dibuat `w-fit` dan center di bawah tombol aksi utama
 - Area/file disentuh:
   - `frontend/src/pages/teacher/learning-resources/LearningResourceGenerator.tsx`
   - `docs/CODEX_CONTINUITY.md`
@@ -42,7 +42,7 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 - Remaining work:
   - Lanjut hanya jika user ingin QA/rapikan lebih jauh, misalnya membuka lebih dari satu tabel dokumen sekaligus atau parity mobile untuk pola rich title/print yang sama.
 - Residual risk:
-  - input tabel inline otomatis memilih dokumen editable pertama yang punya section tabel; jika dalam satu halaman ada banyak dokumen, hanya satu grid aktif yang ditampilkan pada satu waktu.
+  - table fixed diprioritaskan agar tidak geser samping pada struktur CP umum; jika Wakakur membuat jumlah kolom sangat banyak, teks akan membungkus lebih rapat dalam halaman.
 
 ## Status Saat Ini
 

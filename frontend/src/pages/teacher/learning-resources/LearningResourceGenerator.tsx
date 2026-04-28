@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import type { CSSProperties } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, Plus, Printer, Save, Send, X } from 'lucide-react';
 import { useNavigate, useOutletContext } from 'react-router-dom';
@@ -2193,6 +2194,17 @@ export const LearningResourceGenerator = ({
     return 'w-[200px] min-w-[180px]';
   };
 
+  const getQuickColumnStyle = (
+    column: EntrySectionColumnForm,
+    allColumns: EntrySectionColumnForm[],
+  ): CSSProperties => {
+    const key = String(column.key || '').trim().toLowerCase();
+    const columnCount = Math.max(1, allColumns.length);
+    if (['no', 'nomor', 'number'].includes(key)) return { width: '6%' };
+    if (columnCount <= 1) return { width: '100%' };
+    return { width: `${Math.max(10, 94 / (columnCount - 1))}%` };
+  };
+
   const canEditSectionTitle = (section: EntrySectionForm): boolean => {
     const schema = resolveSectionSchema(section);
     if (!schema) return true;
@@ -2213,6 +2225,30 @@ export const LearningResourceGenerator = ({
 
   const setQuickEditSectionsWithDerived = (updater: (prev: EntrySectionForm[]) => EntrySectionForm[]) => {
     setQuickEditSections((prev) => ensureDerivedSections(updater(prev)));
+  };
+
+  const addQuickEditSectionRow = (sectionId: string) => {
+    setQuickEditSectionsWithDerived((prev) =>
+      prev.map((item) => {
+        if (item.id !== sectionId) return item;
+        if (!canAddRowForSection(item)) return item;
+        const columns = resolveSectionColumns(item);
+        const nextRow = {
+          id: `row-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          values: columns.reduce<Record<string, string>>((acc, column) => {
+            const key = String(column.key || '').trim();
+            if (!key) return acc;
+            acc[key] = '';
+            return acc;
+          }, {}),
+        };
+        return {
+          ...item,
+          columns,
+          rows: [...item.rows, nextRow],
+        };
+      }),
+    );
   };
 
   const getEntryTableSections = (entry: TeachingResourceEntry): EntrySectionForm[] =>
@@ -2268,6 +2304,19 @@ export const LearningResourceGenerator = ({
           ),
         };
       }),
+    );
+  };
+
+  const updateQuickEditSectionTitle = (sectionId: string, value: string) => {
+    setQuickEditSectionsWithDerived((prev) =>
+      prev.map((item) =>
+        item.id === sectionId
+          ? {
+              ...item,
+              title: value,
+            }
+          : item,
+      ),
     );
   };
 
@@ -2364,14 +2413,16 @@ export const LearningResourceGenerator = ({
     const value = String(row?.values?.[columnKey] || '');
     const dataType = getColumnDataType(column);
     const readOnly = isSystemManagedColumn(column);
-    const inputClassName = `w-full rounded-md border border-gray-300 px-2 py-1.5 text-xs focus:border-blue-500 focus:outline-none ${
-      readOnly ? 'bg-gray-50 text-gray-500' : 'bg-white'
+    const tableCellControlClassName = `block w-full border-0 bg-transparent px-1 py-1 text-xs leading-relaxed text-slate-800 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-400 ${
+      readOnly ? 'cursor-not-allowed text-slate-500' : ''
     }`;
-    const selectClassName = `${inputClassName} ${readOnly ? 'cursor-not-allowed' : ''}`;
+    const selectClassName = `h-9 w-full rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-700 focus:border-blue-500 focus:outline-none ${
+      readOnly ? 'cursor-not-allowed bg-slate-50 text-slate-500' : ''
+    }`;
 
     if (isDocumentReferenceColumn(column)) {
       return (
-        <div className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1.5 text-xs text-gray-500">
+        <div className="min-h-[42px] whitespace-pre-wrap px-1 py-1 text-xs leading-relaxed text-slate-500">
           {value || row?.referenceSelections?.[columnKey]?.label || 'Edit referensi dari editor lengkap'}
         </div>
       );
@@ -2511,29 +2562,31 @@ export const LearningResourceGenerator = ({
       );
     }
 
-    if (column.multiline || dataType === 'TEXTAREA') {
+    if (!['MONTH', 'WEEK', 'SEMESTER', 'SELECT', 'BOOLEAN', 'WEEK_GRID'].includes(dataType)) {
       return (
         <textarea
           rows={2}
           value={value}
           disabled={readOnly}
           onChange={(event) => updateQuickEditRowCell(section.id, row?.id || '', columnKey, event.target.value)}
+          onInput={(event) => {
+            event.currentTarget.style.height = 'auto';
+            event.currentTarget.style.height = `${event.currentTarget.scrollHeight}px`;
+          }}
           placeholder={column.placeholder || ''}
-          className={`w-full resize-y rounded-md border border-gray-300 px-2 py-1.5 text-xs focus:border-blue-500 focus:outline-none ${
-            readOnly ? 'bg-gray-50 text-gray-500' : 'bg-white'
-          }`}
+          className={`${tableCellControlClassName} min-h-[42px] resize-y overflow-hidden`}
         />
       );
     }
 
     return (
       <input
-        type={dataType === 'NUMBER' ? 'number' : 'text'}
+        type="text"
         value={value}
         disabled={readOnly}
         onChange={(event) => updateQuickEditRowCell(section.id, row?.id || '', columnKey, event.target.value)}
         placeholder={column.placeholder || ''}
-        className={inputClassName}
+        className={tableCellControlClassName}
       />
     );
   };
@@ -3572,43 +3625,45 @@ export const LearningResourceGenerator = ({
                           </td>
                           <td className="px-3 py-3 text-sm text-gray-700">{formatDateTime(entry.updatedAt)}</td>
                           <td className="px-3 py-3">
-                            <div className="flex flex-wrap items-center justify-end gap-2">
-                              <button
-                                type="button"
-                                onClick={() => handlePrintEntry(entry)}
-                                className="inline-flex items-center gap-1 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
-                              >
-                                <Printer size={12} />
-                                Print
-                              </button>
-                              {canEdit ? (
+                            <div className="flex flex-col items-center gap-2">
+                              <div className="flex flex-wrap items-center justify-center gap-2">
                                 <button
                                   type="button"
-                                  onClick={() => openEdit(entry)}
-                                  className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                                  onClick={() => handlePrintEntry(entry)}
+                                  className="inline-flex items-center gap-1 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
                                 >
-                                  Edit Lengkap
+                                  <Printer size={12} />
+                                  Print
                                 </button>
-                              ) : null}
-                              {canDelete ? (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    const confirmed = window.confirm('Hapus dokumen ini? Tindakan ini tidak bisa dibatalkan.');
-                                    if (!confirmed) return;
-                                    deleteMutation.mutate(entry.id);
-                                  }}
-                                  className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-100"
-                                >
-                                  Hapus
-                                </button>
-                              ) : null}
+                                {canEdit ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => openEdit(entry)}
+                                    className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                                  >
+                                    Edit Lengkap
+                                  </button>
+                                ) : null}
+                                {canDelete ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const confirmed = window.confirm('Hapus dokumen ini? Tindakan ini tidak bisa dibatalkan.');
+                                      if (!confirmed) return;
+                                      deleteMutation.mutate(entry.id);
+                                    }}
+                                    className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-100"
+                                  >
+                                    Hapus
+                                  </button>
+                                ) : null}
+                              </div>
                               {canSubmit ? (
                                 <button
                                   type="button"
                                   onClick={() => submitMutation.mutate(entry.id)}
                                   disabled={submitMutation.isPending}
-                                  className="inline-flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+                                  className="inline-flex w-fit items-center justify-center gap-1 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
                                 >
                                   <Send size={12} />
                                   Kirim Review
@@ -3655,9 +3710,16 @@ export const LearningResourceGenerator = ({
                               <div className="rounded-lg border border-slate-200 bg-white p-3">
                                 <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                                   <div>
-                                    <h4 className="text-sm font-semibold text-slate-900">
-                                      {activeQuickSection.title || 'Isi Dokumen'}
-                                    </h4>
+                                    <label className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-slate-500">
+                                      Judul Bagian
+                                    </label>
+                                    <input
+                                      type="text"
+                                      value={activeQuickSection.title}
+                                      onChange={(event) => updateQuickEditSectionTitle(activeQuickSection.id, event.target.value)}
+                                      placeholder="Isi Dokumen"
+                                      className="w-full min-w-[260px] rounded-md border border-slate-200 px-2.5 py-1.5 text-sm font-semibold text-slate-900 focus:border-blue-500 focus:outline-none"
+                                    />
                                   </div>
                                   <div className="flex flex-wrap items-center gap-2">
                                     <button
@@ -3691,14 +3753,15 @@ export const LearningResourceGenerator = ({
                                   </div>
                                 ) : null}
 
-                                <div className="mt-3 overflow-x-auto rounded-lg border border-slate-200">
-                                  <table className="min-w-max text-xs">
-                                    <thead className="bg-slate-50">
+                                <div className="mt-3 rounded-lg border border-slate-300">
+                                  <table className="w-full table-fixed border-collapse text-xs">
+                                    <thead className="bg-slate-100">
                                       <tr>
                                         {compactQuickColumns.map((column) => (
                                           <th
                                             key={`quick-head-${activeQuickSection.id}-${column.key}`}
-                                            className={`whitespace-nowrap border-b border-slate-200 px-2 py-2 text-left font-semibold text-slate-600 ${getColumnWidthClass(column.key, Boolean(column.multiline), column.dataType)}`}
+                                            style={getQuickColumnStyle(column, compactQuickColumns)}
+                                            className="border border-slate-300 px-2 py-2 text-center text-[11px] font-semibold uppercase leading-snug text-slate-700"
                                           >
                                             {column.label}
                                           </th>
@@ -3711,7 +3774,8 @@ export const LearningResourceGenerator = ({
                                           {compactQuickColumns.map((column) => (
                                             <td
                                               key={`quick-cell-${row.id}-${column.key}`}
-                                              className={`px-2 py-1.5 align-top ${getColumnWidthClass(column.key, Boolean(column.multiline), column.dataType)}`}
+                                              style={getQuickColumnStyle(column, compactQuickColumns)}
+                                              className="border border-slate-300 bg-white p-1 align-top"
                                             >
                                               {renderQuickEditCellControl(activeQuickSection, row, column)}
                                             </td>
@@ -3720,6 +3784,18 @@ export const LearningResourceGenerator = ({
                                       ))}
                                     </tbody>
                                   </table>
+                                </div>
+                                <div className="mt-3 flex items-center justify-between gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => addQuickEditSectionRow(activeQuickSection.id)}
+                                    className="rounded-md border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700 hover:bg-blue-100"
+                                  >
+                                    + Tambah Baris
+                                  </button>
+                                  <p className="text-[11px] text-slate-500">
+                                    Tekan Enter di dalam sel untuk menambah baris teks pada kolom yang sama.
+                                  </p>
                                 </div>
 
                               </div>
