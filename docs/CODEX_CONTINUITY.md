@@ -5,41 +5,40 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-04-27 22:29 WIB
-- Current status: refinement kecil pasca-fix print ranking sudah selesai dan live. Header print ranking sekarang memakai istilah `Tahun Ajaran`, dan duplikasi filter semester di `Nilai Saya` siswa sudah dihapus sehingga semester program hanya dikendalikan dari card tab atas.
+- Last updated: 2026-04-28 09:29 WIB
+- Current status: shortcut `Scan Presensi` pada dashboard mobile sudah dipindahkan dari card penuh ke header atas sebagai tombol ikon scan kecil dengan label `Presensi`, sesuai arahan screenshot user. Route/menu yang dipakai tetap menu presensi existing sehingga behavior scan tidak berubah.
 - Objective/task aktif:
-  - Merapikan istilah header dokumen ranking dan menghilangkan ambiguity filter semester pada tab `Nilai Program Ujian`.
+  - Merapikan posisi shortcut presensi mobile agar akses scan ada di area atas dashboard dan tidak lagi mengambil ruang sebagai card penuh.
 - Batch terakhir selesai:
-  - `Batch ranking terminology + student semester dedupe`
+  - `Batch mobile presence shortcut header`
 - Progress batch ini:
   - `100%`
 - Last completed repo work:
-  - Commit: `pending current branch push`
-  - Title: `fix(ui): refine ranking header and student semester filter`
+  - Commit: `d1e6cd1`
+  - Title: `fix(mobile): move presence shortcut to home header`
   - Summary:
-    - header print ranking di jalur iframe kini memakai istilah `TAHUN AJARAN`
-    - fallback komponen `RankingPrintDocument` juga diselaraskan ke istilah `Tahun Ajaran`
-    - `Nilai Saya` web tidak lagi menampilkan filter semester kedua di card `Program Ujian Aktif`
-    - sumber semester program sekarang tinggal satu, yaitu dropdown `Semester Program` pada card tab atas
+    - tombol `Scan Presensi` lebar pada dashboard mobile dihapus
+    - akses presensi dipindahkan ke baris header dashboard kanan atas
+    - shortcut baru memakai ikon scan dan label `Presensi`
+    - loading state tetap memakai `openingMenuKey` existing
 - Area/file disentuh:
-  - `frontend/src/components/reports/RankingPrintDocument.tsx`
-  - `frontend/src/pages/student/StudentGradesPage.tsx`
-  - `frontend/src/pages/teacher/homeroom/HomeroomRankingPage.tsx`
+  - `mobile-app/app/(app)/home.tsx`
   - `docs/CODEX_CONTINUITY.md`
 - Verifikasi batch ini:
   - `git diff --check`
-  - `cd frontend && npm run build`
-  - `cd frontend && npm run deploy`
-  - `curl -I https://siskgb2.id/student/grades` -> `200`
-  - `curl -I https://siskgb2.id/teacher/wali-kelas/rapor/program/sas` -> `200`
+  - `cd mobile-app && npm run typecheck`
+  - `cd mobile-app && npm run audit:parity:check`
+  - `cd mobile-app && npm run check:ota:testers`
+  - `cd mobile-app && npm run update:pilot-live:verified -- "Shortcut Presensi dipindahkan ke header dashboard. Silakan perbarui untuk menikmati fitur terbaru."`
 - Publish/live status:
-  - Web live
-  - Backend tidak berubah
-  - Mobile tidak berubah
+  - Web/backend tidak berubah
+  - OTA Android `pilot-live` live
+  - Update group: `a9a7c418-5529-4103-8f98-82f699aae634`
+  - Push notify update: `3/3`
 - Remaining work:
   - tidak ada pekerjaan setengah jadi pada batch ini
 - Residual risk:
-  - tidak ada residual risk teknis baru; perubahan hanya refinement frontend ringan
+  - tidak ada residual risk teknis baru; perubahan hanya layout shortcut mobile dan memakai route existing
 
 ## Status Saat Ini
 
