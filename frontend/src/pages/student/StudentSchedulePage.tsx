@@ -12,7 +12,7 @@ import {
   User,
   BookOpen
 } from 'lucide-react';
-import clsx from 'clsx';
+import { UnderlineTabBar } from '../../components/navigation/UnderlineTabBar';
 
 interface ScheduleEntry {
   id: number;
@@ -48,6 +48,7 @@ const DAY_NAMES: Record<string, string> = {
   THURSDAY: 'Kamis',
   FRIDAY: 'Jumat'
 };
+const DAY_TAB_ITEMS = DAYS.map((day) => ({ id: day, label: DAY_NAMES[day] }));
 
 // Standard period times (approximate/default)
 const DEFAULT_PERIOD_TIMES: Record<string, Record<number, string>> = {
@@ -161,24 +162,23 @@ export default function StudentSchedulePage() {
         <p className="text-gray-500 mt-1">Jadwal kegiatan belajar mengajar minggu ini</p>
       </div>
 
-      <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
-          <div className="flex bg-gray-100 p-1 rounded-lg overflow-x-auto">
-            {DAYS.map((day) => (
-              <button
-                key={day}
-                onClick={() => setActiveDay(day)}
-                className={clsx(
-                  'px-4 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap',
-                  activeDay === day
-                    ? 'bg-white text-blue-600 shadow-sm'
-                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-200'
-                )}
-              >
-                {DAY_NAMES[day]}
-              </button>
-            ))}
+      <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+        <div className="px-5 pt-4">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <h2 className="text-section-title text-gray-900">Daftar Jadwal Harian</h2>
+              <p className="mt-1 text-sm text-gray-500">
+                Pilih hari untuk melihat jadwal pelajaran dalam format tabel.
+              </p>
+            </div>
           </div>
+          <UnderlineTabBar
+            items={DAY_TAB_ITEMS}
+            activeId={activeDay}
+            onChange={setActiveDay}
+            className="mt-4 border-b border-gray-200"
+            ariaLabel="Pilih hari jadwal pelajaran"
+          />
         </div>
 
         {loading ? (
@@ -186,44 +186,63 @@ export default function StudentSchedulePage() {
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
           </div>
         ) : filteredSchedules.length > 0 ? (
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {filteredSchedules.map((schedule) => (
-              <div 
-                key={schedule.id}
-                className="bg-gray-50 rounded-lg p-4 border border-gray-200 hover:shadow-md transition-shadow"
-              >
-                <div className="flex justify-between items-start mb-3">
-                  <div className="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-xs font-semibold">
-                    Jam ke-{schedule.period}
-                  </div>
-                  <div className="flex items-center text-gray-500 text-sm">
-                    <Clock className="w-4 h-4 mr-1" />
-                    {getTime(activeDay, schedule.period)}
-                  </div>
-                </div>
-                
-                <h3 className="text-lg font-bold text-gray-900 mb-1 line-clamp-2">
-                  {schedule.teacherAssignment.subject.name}
-                </h3>
-                <p className="text-sm text-gray-500 mb-4">{schedule.teacherAssignment.subject.code}</p>
-                
-                <div className="space-y-2 pt-3 border-t border-gray-200">
-                  <div className="flex items-center text-gray-700 text-sm">
-                    <User className="w-4 h-4 mr-2 text-gray-400" />
-                    <span className="truncate">{schedule.teacherAssignment.teacher.name}</span>
-                  </div>
-                  {schedule.room && (
-                    <div className="flex items-center text-gray-700 text-sm">
-                      <MapPin className="w-4 h-4 mr-2 text-gray-400" />
-                      <span>{schedule.room}</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
+          <div className="overflow-x-auto">
+            <table className="min-w-[780px] w-full text-left">
+              <thead className="bg-gray-50">
+                <tr className="border-b border-gray-200">
+                  <th className="w-28 px-5 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">Jam</th>
+                  <th className="w-44 px-5 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">Waktu</th>
+                  <th className="px-5 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">Mata Pelajaran</th>
+                  <th className="px-5 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">Guru</th>
+                  <th className="w-44 px-5 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">Ruang</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {filteredSchedules.map((schedule) => (
+                  <tr key={schedule.id} className="transition-colors hover:bg-gray-50">
+                    <td className="px-5 py-4">
+                      <span className="inline-flex rounded-full border border-blue-100 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">
+                        Jam ke-{schedule.period}
+                      </span>
+                    </td>
+                    <td className="px-5 py-4 text-sm text-gray-700">
+                      <div className="inline-flex items-center gap-2">
+                        <Clock className="h-4 w-4 text-gray-400" />
+                        {getTime(activeDay, schedule.period)}
+                      </div>
+                    </td>
+                    <td className="px-5 py-4">
+                      <div className="flex items-start gap-2">
+                        <BookOpen className="mt-0.5 h-4 w-4 shrink-0 text-indigo-500" />
+                        <div>
+                          <p className="text-sm font-semibold text-gray-900">
+                            {schedule.teacherAssignment.subject.name}
+                          </p>
+                          <p className="mt-0.5 font-mono text-xs text-gray-500">
+                            {schedule.teacherAssignment.subject.code}
+                          </p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-5 py-4 text-sm text-gray-700">
+                      <div className="inline-flex items-center gap-2">
+                        <User className="h-4 w-4 text-gray-400" />
+                        <span>{schedule.teacherAssignment.teacher.name}</span>
+                      </div>
+                    </td>
+                    <td className="px-5 py-4 text-sm text-gray-700">
+                      <div className="inline-flex items-center gap-2">
+                        <MapPin className="h-4 w-4 text-gray-400" />
+                        <span>{schedule.room || '-'}</span>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         ) : (
-          <div className="text-center py-12 bg-gray-50 rounded-lg border border-dashed border-gray-300">
+          <div className="m-5 rounded-lg border border-dashed border-gray-300 bg-gray-50 py-12 text-center">
             <BookOpen className="w-12 h-12 text-gray-300 mx-auto mb-3" />
             <h3 className="text-lg font-medium text-gray-900">Tidak ada jadwal</h3>
             <p className="text-gray-500">Tidak ada mata pelajaran untuk hari {DAY_NAMES[activeDay]}</p>
