@@ -1,4 +1,5 @@
-import { useDeferredValue, useEffect, useMemo, useState } from 'react';
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
+import type { RefObject } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   CheckCircle2,
@@ -162,6 +163,34 @@ function InitialAvatar({ name, photo }: { name: string; photo?: string | null })
   );
 }
 
+async function requestElementFullscreen(element: HTMLDivElement | null) {
+  if (!element || typeof document === 'undefined') return;
+  const fullscreenDocument = document as Document & {
+    webkitFullscreenElement?: Element | null;
+    mozFullScreenElement?: Element | null;
+    msFullscreenElement?: Element | null;
+  };
+  const alreadyFullscreen =
+    document.fullscreenElement ||
+    fullscreenDocument.webkitFullscreenElement ||
+    fullscreenDocument.mozFullScreenElement ||
+    fullscreenDocument.msFullscreenElement;
+  if (alreadyFullscreen) return;
+
+  const fullscreenElement = element as HTMLDivElement & {
+    webkitRequestFullscreen?: () => Promise<void> | void;
+    mozRequestFullScreen?: () => Promise<void> | void;
+    msRequestFullscreen?: () => Promise<void> | void;
+  };
+  const request =
+    fullscreenElement.requestFullscreen ||
+    fullscreenElement.webkitRequestFullscreen ||
+    fullscreenElement.mozRequestFullScreen ||
+    fullscreenElement.msRequestFullscreen;
+  if (!request) return;
+  await request.call(fullscreenElement);
+}
+
 function PresenceHistoryTable({
   events,
   emptyText,
@@ -217,6 +246,72 @@ function PresenceHistoryTable({
           )}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+function WelcomePresencePanel({
+  event,
+  checkpoint,
+}: {
+  event: DailyPresenceEventItem | null;
+  checkpoint: DailyPresenceEventType;
+}) {
+  const personName = event ? getEventPersonName(event) : 'Menunggu scan presensi';
+  const roleLabel = event?.student ? 'Siswa' : event?.participant ? getParticipantRoleLabel(event.participant.role) : 'Monitor aktif';
+  const idLabel = event?.student
+    ? event.student.nisn || event.student.nis || '-'
+    : event?.participant
+      ? event.participant.nip || event.participant.username || '-'
+      : '-';
+  const detailLabel = event ? getEventSecondaryLabel(event) : 'Data peserta akan tampil otomatis setelah QR berhasil discan.';
+  const eventTime = event?.recordedTime || formatTimeLabel(event?.recordedAt);
+
+  return (
+    <div className="flex h-full flex-col justify-between rounded-3xl border border-sky-300/20 bg-slate-900/70 p-7 text-white shadow-2xl shadow-slate-950/20">
+      <div>
+        <p className="text-sm font-semibold uppercase tracking-[0.35em] text-sky-300">Presensi Berhasil</p>
+        <h2 className="mt-5 text-5xl font-extrabold leading-tight text-white">Selamat Datang</h2>
+        <p className="mt-3 text-base text-slate-300">
+          {event
+            ? `Absensi ${getDailyPresenceCheckpointLabel(checkpoint).toLowerCase()} tercatat pukul ${eventTime}.`
+            : 'Arahkan peserta untuk scan QR di sisi kiri layar.'}
+        </p>
+      </div>
+
+      <div className="my-8 rounded-3xl border border-white/10 bg-white/10 p-6">
+        <div className="flex items-center gap-5">
+          <InitialAvatar name={personName} />
+          <div className="min-w-0">
+            <p className="truncate text-3xl font-extrabold text-white">{personName}</p>
+            <p className="mt-1 text-lg font-semibold text-sky-200">{roleLabel}</p>
+          </div>
+        </div>
+
+        <div className="mt-7 grid gap-4 md:grid-cols-2">
+          <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Identitas</p>
+            <p className="mt-2 text-xl font-bold text-white">{idLabel}</p>
+          </div>
+          <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Waktu</p>
+            <p className="mt-2 text-xl font-bold text-white">{event ? eventTime : '--:--'}</p>
+          </div>
+        </div>
+
+        <div className="mt-4 rounded-2xl border border-white/10 bg-slate-950/40 p-4">
+          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Detail</p>
+          <p className="mt-2 text-lg font-semibold text-white">{detailLabel}</p>
+          {event?.lateMinutes && event.lateMinutes > 0 ? (
+            <p className="mt-2 text-sm font-semibold text-amber-200">Terlambat {event.lateMinutes} menit</p>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-5 text-sm text-slate-300">
+        <span>Sumber: {event ? getSourceLabel(event.source) : 'Menunggu scan'}</span>
+        <span>Checkpoint: {getDailyPresenceCheckpointLabel(checkpoint)}</span>
+      </div>
     </div>
   );
 }
@@ -348,12 +443,16 @@ function SharedQrMonitorPanel({
   checkpoint,
   session,
   loading,
+  latestEvent,
   onRefresh,
+  monitorRef,
 }: {
   checkpoint: DailyPresenceEventType;
   session: DailyPresenceSelfScanManagerSession | null;
   loading: boolean;
+  latestEvent: DailyPresenceEventItem | null;
   onRefresh: () => void;
+  monitorRef: RefObject<HTMLDivElement | null>;
 }) {
   const [ticker, setTicker] = useState(Date.now());
 
@@ -372,18 +471,21 @@ function SharedQrMonitorPanel({
   }, [session, ticker]);
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-      <div className="flex items-start justify-between gap-3">
+    <div
+      ref={monitorRef}
+      className="daily-presence-monitor-shell rounded-2xl border border-slate-800 bg-slate-950 p-5 text-white shadow-sm"
+    >
+      <div className="daily-presence-monitor-titlebar flex items-start justify-between gap-3">
         <div>
-          <h3 className="text-lg font-semibold text-slate-900">Monitor QR Bersama</h3>
-          <p className="mt-1 text-sm text-slate-500">
+          <h3 className="text-lg font-semibold text-white">Monitor QR Bersama</h3>
+          <p className="mt-1 text-sm text-sky-100">
             Tampilkan QR ini di monitor/TV. QR diperbarui otomatis sesuai konfigurasi presensi aktif.
           </p>
         </div>
         <button
           type="button"
           onClick={onRefresh}
-          className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+          className="inline-flex items-center gap-2 rounded-xl border border-white/15 bg-slate-900 px-3 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
         >
           <RefreshCcw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
           Muat Ulang
@@ -391,58 +493,54 @@ function SharedQrMonitorPanel({
       </div>
 
       {!session ? (
-        <div className="mt-5 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm text-slate-500">
+        <div className="mt-5 rounded-xl border border-dashed border-slate-700 bg-slate-900 px-4 py-5 text-sm text-slate-300">
           Belum ada sesi aktif untuk monitor QR {getDailyPresenceCheckpointLabel(checkpoint).toLowerCase()}. Buka sesi lebih dulu.
         </div>
       ) : !session.monitor ? (
-        <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-5 text-sm text-amber-700">
+        <div className="mt-5 rounded-xl border border-amber-300/30 bg-amber-500/10 px-4 py-5 text-sm text-amber-100">
           QR monitor belum siap dimuat. Gunakan tombol muat ulang untuk mengambil QR terbaru.
         </div>
       ) : (
         <>
-          <div className="mt-5 grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
-            <div className="mx-auto w-full max-w-[360px] rounded-3xl border border-slate-200 bg-slate-50 p-4 xl:mx-0">
-              <div className="flex aspect-square items-center justify-center rounded-2xl bg-white p-4 shadow-inner">
+          <div className="daily-presence-monitor-grid mt-5 grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
+            <div className="mx-auto flex w-full max-w-[360px] flex-col justify-center rounded-3xl border border-white/10 bg-slate-900 p-4 xl:mx-0">
+              <div className="flex aspect-square items-center justify-center rounded-2xl bg-white p-4 shadow-inner shadow-slate-950/40">
                 <img
                   src={session.monitor.qrCodeDataUrl}
                   alt={`QR monitor ${getDailyPresenceCheckpointLabel(checkpoint)}`}
                   className="h-full w-full rounded-2xl object-contain"
                 />
               </div>
-              <p className="mt-3 text-center text-sm font-semibold text-slate-700">
+              <p className="mt-3 text-center text-sm font-semibold text-white">
                 QR aktif {formatCountdownLabel(session.monitor.qrExpiresAt)}
               </p>
-              <p className="mt-1 text-center text-xs text-slate-500">
+              <p className="mt-1 text-center text-xs text-sky-100">
                 Refresh tiap {session.monitor.refreshSeconds} detik.
               </p>
             </div>
 
-            <div className="space-y-3">
-              <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-blue-700">Checkpoint Aktif</p>
-                <p className="mt-2 text-2xl font-bold text-slate-900">
-                  Absen {getDailyPresenceCheckpointLabel(checkpoint)}
-                </p>
-                <p className="mt-2 text-sm text-slate-600">
-                  {session.gateLabel ? `Gate ${session.gateLabel}. ` : 'Gate belum diisi. '}
-                  Sesi berakhir {formatTimeLabel(session.sessionExpiresAt)}.
-                </p>
-              </div>
-
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                <p className="text-sm font-semibold text-slate-900">Kode Challenge Saat Ini</p>
-                <p className="mt-2 text-3xl font-extrabold tracking-[0.28em] text-slate-900">{liveChallengeCode}</p>
-                <p className="mt-2 text-sm text-slate-500">
-                  Kode berganti otomatis {formatCountdownLabel(session.challengeWindowExpiresAt)}.
-                </p>
-              </div>
-
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                <p className="text-sm font-semibold text-slate-900">Petugas Pembuka</p>
-                <p className="mt-1 text-sm text-slate-600">{session.actor.name}</p>
-                <p className="mt-1 text-xs text-slate-500">
-                  Tanggal operasional {formatTodayLabel(session.date)}.
-                </p>
+            <div className="space-y-4">
+              <WelcomePresencePanel event={latestEvent} checkpoint={checkpoint} />
+              <div className="grid gap-3 lg:grid-cols-3">
+                <div className="rounded-2xl border border-sky-300/20 bg-sky-500/10 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.22em] text-sky-200">Checkpoint</p>
+                  <p className="mt-2 text-lg font-bold text-white">Absen {getDailyPresenceCheckpointLabel(checkpoint)}</p>
+                  <p className="mt-1 text-xs text-sky-100">
+                    {session.gateLabel ? `Gate ${session.gateLabel}` : 'Gate belum diisi'}
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-white/10 bg-slate-900 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">Kode Challenge</p>
+                  <p className="mt-2 text-2xl font-extrabold tracking-[0.22em] text-white">{liveChallengeCode}</p>
+                  <p className="mt-1 text-xs text-slate-400">
+                    Berganti {formatCountdownLabel(session.challengeWindowExpiresAt)}
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-white/10 bg-slate-900 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">Petugas</p>
+                  <p className="mt-2 text-sm font-bold text-white">{session.actor.name}</p>
+                  <p className="mt-1 text-xs text-slate-400">{formatTodayLabel(session.date)}</p>
+                </div>
               </div>
             </div>
           </div>
@@ -600,6 +698,7 @@ export default function StaffDailyPresencePage() {
   const [scannedPass, setScannedPass] = useState<ScannedPassState>(null);
   const [pendingScannedToken, setPendingScannedToken] = useState('');
   const [policyDraft, setPolicyDraft] = useState<DailyPresencePolicy | null>(null);
+  const monitorPanelRef = useRef<HTMLDivElement | null>(null);
 
   const meQuery = useQuery({
     queryKey: ['staff-daily-presence-me'],
@@ -617,6 +716,7 @@ export default function StaffDailyPresencePage() {
     enabled: canAccess,
     queryFn: () => attendanceService.getDailyPresenceOverview({ limit: 20 }),
     staleTime: 60 * 1000,
+    refetchInterval: canAccess && activeTab === 'MONITOR' ? 7000 : false,
   });
 
   const policyQuery = useQuery({
@@ -885,12 +985,35 @@ export default function StaffDailyPresencePage() {
       : Boolean(selectedStudentId) && !saveMutation.isPending);
   const recentEvents = overviewQuery.data?.recentEvents || [];
   const activeManagerSession = managerSessionQuery.data || null;
+  const latestMonitorPresenceEvent = useMemo(() => {
+    const sessionStartedAt = activeManagerSession?.createdAt ? new Date(activeManagerSession.createdAt).getTime() : 0;
+    const sessionEvents = recentEvents.filter((event) => {
+      if (event.eventType !== scanCheckpoint) return false;
+      if (!sessionStartedAt) return true;
+      const recordedAt = new Date(event.recordedAt).getTime();
+      return Number.isFinite(recordedAt) && recordedAt >= sessionStartedAt - 1000;
+    });
+    return (
+      sessionEvents.find((event) => event.source === 'SELF_SCAN') ||
+      sessionEvents[0] ||
+      null
+    );
+  }, [activeManagerSession?.createdAt, recentEvents, scanCheckpoint]);
   const scanBusy =
     startSessionMutation.isPending ||
     closeSessionMutation.isPending ||
     previewMutation.isPending ||
     confirmMutation.isPending;
   const scannerEnabled = Boolean(activeManagerSession) && !scanBusy && !scannedPass;
+
+  const handleStartSelfScanSession = () => {
+    if (activeTab === 'MONITOR') {
+      void requestElementFullscreen(monitorPanelRef.current).catch(() => {
+        toast.error('Fullscreen otomatis belum aktif. Izinkan fullscreen lalu coba buka sesi lagi.');
+      });
+    }
+    startSessionMutation.mutate();
+  };
 
   useEffect(() => {
     setScannedPass(null);
@@ -1128,7 +1251,7 @@ export default function StaffDailyPresencePage() {
                   onRefresh={() => {
                     void managerSessionQuery.refetch();
                   }}
-                  onStart={() => startSessionMutation.mutate()}
+                  onStart={handleStartSelfScanSession}
                   onClose={() => closeSessionMutation.mutate()}
                   pending={startSessionMutation.isPending || closeSessionMutation.isPending}
                 />
@@ -1164,7 +1287,7 @@ export default function StaffDailyPresencePage() {
                 onRefresh={() => {
                   void managerSessionQuery.refetch();
                 }}
-                onStart={() => startSessionMutation.mutate()}
+                onStart={handleStartSelfScanSession}
                 onClose={() => closeSessionMutation.mutate()}
                 pending={startSessionMutation.isPending || closeSessionMutation.isPending}
               />
@@ -1172,9 +1295,12 @@ export default function StaffDailyPresencePage() {
                 checkpoint={scanCheckpoint}
                 session={activeManagerSession}
                 loading={managerSessionQuery.isFetching}
+                latestEvent={latestMonitorPresenceEvent}
                 onRefresh={() => {
                   void managerSessionQuery.refetch();
+                  void overviewQuery.refetch();
                 }}
+                monitorRef={monitorPanelRef}
               />
             </div>
           )}

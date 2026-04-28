@@ -270,6 +270,7 @@ export interface DailyPresenceSelfScanSession {
   checkpoint: DailyPresenceEventType;
   gateLabel?: string | null;
   date: string;
+  createdAt?: string | null;
   challengeWindowSeconds: number;
   challengeWindowExpiresAt: string;
   sessionExpiresAt: string;

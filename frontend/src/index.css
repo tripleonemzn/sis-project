@@ -32,6 +32,32 @@
 
 body { background-color: var(--app-bg); color: var(--app-text-primary); }
 
+.daily-presence-monitor-shell:fullscreen,
+.daily-presence-monitor-shell:-webkit-full-screen {
+  width: 100vw;
+  height: 100vh;
+  overflow: auto;
+  border: 0;
+  border-radius: 0;
+  padding: 22px;
+  background: #0f172a;
+  display: flex;
+  flex-direction: column;
+}
+
+.daily-presence-monitor-shell:fullscreen .daily-presence-monitor-grid,
+.daily-presence-monitor-shell:-webkit-full-screen .daily-presence-monitor-grid {
+  flex: 1;
+  min-height: 0;
+  grid-template-columns: minmax(340px, 0.72fr) minmax(0, 1.28fr);
+  align-items: stretch;
+}
+
+.daily-presence-monitor-shell:fullscreen .daily-presence-monitor-titlebar,
+.daily-presence-monitor-shell:-webkit-full-screen .daily-presence-monitor-titlebar {
+  flex-shrink: 0;
+}
+
 .app-theme-scope select:not([multiple]),
 select.app-select-compact {
   appearance: none;
