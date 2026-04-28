@@ -1033,12 +1033,27 @@ function createSectionFromQuickPreset(preset: SectionQuickPreset, index: number)
   };
 }
 
+function buildDefaultProgramSchemaBase(code: string, label: string): TeachingResourceProgramSchema {
+  const normalizedCode = normalizeTeachingResourceProgramCode(code || label || 'CUSTOM_PROGRAM');
+  return {
+    version: 1,
+    schemaMode: 'BLOCKS_V1',
+    sourceSheet: normalizedCode,
+    intro: `Struktur dokumen ${label || normalizedCode} diatur kurikulum dan diisi guru sesuai template aktif.`,
+    titleHint: `Dokumen ${label || normalizedCode}`,
+    summaryHint: 'Ringkasan singkat dokumen',
+    documentTitle: label || normalizedCode,
+    documentShortTitle: label || normalizedCode,
+    sections: [createEmptySection(0, 'TABLE')],
+  };
+}
+
 function applySchemaFoundationDefaults(
   schema: TeachingResourceProgramSchema | undefined,
   code: string,
   label: string,
 ): TeachingResourceProgramSchema {
-  const fallback = createDefaultProgramSchema(code || 'CUSTOM_PROGRAM', label || 'Program Custom');
+  const fallback = buildDefaultProgramSchemaBase(code || 'CUSTOM_PROGRAM', label || 'Program Custom');
   const base = schema || fallback;
   const normalizedDocumentTitle = String(base.documentTitle || base.titleHint || label || code || '').trim();
   const normalizedDocumentShortTitle = String(base.documentShortTitle || label || code || '').trim();
@@ -1181,21 +1196,10 @@ function createEmptySection(index = 0, editorType: 'TEXT' | 'TABLE' = 'TABLE'): 
 }
 
 function createDefaultProgramSchema(code: string, label: string): TeachingResourceProgramSchema {
-  const normalizedCode = normalizeTeachingResourceProgramCode(code || label || 'CUSTOM_PROGRAM');
   return applySchemaFoundationDefaults(
-    {
-    version: 1,
-      schemaMode: 'BLOCKS_V1',
-    sourceSheet: normalizedCode,
-    intro: `Struktur dokumen ${label || normalizedCode} diatur kurikulum dan diisi guru sesuai template aktif.`,
-    titleHint: `Dokumen ${label || normalizedCode}`,
-    summaryHint: 'Ringkasan singkat dokumen',
-      documentTitle: label || normalizedCode,
-      documentShortTitle: label || normalizedCode,
-    sections: [createEmptySection(0, 'TABLE')],
-    },
-    normalizedCode,
-    label || normalizedCode,
+    buildDefaultProgramSchemaBase(code, label),
+    normalizeTeachingResourceProgramCode(code || label || 'CUSTOM_PROGRAM'),
+    label || normalizeTeachingResourceProgramCode(code || label || 'CUSTOM_PROGRAM'),
   );
 }
 
