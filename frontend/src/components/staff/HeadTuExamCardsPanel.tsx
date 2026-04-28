@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Briefcase,
@@ -902,7 +902,7 @@ export function HeadTuExamCardsPanel({
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold text-gray-900">Kartu Ujian</h2>
+        <h2 className="text-section-title font-bold text-gray-900">Kartu Ujian</h2>
         <p className="mt-1 text-sm text-gray-500">{ownerDescription}</p>
       </div>
 
@@ -1081,150 +1081,158 @@ export function HeadTuExamCardsPanel({
               <div className="text-sm font-semibold text-slate-900">Daftar Kartu Siswa</div>
               <div className="mt-1 text-xs text-slate-500">Nama siswa, ruang ujian, status kartu, dan akses print per siswa.</div>
             </div>
-            <div className="hidden border-b border-gray-100 bg-slate-50/80 px-5 py-3 md:grid md:grid-cols-[minmax(0,1.2fr)_minmax(0,0.9fr)_240px_260px_auto] md:gap-4">
-              <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Nama Siswa</div>
-              <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Ruang & Kursi</div>
-              <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Status</div>
-              <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Catatan</div>
-              <div className="text-right text-xs font-semibold uppercase tracking-wide text-slate-500">Print</div>
-            </div>
-            <div className="divide-y divide-gray-200">
-            {filteredRows.map((row) => {
-              const primaryEntry = row.entries[0] || null;
-              const fallbackPlacement = row.card?.payload?.placement || null;
-              const placementMeta = buildPlacementMetaLabel(fallbackPlacement);
-              const placementTimeRange = buildPlacementTimeRangeLabel(fallbackPlacement);
-              const isExpanded = expandedStudentId === row.studentId;
-              const hasOperationalEntry = row.entries.length > 0;
-              const isPublishedActive = row.status.code === 'PUBLISHED_ACTIVE';
-              const academicWarningItems = buildAcademicWarningItems(row);
-              const hasAcademicWarning = Boolean(row.eligibility.academicClearance.warningOnly);
-              const statusTone = resolveStatusTone(row.status.code);
-              return (
-                <div key={row.studentId}>
-                  <div
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => setExpandedStudentId((current) => (current === row.studentId ? null : row.studentId))}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter' || event.key === ' ') {
-                        event.preventDefault();
-                        setExpandedStudentId((current) => (current === row.studentId ? null : row.studentId));
-                      }
-                    }}
-                    className="grid cursor-pointer gap-4 px-5 py-4 transition-colors hover:bg-slate-50 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.9fr)_240px_260px_auto]"
-                  >
-                    <div className="min-w-0">
-                      <div className="font-semibold text-gray-900">{row.studentName}</div>
-                      <div className="mt-1 text-xs text-gray-500">@{row.username}</div>
-                      <div className="mt-2 inline-flex rounded-full border border-blue-100 bg-blue-50 px-2.5 py-1 text-[11px] font-semibold text-blue-700">
-                        No. Peserta {row.participantNumber || '-'}
-                      </div>
-                      <div className="mt-2 text-xs text-gray-600">NIS: {row.nis || '-'}</div>
-                      <div className="mt-1 text-xs text-gray-600">Kelas: {row.className || '-'}</div>
-                    </div>
-
-                    <div className="min-w-0 text-sm text-gray-700">
-                      <div className="font-semibold text-gray-900">
-                        {primaryEntry?.roomName || fallbackPlacement?.roomName || 'Belum ada ruang aktif'}
-                      </div>
-                      {primaryEntry ? (
-                        <>
-                          {formatEntryMeta(primaryEntry as ExamCardOverviewRow['entries'][number]) ? (
-                            <div className="mt-1 text-xs text-gray-500">{formatEntryMeta(primaryEntry as ExamCardOverviewRow['entries'][number])}</div>
-                          ) : null}
-                          {formatEntryTimeRange(primaryEntry as ExamCardOverviewRow['entries'][number]) ? (
-                            <div className="mt-1 text-xs text-gray-500">
-                              {formatEntryTimeRange(primaryEntry as ExamCardOverviewRow['entries'][number])}
+            <div className="overflow-x-auto">
+              <table className="min-w-[1040px] w-full divide-y divide-gray-100 text-sm">
+                <thead className="bg-slate-50/80">
+                  <tr>
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Nama Siswa</th>
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Ruang & Kursi</th>
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Status</th>
+                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Catatan</th>
+                    <th className="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">Print</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 bg-white">
+                  {filteredRows.map((row) => {
+                    const primaryEntry = row.entries[0] || null;
+                    const fallbackPlacement = row.card?.payload?.placement || null;
+                    const placementMeta = buildPlacementMetaLabel(fallbackPlacement);
+                    const placementTimeRange = buildPlacementTimeRangeLabel(fallbackPlacement);
+                    const isExpanded = expandedStudentId === row.studentId;
+                    const hasOperationalEntry = row.entries.length > 0;
+                    const isPublishedActive = row.status.code === 'PUBLISHED_ACTIVE';
+                    const academicWarningItems = buildAcademicWarningItems(row);
+                    const hasAcademicWarning = Boolean(row.eligibility.academicClearance.warningOnly);
+                    const statusTone = resolveStatusTone(row.status.code);
+                    return (
+                      <Fragment key={row.studentId}>
+                        <tr
+                          tabIndex={0}
+                          onClick={() => setExpandedStudentId((current) => (current === row.studentId ? null : row.studentId))}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault();
+                              setExpandedStudentId((current) => (current === row.studentId ? null : row.studentId));
+                            }
+                          }}
+                          className="cursor-pointer align-top transition-colors hover:bg-slate-50"
+                        >
+                          <td className="px-5 py-4">
+                            <div className="font-semibold text-gray-900">{row.studentName}</div>
+                            <div className="mt-1 text-xs text-gray-500">@{row.username}</div>
+                            <div className="mt-2 inline-flex rounded-full border border-blue-100 bg-blue-50 px-2.5 py-1 text-[11px] font-semibold text-blue-700">
+                              No. Peserta {row.participantNumber || '-'}
                             </div>
-                          ) : null}
-                        </>
-                      ) : fallbackPlacement ? (
-                        <>
-                          {placementMeta ? <div className="mt-1 text-xs text-amber-700">{placementMeta}</div> : null}
-                          {placementTimeRange ? <div className="mt-1 text-xs text-amber-700">{placementTimeRange}</div> : null}
-                        </>
-                      ) : (
-                        <div className="mt-1 text-xs text-amber-700">Denah/ruang belum sinkron.</div>
-                      )}
-                    </div>
+                            <div className="mt-2 text-xs text-gray-600">NIS: {row.nis || '-'}</div>
+                            <div className="mt-1 text-xs text-gray-600">Kelas: {row.className || '-'}</div>
+                          </td>
 
-                    <div className="text-sm text-gray-700">
-                      <div
-                        className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${statusTone.pillClassName}`}
-                      >
-                        {row.status.code === 'PUBLISHED_ACTIVE' ? (
-                          <ClipboardList className="mr-1.5 h-3.5 w-3.5" />
-                        ) : row.status.code === 'READY_TO_GENERATE' ? (
-                          <Sparkles className="mr-1.5 h-3.5 w-3.5" />
-                        ) : (
-                          <ShieldCheck className="mr-1.5 h-3.5 w-3.5" />
-                        )}
-                        {row.status.label}
-                      </div>
-                      <div className={`mt-2 text-xs ${statusTone.detailClassName}`}>{row.status.detail}</div>
-                    </div>
+                          <td className="px-5 py-4 text-gray-700">
+                            <div className="font-semibold text-gray-900">
+                              {primaryEntry?.roomName || fallbackPlacement?.roomName || 'Belum ada ruang aktif'}
+                            </div>
+                            {primaryEntry ? (
+                              <>
+                                {formatEntryMeta(primaryEntry as ExamCardOverviewRow['entries'][number]) ? (
+                                  <div className="mt-1 text-xs text-gray-500">
+                                    {formatEntryMeta(primaryEntry as ExamCardOverviewRow['entries'][number])}
+                                  </div>
+                                ) : null}
+                                {formatEntryTimeRange(primaryEntry as ExamCardOverviewRow['entries'][number]) ? (
+                                  <div className="mt-1 text-xs text-gray-500">
+                                    {formatEntryTimeRange(primaryEntry as ExamCardOverviewRow['entries'][number])}
+                                  </div>
+                                ) : null}
+                              </>
+                            ) : fallbackPlacement ? (
+                              <>
+                                {placementMeta ? <div className="mt-1 text-xs text-amber-700">{placementMeta}</div> : null}
+                                {placementTimeRange ? <div className="mt-1 text-xs text-amber-700">{placementTimeRange}</div> : null}
+                              </>
+                            ) : (
+                              <div className="mt-1 text-xs text-amber-700">Denah/ruang belum sinkron.</div>
+                            )}
+                          </td>
 
-                    <div className="text-sm text-gray-700">
-                      {row.eligibility.financeExceptionApplied ? (
-                        <div className="rounded-lg border border-sky-100 bg-sky-50 px-3 py-2 text-xs text-sky-700">
-                          Ada pengecualian finance dari wali kelas.
-                        </div>
-                      ) : isPublishedActive ? (
-                        <div className="text-xs text-emerald-700">Sudah digenerate pada {formatDateTime(row.card?.generatedAt)}.</div>
-                      ) : row.status.code === 'READY_TO_GENERATE' ? (
-                        <div className="text-xs text-emerald-700">Siap dipublikasikan setelah generate kartu.</div>
-                      ) : row.status.code === 'BLOCKED_FINANCE' ? (
-                        <div className="text-xs text-orange-700">
-                          {row.eligibility.financeClearance.reason || row.status.detail}
-                        </div>
-                      ) : row.status.code === 'REVIEW_STALE_CARD' ? (
-                        <div className="text-xs text-slate-700">Generate ulang agar kartu aktif mengikuti status terbaru.</div>
-                      ) : row.status.code === 'REVIEW_PLACEMENT_SYNC' ? (
-                        <div className="text-xs text-slate-700">Periksa penempatan ruang, denah kursi, dan jadwal aktif siswa ini.</div>
-                      ) : !hasOperationalEntry ? (
-                        <div className="text-xs text-slate-700">Belum ada entry ruang aktif yang terbaca di overview kartu.</div>
-                      ) : (
-                        <div className="space-y-2 text-xs text-slate-700">
-                          <div>{row.status.detail}</div>
-                          {academicWarningItems.length > 0 ? (
+                          <td className="px-5 py-4 text-gray-700">
                             <div
-                              className={`rounded-lg border px-3 py-2 text-[11px] ${
-                                hasAcademicWarning || row.status.code === 'BLOCKED_KKM'
-                                  ? 'border-red-100 bg-red-50 text-red-800'
-                                  : 'border-amber-100 bg-amber-50 text-amber-800'
-                              }`}
+                              className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${statusTone.pillClassName}`}
                             >
-                              {academicWarningItems.map((item) => (
-                                <div key={item}>{item}</div>
-                              ))}
+                              {row.status.code === 'PUBLISHED_ACTIVE' ? (
+                                <ClipboardList className="mr-1.5 h-3.5 w-3.5" />
+                              ) : row.status.code === 'READY_TO_GENERATE' ? (
+                                <Sparkles className="mr-1.5 h-3.5 w-3.5" />
+                              ) : (
+                                <ShieldCheck className="mr-1.5 h-3.5 w-3.5" />
+                              )}
+                              {row.status.label}
                             </div>
-                          ) : null}
-                        </div>
-                      )}
-                    </div>
+                            <div className={`mt-2 text-xs ${statusTone.detailClassName}`}>{row.status.detail}</div>
+                          </td>
 
-                    <div className="flex items-start justify-end gap-2">
-                      <button
-                        type="button"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          handlePrintOne(isPublishedActive ? row.card?.payload : null);
-                        }}
-                        disabled={!isPublishedActive || !row.card?.payload}
-                        className="inline-flex items-center rounded-lg border border-rose-200 bg-white px-3 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        <Printer className="mr-2 h-4 w-4" />
-                        Print
-                      </button>
-                      <span className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500">
-                        {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                      </span>
-                    </div>
-                  </div>
+                          <td className="px-5 py-4 text-gray-700">
+                            {row.eligibility.financeExceptionApplied ? (
+                              <div className="rounded-lg border border-sky-100 bg-sky-50 px-3 py-2 text-xs text-sky-700">
+                                Ada pengecualian finance dari wali kelas.
+                              </div>
+                            ) : isPublishedActive ? (
+                              <div className="text-xs text-emerald-700">Sudah digenerate pada {formatDateTime(row.card?.generatedAt)}.</div>
+                            ) : row.status.code === 'READY_TO_GENERATE' ? (
+                              <div className="text-xs text-emerald-700">Siap dipublikasikan setelah generate kartu.</div>
+                            ) : row.status.code === 'BLOCKED_FINANCE' ? (
+                              <div className="text-xs text-orange-700">
+                                {row.eligibility.financeClearance.reason || row.status.detail}
+                              </div>
+                            ) : row.status.code === 'REVIEW_STALE_CARD' ? (
+                              <div className="text-xs text-slate-700">Generate ulang agar kartu aktif mengikuti status terbaru.</div>
+                            ) : row.status.code === 'REVIEW_PLACEMENT_SYNC' ? (
+                              <div className="text-xs text-slate-700">Periksa penempatan ruang, denah kursi, dan jadwal aktif siswa ini.</div>
+                            ) : !hasOperationalEntry ? (
+                              <div className="text-xs text-slate-700">Belum ada entry ruang aktif yang terbaca di overview kartu.</div>
+                            ) : (
+                              <div className="space-y-2 text-xs text-slate-700">
+                                <div>{row.status.detail}</div>
+                                {academicWarningItems.length > 0 ? (
+                                  <div
+                                    className={`rounded-lg border px-3 py-2 text-[11px] ${
+                                      hasAcademicWarning || row.status.code === 'BLOCKED_KKM'
+                                        ? 'border-red-100 bg-red-50 text-red-800'
+                                        : 'border-amber-100 bg-amber-50 text-amber-800'
+                                    }`}
+                                  >
+                                    {academicWarningItems.map((item) => (
+                                      <div key={item}>{item}</div>
+                                    ))}
+                                  </div>
+                                ) : null}
+                              </div>
+                            )}
+                          </td>
 
-                  {isExpanded ? (
-                    <div className="border-t border-gray-100 bg-slate-50/80 px-5 py-4">
+                          <td className="px-5 py-4">
+                            <div className="flex items-start justify-end gap-2">
+                              <button
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  handlePrintOne(isPublishedActive ? row.card?.payload : null);
+                                }}
+                                disabled={!isPublishedActive || !row.card?.payload}
+                                className="inline-flex items-center rounded-lg border border-rose-200 bg-white px-3 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                <Printer className="mr-2 h-4 w-4" />
+                                Print
+                              </button>
+                              <span className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500">
+                                {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                              </span>
+                            </div>
+                          </td>
+                        </tr>
+
+                        {isExpanded ? (
+                          <tr>
+                            <td colSpan={5} className="border-t border-gray-100 bg-slate-50/80 px-5 py-4">
                       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
                         <div className="rounded-xl border border-slate-200 bg-white p-4">
                           <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Detail Siswa</div>
@@ -1261,11 +1269,14 @@ export function HeadTuExamCardsPanel({
                           </div>
                         </div>
                       </div>
-                    </div>
-                  ) : null}
-                </div>
-              );
-            })}
+                            </td>
+                          </tr>
+                        ) : null}
+                      </Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           </div>
         )}
