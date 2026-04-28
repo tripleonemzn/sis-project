@@ -5,40 +5,45 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-04-28 09:29 WIB
-- Current status: shortcut `Scan Presensi` pada dashboard mobile sudah dipindahkan dari card penuh ke header atas sebagai tombol ikon scan kecil dengan label `Presensi`, sesuai arahan screenshot user. Route/menu yang dipakai tetap menu presensi existing sehingga behavior scan tidak berubah.
+- Last updated: 2026-04-28 10:00 WIB
+- Current status: monitor QR presensi web staff administrasi sudah diperbarui. Saat staff membuka sesi dari tab `Monitor QR`, panel monitor otomatis mencoba masuk fullscreen. Layout monitor tetap QR di kiri, sementara sisi kanan kini menampilkan sambutan `Selamat Datang` dan identitas peserta presensi terbaru pada sesi aktif.
 - Objective/task aktif:
-  - Merapikan posisi shortcut presensi mobile agar akses scan ada di area atas dashboard dan tidak lagi mengambil ruang sebagai card penuh.
+  - Menjadikan monitor QR presensi lebih siap untuk layar TV/monitor TU dengan fullscreen otomatis dan panel identitas peserta terbaru.
 - Batch terakhir selesai:
-  - `Batch mobile presence shortcut header`
+  - `Batch QR monitor fullscreen + welcome identity`
 - Progress batch ini:
   - `100%`
 - Last completed repo work:
-  - Commit: `d1e6cd1`
-  - Title: `fix(mobile): move presence shortcut to home header`
+  - Commit: `f706435`
+  - Title: `feat(attendance): improve qr monitor welcome display`
   - Summary:
-    - tombol `Scan Presensi` lebar pada dashboard mobile dihapus
-    - akses presensi dipindahkan ke baris header dashboard kanan atas
-    - shortcut baru memakai ikon scan dan label `Presensi`
-    - loading state tetap memakai `openingMenuKey` existing
+    - panel `Monitor QR Bersama` memakai visual monitor gelap yang lebih cocok untuk display TU
+    - tombol `Buka Sesi` pada tab `Monitor QR` memanggil fullscreen pada panel monitor secara langsung dari user action
+    - sisi kanan QR menampilkan `Selamat Datang`, nama, jenis peserta, identitas, waktu scan, detail kelas/role, sumber presensi, dan checkpoint
+    - event yang ditampilkan difilter berdasarkan `createdAt` sesi aktif agar tidak mengambil presensi lama sebelum sesi dibuka
+    - overview presensi hanya auto-refresh ringan saat tab `Monitor QR` aktif
 - Area/file disentuh:
-  - `mobile-app/app/(app)/home.tsx`
+  - `backend/src/utils/dailyPresenceSelfScan.ts`
+  - `frontend/src/pages/staff/StaffDailyPresencePage.tsx`
+  - `frontend/src/services/attendance.service.ts`
+  - `frontend/src/index.css`
   - `docs/CODEX_CONTINUITY.md`
 - Verifikasi batch ini:
   - `git diff --check`
-  - `cd mobile-app && npm run typecheck`
-  - `cd mobile-app && npm run audit:parity:check`
-  - `cd mobile-app && npm run check:ota:testers`
-  - `cd mobile-app && npm run update:pilot-live:verified -- "Shortcut Presensi dipindahkan ke header dashboard. Silakan perbarui untuk menikmati fitur terbaru."`
+  - `cd backend && npm run build`
+  - `cd backend && npm run service:restart`
+  - `cd backend && npm run service:health`
+  - `cd frontend && npm run build`
+  - `cd frontend && npm run deploy`
+  - `curl -I https://siskgb2.id/staff/administration/presence` -> `200`
 - Publish/live status:
-  - Web/backend tidak berubah
-  - OTA Android `pilot-live` live
-  - Update group: `a9a7c418-5529-4103-8f98-82f699aae634`
-  - Push notify update: `3/3`
+  - Backend live dan sehat
+  - Web live
+  - Mobile/OTA tidak terdampak
 - Remaining work:
   - tidak ada pekerjaan setengah jadi pada batch ini
 - Residual risk:
-  - tidak ada residual risk teknis baru; perubahan hanya layout shortcut mobile dan memakai route existing
+  - fullscreen browser tetap bergantung izin browser/user gesture; jika browser menolak fullscreen, sesi tetap terbuka dan panel monitor tetap bisa dipakai secara normal
 
 ## Status Saat Ini
 
