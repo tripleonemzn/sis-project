@@ -152,6 +152,28 @@ Dokumen ini adalah policy kerja default untuk setiap sesi baru yang mengerjakan 
    - Hindari UI yang ambigu, terlalu teknis, atau berbeda makna antar platform.
    - Istilah yang sudah pernah dirapikan agar nyaman dibaca user harus dipertahankan konsisten.
    - Jika web menggunakan pola yang lebih jelas, mobile harus mengikuti arah yang sama, bukan membuat interpretasi baru sendiri.
+   - Untuk halaman isi menu sidebar di web, gunakan standar **data-first table view** sebagai default:
+     - dashboard boleh tetap memakai card visual, chart, shortcut, dan summary karena fungsinya ringkasan
+     - halaman operasional/list/detail data dari sidebar seperti presensi, daftar siswa/guru, nilai, leger, perizinan, jadwal, approval, inventaris, laporan, dan monitoring data harus default berupa tabel atau table-like view
+     - jangan memakai card list sebagai default untuk data tabular kecuali kontennya memang bukan data berkolom atau user meminta eksplisit
+     - card tetap boleh dipakai untuk statistik ringkas, quick action, panduan/notice, empty state, monitor/display khusus seperti QR monitor, dan container form/modal
+     - jika data punya konteks besar yang berbeda, pisahkan tabel berdasarkan konteks operasional yang jelas seperti tingkat, kelas, jurusan, program, semester, atau status; jangan mencampur semuanya dalam satu card/list panjang yang sulit discan
+     - table view wajib punya struktur minimal yang konsisten: page header, tab/filter/action bar bila diperlukan, table section, pagination/limit bila data bisa besar, empty state, loading state, dan modal/drawer untuk tambah/edit/detail
+   - Untuk halaman data di mobile, pertahankan parity makna dengan web tetapi gunakan pola responsif:
+     - jika kolom sedikit, boleh memakai tabel horizontal/compact
+     - jika kolom banyak, gunakan row-list table compact atau expandable row yang tetap terasa sebagai data table, bukan card dekoratif
+     - field penting harus terlihat dulu, detail panjang dibuka lewat expand/modal/shared component
+   - Hirarki tipografi halaman wajib konsisten:
+     - judul halaman adalah level tertinggi dan tidak boleh dipakai ulang untuk judul tabel/section
+     - judul section/card/tabel harus lebih kecil dari judul halaman
+     - table header lebih kecil dan lebih tegas daripada body, body table memakai ukuran nyaman baca, helper/metadata memakai ukuran lebih kecil
+     - hindari `text-2xl`/`text-3xl` untuk judul tabel atau judul card data biasa kecuali memang heading utama halaman
+     - jika membuat komponen baru, gunakan token/pola typography existing project atau komponen shared agar ukuran font tidak liar antar role
+   - Standar acuan UI web yang wajib diikuti:
+     - `Kelola Ujian` Wakakur sebagai acuan tab horizontal, filter/action bar, dan ritme page header
+     - `Persetujuan Izin` Wali Kelas sebagai acuan table view data operasional
+     - `Tambah Assignment Guru` sebagai acuan searchable dropdown untuk data besar
+     - `Buat Jadwal Ujian` dan `Lihat Detail Mengajar` sebagai acuan modal/popup operasional
    - Untuk menu tab horizontal di web, gunakan gaya standar seperti tab pada `Kelola Ujian` Wakakur:
      - garis bawah/`border-b-2` sebagai indikator aktif
      - tanpa model kartu/pill tebal kecuali user meminta eksplisit

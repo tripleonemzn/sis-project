@@ -5,43 +5,36 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-04-28 10:30 WIB
-- Current status: desain panel sambutan monitor QR presensi sudah diperbarui dan live. Teks `Selamat Datang` dibuat center, subtitle diganti menjadi nama sekolah dari payload backend, dan informasi scan sekarang menampilkan foto profil serta detail role/jabatan tambahan peserta yang melakukan presensi.
+- Last updated: 2026-04-28 13:13 WIB
+- Current status: policy standar UI/UX data-first sudah ditambahkan ke `AGENTS.md` dan sweep awal lintas web/mobile sudah dilakukan. Dashboard tetap boleh card-based, tetapi halaman isi menu sidebar yang berupa data operasional kini wajib default table/table-like view dengan hirarki font yang konsisten.
 - Objective/task aktif:
-  - Menyempurnakan UI sambutan monitor QR presensi agar lebih jelas saat peserta scan di monitor TU.
+  - Menetapkan standar UI/UX halaman data lintas role dan memetakan area yang belum sesuai untuk batch refactor berikutnya.
 - Batch terakhir selesai:
-  - `Batch QR monitor welcome panel`
+  - `Batch UI/UX policy + sweep audit`
 - Progress batch ini:
   - `100%`
 - Last completed repo work:
-  - Commit: `c8e5367`
-  - Title: `feat(attendance): enrich qr monitor welcome panel`
+  - Commit: `pending current branch push`
+  - Title: `docs: standardize data page ui policy`
   - Summary:
-    - payload session monitor QR sekarang membawa nama sekolah dari source backend terpusat
-    - recent event presensi mengirim `photo` untuk siswa/guru/staf serta `additionalDuties` untuk detail role user
-    - panel sambutan menampilkan judul center, nama sekolah, foto profil, nama peserta, identitas, role lengkap, waktu, detail scan, sumber, dan checkpoint
-    - role guru/staf dilengkapi `ptkType` dan tugas tambahan bila tersedia; siswa dilengkapi kelas
+    - `AGENTS.md` sekarang menetapkan halaman data sidebar web sebagai default `data-first table view`
+    - card dibatasi untuk dashboard, statistik ringkas, quick action, notice, empty state, monitor/display khusus, dan form/modal
+    - mobile wajib mempertahankan parity data dengan web lewat tabel compact/row-list expandable, bukan card dekoratif
+    - hirarki font page title, section/table title, table header, body, helper text dikunci agar tidak liar antar role
+    - acuan standar UI ditetapkan: `Kelola Ujian`, `Persetujuan Izin`, `Tambah Assignment Guru`, `Buat Jadwal Ujian`, dan `Lihat Detail Mengajar`
 - Area/file disentuh:
-  - `frontend/src/pages/staff/StaffDailyPresencePage.tsx`
-  - `frontend/src/services/attendance.service.ts`
-  - `backend/src/controllers/dailyPresence.controller.ts`
-  - `backend/src/utils/standardSchoolDocumentHeader.ts`
+  - `AGENTS.md`
   - `docs/CODEX_CONTINUITY.md`
 - Verifikasi batch ini:
-  - `cd backend && npm run build`
-  - `cd frontend && npm run build`
-  - `cd backend && npm run service:restart`
-  - `cd backend && npm run service:health` -> `Backend:200`, `Backend API:200`
-  - `cd frontend && npm run deploy`
-  - `curl -I https://siskgb2.id/staff/administration/presence` -> `200`
+  - `git status --short`
+  - sweep statis dengan pencarian `table`, `map`, `card`, `text-2xl/text-3xl`, `MobileMenuTabBar`, `MobileSelectField`, dan inline font mobile
+  - `git diff --check`
 - Publish/live status:
-  - Web live
-  - Backend live/reloaded dan health check normal
-  - Mobile/OTA tidak terdampak
+  - Tidak ada deploy web/OTA karena batch ini hanya dokumentasi policy dan audit statis
 - Remaining work:
-  - tidak ada pekerjaan setengah jadi pada batch ini
+  - refactor UI belum dimulai; kandidat prioritas audit sudah siap dibahas/dibatch
 - Residual risk:
-  - validasi visual langsung setelah scan tetap diperlukan untuk memastikan foto/role tampil sesuai data profil produksi masing-masing peserta
+  - hasil sweep adalah audit statis, sehingga perlu validasi visual per halaman saat batch refactor dimulai
 
 ## Status Saat Ini
 
