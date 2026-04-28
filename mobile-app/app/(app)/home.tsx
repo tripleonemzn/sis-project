@@ -2387,6 +2387,52 @@ export default function HomeScreen() {
               {todayLabel}
             </Text>
           </View>
+          {ownDailyPresenceMenu ? (
+            <Pressable
+              disabled={isMenuTransitioning}
+              onPress={() => {
+                void handleMenuPress(ownDailyPresenceMenu);
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Buka presensi"
+              style={({ pressed }) => ({
+                width: 64,
+                alignItems: 'center',
+                opacity: pressed || openingMenuKey === ownDailyPresenceMenu.key ? 0.82 : 1,
+              })}
+            >
+              <View
+                style={{
+                  width: 46,
+                  height: 46,
+                  borderRadius: 999,
+                  backgroundColor: isDarkModeActive ? 'rgba(125, 211, 252, 0.18)' : '#e0f2fe',
+                  borderWidth: 1,
+                  borderColor: isDarkModeActive ? 'rgba(125, 211, 252, 0.32)' : '#bae6fd',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                {openingMenuKey === ownDailyPresenceMenu.key ? (
+                  <ActivityIndicator size="small" color={isDarkModeActive ? '#7dd3fc' : '#0369a1'} />
+                ) : (
+                  <Feather name="maximize" size={20} color={isDarkModeActive ? '#7dd3fc' : '#0369a1'} />
+                )}
+              </View>
+              <Text
+                numberOfLines={1}
+                style={{
+                  color: colors.text,
+                  fontSize: scaleFont(11),
+                  lineHeight: scaleLineHeight(15),
+                  fontWeight: '700',
+                  marginTop: 5,
+                }}
+              >
+                Presensi
+              </Text>
+            </Pressable>
+          ) : null}
         </View>
 
         <Text
@@ -2401,55 +2447,6 @@ export default function HomeScreen() {
         <Text style={{ color: colors.textMuted, fontSize: scaleFont(14), lineHeight: scaleLineHeight(22), marginTop: 2, marginBottom: 12 }}>
           {homeSubtitle}
         </Text>
-
-        {ownDailyPresenceMenu ? (
-          <Pressable
-            disabled={isMenuTransitioning}
-            onPress={() => {
-              void handleMenuPress(ownDailyPresenceMenu);
-            }}
-            style={({ pressed }) => ({
-              borderRadius: 16,
-              borderWidth: 1,
-              borderColor: isDarkModeActive ? 'rgba(125, 211, 252, 0.28)' : '#bae6fd',
-              backgroundColor: isDarkModeActive ? 'rgba(14, 116, 144, 0.22)' : '#f0f9ff',
-              padding: 14,
-              marginBottom: 12,
-              flexDirection: 'row',
-              alignItems: 'center',
-              opacity: pressed || openingMenuKey === ownDailyPresenceMenu.key ? 0.84 : 1,
-            })}
-          >
-            <View
-              style={{
-                width: 48,
-                height: 48,
-                borderRadius: 999,
-                backgroundColor: isDarkModeActive ? 'rgba(125, 211, 252, 0.18)' : '#e0f2fe',
-                borderWidth: 1,
-                borderColor: isDarkModeActive ? 'rgba(125, 211, 252, 0.28)' : '#bae6fd',
-                alignItems: 'center',
-                justifyContent: 'center',
-                marginRight: 12,
-              }}
-            >
-              {openingMenuKey === ownDailyPresenceMenu.key ? (
-                <ActivityIndicator size="small" color={isDarkModeActive ? '#7dd3fc' : '#0369a1'} />
-              ) : (
-                <Feather name="camera" size={20} color={isDarkModeActive ? '#7dd3fc' : '#0369a1'} />
-              )}
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={{ color: colors.text, fontWeight: '800', fontSize: scaleFont(15), lineHeight: scaleLineHeight(20) }}>
-                {openingMenuKey === ownDailyPresenceMenu.key ? 'Membuka Scan Presensi...' : 'Scan Presensi'}
-              </Text>
-              <Text style={{ color: colors.textMuted, fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginTop: 2 }}>
-                QR Monitor TU
-              </Text>
-            </View>
-            <Feather name="chevron-right" size={20} color={colors.textMuted} />
-          </Pressable>
-        ) : null}
 
         {profile.role === 'TEACHER' ? (
           <View
