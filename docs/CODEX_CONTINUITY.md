@@ -5,13 +5,12 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-04-28 16:05 WIB
-- Current status: Batch 18 dan Batch 19 penutup roadmap aktif `Program Perangkat Ajar` sudah selesai, sudah live di web, dan sudah publish OTA tester. Scope aktif yang sedang dikerjakan untuk builder Wakakur + integrasi referensi guru kini ditutup ke `100%`.
+- Last updated: 2026-04-28 16:18 WIB
+- Current status: perapihan UI kurikulum untuk halaman `Program Perangkat Ajar` sudah selesai dan sudah live. Elemen panduan atas yang memenuhi halaman sudah dihapus, `Mode Teknisi` tidak lagi muncul di jalur UI utama, dan form tambah/edit sekarang menampilkan `Kode Program`.
 - Objective/task aktif:
-  - Menutup roadmap aktif `Program Perangkat Ajar` agar Wakakur mendapat builder yang lebih operasional dan guru mendapat fallback referensi yang lebih jelas di web/mobile.
+  - Merapikan pengalaman Wakakur agar halaman lebih ringkas, lebih tenang dibaca, dan lebih konsisten antara tabel daftar program dengan form tambah/edit.
 - Batch terakhir selesai:
-  - `Batch 18 - Tambah preview block-level dan validator konfigurasi di editor Wakakur`
-  - `Batch 19 - Rapikan guard/fallback picker referensi guru di web dan mobile`
+  - `Batch 20 - Rapikan UI kurikulum Program Perangkat Ajar`
 - Progress batch ini:
   - `100%`
 - Progress roadmap perangkat ajar dinamis:
@@ -20,39 +19,29 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
   - `100%` untuk reference picker guru lintas dokumen pada scope roadmap saat ini
 - Last completed repo work:
-  - Commit: `3efce76`
-  - Title: `feat(curriculum): finish teaching resource builder guidance`
+  - Commit: `9d1670f`
+  - Title: `refactor(curriculum): simplify teaching resource program setup`
   - Summary:
-    - editor Wakakur sekarang punya preview block-level yang lebih visual, validator error/warning sebelum simpan, serta tombol simpan yang ter-guard bila schema inti masih salah
-    - sisi guru web dan mobile sekarang memberi helper text yang spesifik saat kolom referensi belum dikonfigurasi atau saat dokumen sumber yang cocok belum tersedia
-    - referensi lama yang sudah tersimpan tetap bisa ditampilkan sebagai fallback agar user tidak melihat picker kosong yang membingungkan
+    - tombol `Panduan Penggunaan` dan panel `Alur aman untuk Wakakur` di header halaman dihapus agar area atas lebih lega
+    - jalur `Mode Teknisi` disembunyikan dari UI kurikulum; halaman sekarang efektif tinggal jalur siap pakai
+    - field `Kode Program` sekarang tampil langsung di form tambah/edit, lengkap dengan sinkronisasi aman ke schema/source sheet saat kode berubah
 - Area/file disentuh:
   - `frontend/src/pages/teacher/wakasek/curriculum/TeachingResourceProgramManagementPage.tsx`
-  - `frontend/src/pages/teacher/learning-resources/LearningResourceGenerator.tsx`
-  - `mobile-app/src/features/learningResources/TeacherLearningResourceProgramScreen.tsx`
   - `docs/CODEX_CONTINUITY.md`
 - Verifikasi batch ini:
   - `cd frontend && npm run build`
-  - `cd mobile-app && npm run typecheck`
-  - `cd mobile-app && npm run audit:parity:check`
   - `git diff --check`
   - `cd frontend && npm run deploy`
   - `curl -I https://siskgb2.id/teacher/wakasek/teaching-resource-programs`
-  - `cd mobile-app && npm run check:ota:testers`
-  - `cd mobile-app && npm run update:testers -- "Penyempurnaan Perangkat Ajar: builder Wakakur dan picker referensi guru kini lebih jelas saat konfigurasi atau data sumber belum lengkap. Silakan perbarui untuk menikmati fitur terbaru."`
 - Publish/live status:
   - Web sudah deploy live ke `/var/www/html/` lewat `npm run deploy`
   - Web route `https://siskgb2.id/teacher/wakasek/teaching-resource-programs` merespons `HTTP/1.1 200 OK`
-  - OTA tester `pilot-live` sudah publish sukses
-  - Update group: `66089cf1-b0ee-4962-804b-49f731b2544f`
-  - Android update ID: `019dd355-7d74-7428-b758-51e38d688940`
-  - Push notify summary: `recipients=4, sent=4, failed=0, stale=0`
+  - Mobile tidak disentuh pada batch ini, jadi tidak ada OTA baru
 - Remaining work:
-  - Tidak ada batch implementasi aktif yang tersisa untuk scope roadmap perangkat ajar yang sedang dikerjakan.
-  - Langkah berikutnya yang paling aman adalah QA manual user nyata pada alur `Wakakur buat dokumen sumber -> guru isi dokumen turunan -> review/print`.
+  - Jika user ingin lanjut merapikan pengalaman, fokus aman berikutnya adalah audit tampilan guru/print berdasarkan program nyata yang sudah dibuat dari builder yang lebih ringkas ini.
 - Residual risk:
-  - meski verifikasi build, parity, deploy, dan OTA sudah lolos, alur integrasi tetap perlu uji manual end-to-end dengan konfigurasi dokumen nyata agar wording/helper terbaru benar-benar nyaman untuk user non-teknis
-  - fallback referensi menjaga UX tetap stabil, tetapi kualitas pengalaman tetap bergantung pada konfigurasi field identity dan binding yang dibuat Wakakur
+  - mesin advanced/schema detail masih tetap ada di balik layar untuk menjaga kompatibilitas data existing, tetapi sekarang tidak dibuka dari UI utama Wakakur
+  - tetap perlu uji manual singkat untuk memastikan alur tambah/edit program terasa cukup jelas setelah area panduan atas dipangkas
 
 ## Status Saat Ini
 
