@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import clsx from 'clsx';
 import { useSearchParams, useOutletContext } from 'react-router-dom';
+import { UnderlineTabBar } from '../../components/navigation/UnderlineTabBar';
 
 interface Material {
   id: string;
@@ -83,6 +84,11 @@ type LearningOutletContext = {
 type AssignmentSubmissionLookup = NonNullable<Assignment['submission']> & {
   assignment: { id: string };
 };
+
+const LEARNING_TABS = [
+  { id: 'materials', label: 'Materi Pembelajaran', icon: BookOpen },
+  { id: 'assignments', label: 'Tugas & PR', icon: ClipboardList },
+];
 
 export default function StudentLearningPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -314,32 +320,12 @@ export default function StudentLearningPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex border-b border-gray-200">
-        <button
-          onClick={() => setActiveTab('materials')}
-          className={clsx(
-            'px-4 py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-2',
-            activeTab === 'materials'
-              ? 'border-blue-500 text-blue-600'
-              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-          )}
-        >
-          <BookOpen size={16} />
-          Materi Pembelajaran
-        </button>
-        <button
-          onClick={() => setActiveTab('assignments')}
-          className={clsx(
-            'px-4 py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-2',
-            activeTab === 'assignments'
-              ? 'border-blue-500 text-blue-600'
-              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-          )}
-        >
-          <ClipboardList size={16} />
-          Tugas & PR
-        </button>
-      </div>
+      <UnderlineTabBar
+        items={LEARNING_TABS}
+        activeId={activeTab}
+        onChange={(id) => setActiveTab(id as 'materials' | 'assignments')}
+        ariaLabel="Tab materi dan tugas siswa"
+      />
 
       {/* Filters */}
       <div className="flex flex-col md:flex-row gap-4 bg-white p-4 rounded-xl shadow-sm border border-gray-100">
@@ -375,146 +361,212 @@ export default function StudentLearningPage() {
           <p className="mt-2 text-gray-500">Memuat data...</p>
         </div>
       ) : activeTab === 'materials' ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <section className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm">
+          <div className="border-b border-gray-100 px-5 py-4">
+            <h2 className="text-section-title text-gray-900">Daftar Materi Pembelajaran</h2>
+            <p className="mt-1 text-sm text-gray-500">
+              {filteredMaterials.length} materi tersedia sesuai filter aktif.
+            </p>
+          </div>
           {filteredMaterials.length === 0 ? (
-            <div className="col-span-full text-center py-12 bg-white rounded-xl border border-dashed border-gray-300">
+            <div className="m-5 rounded-xl border border-dashed border-gray-300 bg-white py-12 text-center">
               <BookOpen className="mx-auto h-12 w-12 text-gray-400" />
               <h3 className="mt-2 text-sm font-medium text-gray-900">Tidak ada materi</h3>
               <p className="mt-1 text-sm text-gray-500">Belum ada materi pelajaran yang diunggah.</p>
             </div>
           ) : (
-            filteredMaterials.map((material) => (
-              <div key={material.id} className="bg-white rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow overflow-hidden flex flex-col">
-                <div className="p-5 flex-1">
-                  <div className="flex items-start justify-between mb-2">
-                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                      {material.subject.name}
-                    </span>
-                    <span className="text-xs text-gray-500">
-                      {new Date(material.createdAt).toLocaleDateString('id-ID')}
-                    </span>
-                  </div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-2 line-clamp-2">{material.title}</h3>
-                  <p className="text-sm text-gray-500 mb-4 line-clamp-3">{material.description || 'Tidak ada deskripsi'}</p>
-                  
-                  {material.youtubeUrl && (
-                    <div className="mb-4 aspect-video rounded-lg overflow-hidden bg-gray-100">
-                      <iframe 
-                        src={`https://www.youtube.com/embed/${material.youtubeUrl.split('v=')[1]}`}
-                        className="w-full h-full"
-                        allowFullScreen
-                      />
-                    </div>
-                  )}
-                </div>
-                
-                <div className="p-4 bg-gray-50 border-t border-gray-100 flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-sm text-gray-600">
-                    <div className="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 text-xs font-bold">
-                      {material.teacher.name.charAt(0)}
-                    </div>
-                    <span className="truncate max-w-[120px]">{material.teacher.name}</span>
-                  </div>
-                  {material.fileUrl && (
-                    <a 
-                      href={material.fileUrl} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="text-blue-600 hover:text-blue-800 text-sm font-medium flex items-center gap-1"
-                    >
-                      <Download size={16} />
-                      Unduh
-                    </a>
-                  )}
-                </div>
-              </div>
-            ))
+            <div className="overflow-x-auto">
+              <table className="min-w-[920px] w-full text-left">
+                <thead className="bg-gray-50">
+                  <tr className="border-b border-gray-200">
+                    <th className="w-14 px-5 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">No</th>
+                    <th className="px-5 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">Materi</th>
+                    <th className="w-56 px-5 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">Mata Pelajaran</th>
+                    <th className="w-48 px-5 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">Guru</th>
+                    <th className="w-36 px-5 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">Tanggal</th>
+                    <th className="w-44 px-5 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {filteredMaterials.map((material, index) => (
+                    <tr key={material.id} className="transition-colors hover:bg-gray-50">
+                      <td className="px-5 py-4 text-sm text-gray-500">{index + 1}</td>
+                      <td className="px-5 py-4">
+                        <p className="text-sm font-semibold text-gray-900">{material.title}</p>
+                        <p className="mt-1 line-clamp-2 text-sm text-gray-500">
+                          {material.description || 'Tidak ada deskripsi'}
+                        </p>
+                        {material.fileName ? (
+                          <p className="mt-1 text-xs text-gray-400">File: {material.fileName}</p>
+                        ) : null}
+                      </td>
+                      <td className="px-5 py-4">
+                        <span className="inline-flex rounded-full border border-blue-100 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">
+                          {material.subject.name}
+                        </span>
+                        <p className="mt-1 font-mono text-xs text-gray-500">{material.subject.code}</p>
+                      </td>
+                      <td className="px-5 py-4">
+                        <div className="inline-flex items-center gap-2 text-sm text-gray-700">
+                          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-50 text-xs font-bold text-blue-600">
+                            {material.teacher.name.charAt(0)}
+                          </span>
+                          <span>{material.teacher.name}</span>
+                        </div>
+                      </td>
+                      <td className="px-5 py-4 text-sm text-gray-700">
+                        {new Date(material.createdAt).toLocaleDateString('id-ID')}
+                      </td>
+                      <td className="px-5 py-4">
+                        <div className="flex justify-end gap-2">
+                          {material.youtubeUrl ? (
+                            <a
+                              href={material.youtubeUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center justify-center rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 transition hover:bg-red-100"
+                            >
+                              Video
+                            </a>
+                          ) : null}
+                          {material.fileUrl ? (
+                            <a
+                              href={material.fileUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-blue-700"
+                            >
+                              <Download size={14} />
+                              Unduh
+                            </a>
+                          ) : null}
+                          {!material.youtubeUrl && !material.fileUrl ? (
+                            <span className="text-sm text-gray-400">-</span>
+                          ) : null}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
-        </div>
+        </section>
       ) : (
-        <div className="space-y-4">
+        <section className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm">
+          <div className="border-b border-gray-100 px-5 py-4">
+            <h2 className="text-section-title text-gray-900">Daftar Tugas & PR</h2>
+            <p className="mt-1 text-sm text-gray-500">
+              {filteredAssignments.length} tugas tersedia sesuai filter aktif.
+            </p>
+          </div>
           {filteredAssignments.length === 0 ? (
-            <div className="text-center py-12 bg-white rounded-xl border border-dashed border-gray-300">
+            <div className="m-5 rounded-xl border border-dashed border-gray-300 bg-white py-12 text-center">
               <ClipboardList className="mx-auto h-12 w-12 text-gray-400" />
               <h3 className="mt-2 text-sm font-medium text-gray-900">Tidak ada tugas</h3>
               <p className="mt-1 text-sm text-gray-500">Belum ada tugas yang diberikan.</p>
             </div>
           ) : (
-            filteredAssignments.map((assignment) => (
-              <div key={assignment.id} className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition-shadow">
-                <div className="flex flex-col md:flex-row justify-between gap-4">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2">
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
-                        {assignment.subject.name}
-                      </span>
-                      {getStatusBadge(assignment)}
-                    </div>
-                    <h3 className="text-lg font-semibold text-gray-900 mb-1">{assignment.title}</h3>
-                    <p className="text-sm text-gray-500 mb-3">{assignment.description || 'Tidak ada deskripsi'}</p>
-                    
-                    <div className="flex items-center gap-4 text-sm text-gray-500">
-                      <div className="flex items-center gap-1">
-                        <Calendar size={14} />
-                        <span>Deadline: {new Date(assignment.dueDate).toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <FileText size={14} />
-                        <span>Max Score: {assignment.maxScore}</span>
-                      </div>
-                    </div>
-
-                    {assignment.submission?.feedback && (
-                      <div className="mt-3 p-3 bg-blue-50 rounded-lg text-sm text-blue-800 border border-blue-100">
-                        <strong>Feedback Guru:</strong> {assignment.submission.feedback}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="flex flex-col gap-2 min-w-[150px]">
-                    {assignment.fileUrl && (
-                      <a 
-                        href={assignment.fileUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 flex items-center justify-center gap-2"
-                      >
-                        <Download size={16} />
-                        Lampiran
-                      </a>
-                    )}
-                    
-                    <button
-                      onClick={() => {
-                        setSelectedAssignment(assignment);
-                        setSubmissionContent(assignment.submission?.content || '');
-                        setShowSubmitModal(true);
-                      }}
-                      className={clsx(
-                        "px-4 py-2 rounded-lg text-sm font-medium flex items-center justify-center gap-2 transition-colors",
-                        assignment.submission 
-                          ? "bg-white border border-blue-200 text-blue-700 hover:bg-blue-50"
-                          : "bg-blue-600 text-white hover:bg-blue-700"
-                      )}
-                    >
-                      {assignment.submission ? (
-                        <>
-                          <FileText size={16} />
-                          Lihat / Edit Jawaban
-                        </>
-                      ) : (
-                        <>
-                          <Upload size={16} />
-                          Kumpulkan Tugas
-                        </>
-                      )}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))
+            <div className="overflow-x-auto">
+              <table className="min-w-[980px] w-full text-left">
+                <thead className="bg-gray-50">
+                  <tr className="border-b border-gray-200">
+                    <th className="w-14 px-5 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">No</th>
+                    <th className="px-5 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">Tugas</th>
+                    <th className="w-56 px-5 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">Mata Pelajaran</th>
+                    <th className="w-52 px-5 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">Deadline</th>
+                    <th className="w-48 px-5 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">Status</th>
+                    <th className="w-52 px-5 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {filteredAssignments.map((assignment, index) => (
+                    <tr key={assignment.id} className="align-top transition-colors hover:bg-gray-50">
+                      <td className="px-5 py-4 text-sm text-gray-500">{index + 1}</td>
+                      <td className="px-5 py-4">
+                        <p className="text-sm font-semibold text-gray-900">{assignment.title}</p>
+                        <p className="mt-1 line-clamp-2 text-sm text-gray-500">
+                          {assignment.description || 'Tidak ada deskripsi'}
+                        </p>
+                        <div className="mt-2 inline-flex items-center gap-1 text-xs text-gray-500">
+                          <FileText size={14} />
+                          Skor maks: {assignment.maxScore}
+                        </div>
+                        {assignment.submission?.feedback ? (
+                          <div className="mt-2 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-800">
+                            <strong>Feedback Guru:</strong> {assignment.submission.feedback}
+                          </div>
+                        ) : null}
+                      </td>
+                      <td className="px-5 py-4">
+                        <span className="inline-flex rounded-full border border-purple-100 bg-purple-50 px-2.5 py-1 text-xs font-semibold text-purple-700">
+                          {assignment.subject.name}
+                        </span>
+                        <p className="mt-1 font-mono text-xs text-gray-500">{assignment.subject.code}</p>
+                      </td>
+                      <td className="px-5 py-4 text-sm text-gray-700">
+                        <div className="inline-flex items-start gap-2">
+                          <Calendar size={14} className="mt-0.5 shrink-0 text-gray-400" />
+                          <span>
+                            {new Date(assignment.dueDate).toLocaleDateString('id-ID', {
+                              weekday: 'long',
+                              year: 'numeric',
+                              month: 'long',
+                              day: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-5 py-4">{getStatusBadge(assignment)}</td>
+                      <td className="px-5 py-4">
+                        <div className="flex flex-col items-end gap-2">
+                          {assignment.fileUrl ? (
+                            <a
+                              href={assignment.fileUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-700 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+                            >
+                              <Download size={14} />
+                              Lampiran
+                            </a>
+                          ) : null}
+                          <button
+                            onClick={() => {
+                              setSelectedAssignment(assignment);
+                              setSubmissionContent(assignment.submission?.content || '');
+                              setShowSubmitModal(true);
+                            }}
+                            className={clsx(
+                              'inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold transition',
+                              assignment.submission
+                                ? 'border border-blue-200 bg-white text-blue-700 hover:bg-blue-50'
+                                : 'bg-blue-600 text-white shadow-sm hover:bg-blue-700',
+                            )}
+                          >
+                            {assignment.submission ? (
+                              <>
+                                <FileText size={14} />
+                                Lihat / Edit
+                              </>
+                            ) : (
+                              <>
+                                <Upload size={14} />
+                                Kumpulkan
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
-        </div>
+        </section>
       )}
 
       {/* Submission Modal */}
