@@ -7,7 +7,6 @@ import {
   CheckCircle, 
   Clock, 
   MapPin, 
-  Calendar,
   ChevronRight,
   X,
   Camera
@@ -69,6 +68,56 @@ interface InternshipSummary {
   };
 }
 
+function formatJournalDate(date: string, options?: Intl.DateTimeFormatOptions) {
+  return new Date(date).toLocaleDateString('id-ID', options ?? {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
+}
+
+function formatJournalTime(date: string) {
+  return new Date(date).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+}
+
+function getJournalStatusLabel(status: string) {
+  switch (status) {
+    case 'PENDING':
+      return 'Menunggu Validasi';
+    case 'VERIFIED':
+      return 'Tervalidasi';
+    case 'REJECTED':
+      return 'Ditolak';
+    default:
+      return status || '-';
+  }
+}
+
+function getJournalStatusClassName(status: string) {
+  switch (status) {
+    case 'VERIFIED':
+      return 'bg-green-100 text-green-700';
+    case 'REJECTED':
+      return 'bg-red-100 text-red-700';
+    case 'PENDING':
+      return 'bg-yellow-100 text-yellow-700';
+    default:
+      return 'bg-gray-100 text-gray-600';
+  }
+}
+
+function getInternshipStatusLabel(status: InternshipStatus) {
+  if (status === 'ACTIVE') return 'Sedang PKL';
+  if (status === 'COMPLETED') return 'Selesai';
+  return status || '-';
+}
+
+function getInternshipStatusClassName(status: InternshipStatus) {
+  if (status === 'ACTIVE') return 'bg-green-50 text-green-700 border-green-100';
+  if (status === 'COMPLETED') return 'bg-blue-50 text-blue-700 border-blue-100';
+  return 'bg-gray-50 text-gray-600 border-gray-200';
+}
+
 // Modal Component for Details
 const InternshipDetailModal = ({ internship, onClose }: { internship: InternshipSummary, onClose: () => void }) => {
   const [activeTab, setActiveTab] = useState<'journals' | 'attendances'>('journals');
@@ -114,8 +163,8 @@ const InternshipDetailModal = ({ internship, onClose }: { internship: Internship
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 overflow-y-auto">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-900/30 p-4 backdrop-blur-[2px]">
+      <div className="flex max-h-[calc(100vh-7rem)] w-full max-w-5xl flex-col overflow-hidden rounded-xl bg-white shadow-xl">
         {/* Header */}
         <div className="p-6 border-b border-gray-100 flex justify-between items-start bg-gray-50">
           <div>
@@ -178,72 +227,93 @@ const InternshipDetailModal = ({ internship, onClose }: { internship: Internship
                   <p className="text-gray-500">Belum ada jurnal harian.</p>
                 </div>
               ) : (
-                journals.map((journal) => (
-                  <div key={journal.id} className="bg-white border rounded-xl p-5 shadow-sm">
-                    <div className="flex justify-between items-start mb-3">
-                      <div className="flex items-center gap-2">
-                        <div className="p-2 bg-blue-50 rounded-lg text-blue-600">
-                          <Calendar className="w-5 h-5" />
-                        </div>
-                        <div>
-                          <p className="font-semibold text-gray-900">
-                            {new Date(journal.date).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
-                          </p>
-                          <p className="text-xs text-gray-500">
-                            {new Date(journal.createdAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WIB
-                          </p>
-                        </div>
-                      </div>
-                      <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                        journal.status === 'VERIFIED' ? 'bg-green-100 text-green-700' :
-                        journal.status === 'REJECTED' ? 'bg-red-100 text-red-700' :
-                        'bg-yellow-100 text-yellow-700'
-                      }`}>
-                        {journal.status === 'PENDING' ? 'Menunggu Validasi' : 
-                         journal.status === 'VERIFIED' ? 'Tervalidasi' : 'Ditolak'}
-                      </span>
-                    </div>
-
-                    <div className="pl-[52px]">
-                      <p className="text-gray-700 bg-gray-50 p-4 rounded-lg border border-gray-100 mb-3">
-                        {journal.activity}
-                      </p>
-                      
-                      {journal.imageUrl && (
-                        <div className="mb-4">
-                          <p className="text-xs font-medium text-gray-500 mb-2">Dokumentasi:</p>
-                          <a href={journal.imageUrl} target="_blank" rel="noreferrer">
-                            <img src={journal.imageUrl} alt="Dokumentasi" className="h-32 w-auto rounded-lg object-cover border hover:opacity-90 transition-opacity" />
-                          </a>
-                        </div>
-                      )}
-
-                      {journal.feedback && (
-                         <div className="mb-4 bg-orange-50 p-3 rounded-lg border border-orange-100 text-sm text-orange-800">
-                           <span className="font-bold">Catatan Guru:</span> {journal.feedback}
-                         </div>
-                      )}
-
-                      {journal.status === 'PENDING' && (
-                        <div className="flex gap-3 mt-4 pt-4 border-t border-gray-100">
-                          <button
-                            onClick={() => handleApproveJournal(journal.id, 'REJECTED')}
-                            className="flex-1 px-4 py-2 text-sm font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition-colors"
-                          >
-                            Tolak
-                          </button>
-                          <button
-                            onClick={() => handleApproveJournal(journal.id, 'VERIFIED')}
-                            className="flex-1 px-4 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-lg transition-colors flex items-center justify-center gap-2"
-                          >
-                            <CheckCircle className="w-4 h-4" />
-                            Validasi
-                          </button>
-                        </div>
-                      )}
-                    </div>
+                <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[900px] text-left text-sm">
+                      <thead className="border-b bg-gray-50 text-gray-700">
+                        <tr>
+                          <th className="px-4 py-3 font-medium">Tanggal & Waktu</th>
+                          <th className="px-4 py-3 font-medium">Kegiatan</th>
+                          <th className="px-4 py-3 font-medium">Dokumentasi</th>
+                          <th className="px-4 py-3 font-medium">Feedback</th>
+                          <th className="px-4 py-3 font-medium">Status</th>
+                          <th className="px-4 py-3 text-right font-medium">Aksi</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {journals.map((journal) => (
+                          <tr key={journal.id} className="align-top hover:bg-gray-50">
+                            <td className="whitespace-nowrap px-4 py-3">
+                              <div className="font-medium text-gray-900">
+                                {formatJournalDate(journal.date)}
+                              </div>
+                              <div className="mt-1 text-xs text-gray-500">
+                                {formatJournalDate(journal.date, { weekday: 'long' })} • {formatJournalTime(journal.createdAt)} WIB
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 text-gray-700">
+                              <p className="whitespace-pre-line rounded-lg border border-gray-100 bg-gray-50 p-3">
+                                {journal.activity || '-'}
+                              </p>
+                            </td>
+                            <td className="px-4 py-3">
+                              {journal.imageUrl ? (
+                                <a
+                                  href={journal.imageUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="inline-flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 font-medium text-gray-700 hover:bg-gray-100"
+                                >
+                                  <img
+                                    src={journal.imageUrl}
+                                    alt="Dokumentasi jurnal"
+                                    className="h-10 w-10 rounded-md object-cover"
+                                  />
+                                  Lihat foto
+                                </a>
+                              ) : (
+                                <span className="text-gray-500">-</span>
+                              )}
+                            </td>
+                            <td className="px-4 py-3 text-gray-600">
+                              {journal.feedback ? (
+                                <span className="text-orange-800">{journal.feedback}</span>
+                              ) : (
+                                '-'
+                              )}
+                            </td>
+                            <td className="whitespace-nowrap px-4 py-3">
+                              <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${getJournalStatusClassName(journal.status)}`}>
+                                {getJournalStatusLabel(journal.status)}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-right">
+                              {journal.status === 'PENDING' ? (
+                                <div className="inline-flex gap-2">
+                                  <button
+                                    onClick={() => handleApproveJournal(journal.id, 'REJECTED')}
+                                    className="rounded-lg bg-red-50 px-3 py-2 text-xs font-medium text-red-600 transition-colors hover:bg-red-100"
+                                  >
+                                    Tolak
+                                  </button>
+                                  <button
+                                    onClick={() => handleApproveJournal(journal.id, 'VERIFIED')}
+                                    className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-green-600 px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-green-700"
+                                  >
+                                    <CheckCircle className="w-3.5 h-3.5" />
+                                    Validasi
+                                  </button>
+                                </div>
+                              ) : (
+                                <span className="text-xs text-gray-400">-</span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
-                ))
+                </div>
               )}
             </div>
           ) : (
@@ -383,90 +453,97 @@ export const TeacherInternshipGuidance = () => {
         </div>
       </div>
 
-      <div className="grid gap-6">
-        {internships.map((internship) => (
-          <div key={internship.id} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition-shadow">
-            <div className="p-6 border-b border-gray-100 bg-gray-50/50 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-              <div>
-                <h3 className="font-semibold text-lg text-gray-900 flex items-center gap-2">
-                  {internship.student.name}
-                  <span className={`px-2 py-0.5 rounded text-xs font-normal border ${
-                    internship.status === 'ACTIVE' ? 'bg-green-50 text-green-700 border-green-100' : 
-                    internship.status === 'COMPLETED' ? 'bg-blue-50 text-blue-700 border-blue-100' : 
-                    'bg-gray-50 text-gray-600 border-gray-200'
-                  }`}>
-                    {internship.status === 'ACTIVE' ? 'Sedang PKL' : internship.status}
-                  </span>
-                </h3>
-                <div className="text-sm text-gray-500 flex flex-wrap items-center gap-x-4 gap-y-1 mt-1">
-                  <span className="flex items-center gap-1">
-                    <Users className="w-3.5 h-3.5" />
-                    {internship.student.studentClass?.name}
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <FileText className="w-3.5 h-3.5" />
-                    NIS: {internship.student.nis}
-                  </span>
-                </div>
-              </div>
-              <div className="text-left md:text-right">
-                <div className="font-medium text-gray-900 flex items-center md:justify-end gap-1">
-                  <Building2 className="w-4 h-4 text-gray-400" />
-                  {internship.companyName}
-                </div>
-                <div className="text-sm text-gray-500 mt-0.5">Mentor: {internship.mentorName}</div>
-              </div>
-            </div>
-
-            <div className="p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h4 className="font-medium flex items-center gap-2 text-gray-700">
-                  <Clock className="w-4 h-4 text-blue-600" />
-                  Status Terkini
-                </h4>
-                {(internship._count?.journals?.status ?? 0) > 0 && (
-                   <span className="bg-red-100 text-red-700 text-xs font-bold px-2 py-1 rounded-full animate-pulse">
-                     {(internship._count?.journals?.status ?? 0)} Jurnal Menunggu
-                   </span>
-                )}
-              </div>
-              
-              {internship.journals && internship.journals.length > 0 ? (
-                <div className="bg-gray-50 rounded-lg p-4 border border-gray-100 mb-4">
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="text-xs font-medium text-gray-500 uppercase tracking-wider">Jurnal Terakhir</span>
-                    <span className="text-xs text-gray-400">•</span>
-                    <span className="text-xs text-gray-500">
-                      {new Date(internship.journals[0].date).toLocaleDateString('id-ID', { day: 'numeric', month: 'long' })}
-                    </span>
-                  </div>
-                  <p className="text-sm text-gray-700 line-clamp-2">{internship.journals[0].activity}</p>
-                </div>
-              ) : (
-                <p className="text-gray-500 italic text-sm mb-4">Belum ada aktivitas jurnal.</p>
-              )}
-
-              <button
-                onClick={() => setSelectedInternship(internship)}
-                className="w-full py-2.5 px-4 bg-white border border-blue-200 text-blue-600 font-medium rounded-lg hover:bg-blue-50 transition-colors flex items-center justify-center gap-2"
-              >
-                Lihat Detail Jurnal & Absensi
-                <ChevronRight className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-        ))}
-
-        {internships.length === 0 && (
-          <div className="text-center py-16 bg-white rounded-xl border border-gray-100">
+      {internships.length === 0 ? (
+        <div className="text-center py-16 bg-white rounded-xl border border-gray-100">
             <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4">
               <Users className="w-8 h-8 text-gray-300" />
             </div>
             <h3 className="text-lg font-medium text-gray-900">Belum Ada Siswa Bimbingan</h3>
             <p className="text-gray-500 mt-1 max-w-sm mx-auto">Anda belum ditugaskan sebagai guru pembimbing PKL untuk siswa manapun saat ini.</p>
+        </div>
+      ) : (
+        <div className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm">
+          <div className="border-b border-gray-100 px-6 py-4">
+            <h2 className="text-lg font-semibold text-gray-900">Daftar Siswa Bimbingan</h2>
+            <p className="text-sm text-gray-500">{internships.length} siswa PKL terhubung dengan akun pembimbing ini.</p>
           </div>
-        )}
-      </div>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[980px] text-left">
+              <thead className="bg-gray-50">
+                <tr className="border-b border-gray-100">
+                  <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">Siswa</th>
+                  <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">Tempat PKL</th>
+                  <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">Status</th>
+                  <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">Jurnal Terakhir</th>
+                  <th className="px-6 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500">Aksi</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {internships.map((internship) => {
+                  const waitingJournals = internship._count?.journals?.status ?? 0;
+                  const latestJournal = internship.journals?.[0];
+
+                  return (
+                    <tr key={internship.id} className="align-top hover:bg-gray-50">
+                      <td className="px-6 py-4">
+                        <p className="font-semibold text-gray-900">{internship.student.name}</p>
+                        <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-500">
+                          <span className="flex items-center gap-1">
+                            <Users className="h-3.5 w-3.5" />
+                            {internship.student.studentClass?.name || '-'}
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <FileText className="h-3.5 w-3.5" />
+                            NIS: {internship.student.nis || '-'}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-1 font-medium text-gray-900">
+                          <Building2 className="h-4 w-4 text-gray-400" />
+                          {internship.companyName || '-'}
+                        </div>
+                        <div className="mt-1 text-sm text-gray-500">Mentor: {internship.mentorName || '-'}</div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={`inline-flex rounded border px-2 py-0.5 text-xs font-medium ${getInternshipStatusClassName(internship.status)}`}>
+                          {getInternshipStatusLabel(internship.status)}
+                        </span>
+                        {waitingJournals > 0 ? (
+                          <div className="mt-2 inline-flex rounded-full bg-red-100 px-2 py-1 text-xs font-bold text-red-700">
+                            {waitingJournals} jurnal menunggu
+                          </div>
+                        ) : null}
+                      </td>
+                      <td className="px-6 py-4">
+                        {latestJournal ? (
+                          <div className="max-w-md">
+                            <p className="text-xs font-medium uppercase tracking-wider text-gray-500">
+                              {formatJournalDate(latestJournal.date, { day: 'numeric', month: 'long' })}
+                            </p>
+                            <p className="mt-1 line-clamp-2 text-sm text-gray-700">{latestJournal.activity}</p>
+                          </div>
+                        ) : (
+                          <span className="text-sm italic text-gray-500">Belum ada aktivitas jurnal.</span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <button
+                          onClick={() => setSelectedInternship(internship)}
+                          className="inline-flex items-center justify-center gap-2 rounded-lg border border-blue-200 bg-white px-4 py-2.5 text-sm font-medium text-blue-600 transition-colors hover:bg-blue-50"
+                        >
+                          Lihat Detail
+                          <ChevronRight className="h-4 w-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* Detail Modal */}
       {selectedInternship && (
