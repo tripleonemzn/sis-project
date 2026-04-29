@@ -5,12 +5,12 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-04-29 13:37 WIB
-- Current status: Root cause simpan konfigurasi perangkat ajar dan delete program sudah diperbaiki dan sudah live. Auto-backfill schema default kini hanya berlaku untuk schema kosong/legacy, sehingga tidak menimpa konfigurasi Wakakur walaupun versi template custom lebih rendah dari default bawaan. Hapus program dari Wakakur juga sekarang menghapus dokumen terkait pada tahun ajaran aktif secara eksplisit setelah konfirmasi.
+- Last updated: 2026-04-29 14:11 WIB
+- Current status: Logic alokasi JP perangkat ajar sudah diperluas dan sudah live. Kolom alokasi kini bisa memakai sumber nilai sistem dari jadwal mengajar Wakakur: `JP/Minggu per Rombel` dan `Total JP/Minggu Semua Rombel`. Nilai sistem mengisi default dari konteks mapel/tingkat guru, tetap bisa diedit guru jika Wakakur mengaktifkan override, lalu bisa menjadi referensi lintas dokumen melalui field identity/semantic key yang sama.
 - Objective/task aktif:
-  - Menyelesaikan perapihan UX role guru pada halaman dokumen perangkat ajar agar lebih fleksibel saat menulis judul, lebih aman saat print, dan lebih operasional saat mengedit isi tabel.
+  - Menjaga perangkat ajar dinamis tetap terintegrasi lintas menu, khususnya alokasi JP dari beban mengajar menuju ATP/Prota/Promes/Matriks.
 - Batch terakhir selesai:
-  - `Follow-up - Fix schema backfill dan delete program perangkat ajar (web/backend)`
+  - `Follow-up - Integrasi alokasi JP dari jadwal mengajar (web/backend)`
 - Progress batch ini:
   - `100%`
 - Progress roadmap perangkat ajar dinamis:
@@ -19,13 +19,13 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
-  - Commit: `1ab0e98`
-  - Title: `fix(curriculum): preserve customized schemas and cascade delete programs`
+  - Commit: `27f8c76`
+  - Title: `feat(curriculum): derive teaching resource allocation hours`
   - Summary:
-    - backend `shouldBackfillProgramSchema` tidak lagi membandingkan versi default untuk schema yang sudah memiliki section valid
-    - konfigurasi Wakakur untuk program default sekarang bisa memakai bentuk dokumen berbeda tanpa ditimpa balik oleh default schema saat `loadPrograms`
-    - delete program menerima cascade eksplisit dari UI Wakakur dan menghapus dokumen terkait di tahun ajaran aktif
-    - modal hapus program menjelaskan bahwa dokumen guru terkait ikut dihapus
+    - schema perangkat ajar mengenal sumber nilai sistem `SYSTEM_WEEKLY_CLASS_HOURS` dan `SYSTEM_WEEKLY_TOTAL_HOURS`
+    - generator guru membaca jadwal pelajaran aktif secara scoped per guru+tahun ajaran, menghitung total JP mingguan dan JP/minggu per rombel dari assignment yang dipilih
+    - kolom alokasi JP pada preset distribusi waktu/matriks dan default ATP/Prota/Promes/Matriks memakai nilai sistem sebagai default yang tetap bisa diedit guru
+    - UI Wakakur menyediakan preset cepat `JP/Minggu per Rombel` dan `Total JP/Minggu`
 - Area/file disentuh:
   - `backend/src/controllers/teachingResourceProgram.controller.ts`
   - `frontend/src/pages/teacher/wakasek/curriculum/TeachingResourceProgramManagementPage.tsx`
@@ -39,17 +39,19 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `git diff --check`
   - `cd frontend && npm run deploy`
   - `curl -I https://siskgb2.id/teacher/wakasek/teaching-resource-programs`
+  - `curl -I https://siskgb2.id/teacher/learning-resources/atp`
   - `curl -I https://siskgb2.id/teacher/learning-resources/prota`
 - Publish/live status:
   - Backend sudah restart via PM2 dan health `Backend:200`, `Backend API:200`
   - Web sudah deploy live ke `/var/www/html/`
   - Route Wakakur `https://siskgb2.id/teacher/wakasek/teaching-resource-programs` merespons `HTTP/1.1 200 OK`
+  - Route guru `https://siskgb2.id/teacher/learning-resources/atp` merespons `HTTP/1.1 200 OK`
   - Route guru `https://siskgb2.id/teacher/learning-resources/prota` merespons `HTTP/1.1 200 OK`
   - Mobile source code tidak berubah; belum ada OTA baru
 - Remaining work:
-  - Push ke `origin/main` dan pastikan worktree clean.
+  - Commit dokumentasi handoff, push ke `origin/main`, dan pastikan worktree clean.
 - Residual risk:
-  - Program yang sudah telanjur tersimpan kembali ke schema lama perlu disimpan ulang dari UI Wakakur setelah fix ini. Backend tidak mengubah data user secara otomatis agar tidak menebak konfigurasi yang diinginkan.
+  - Program custom yang sudah dibuat sebelum perubahan ini tidak diubah otomatis agar konfigurasi Wakakur tidak ditimpa. Jika ingin kolom `Alokasi JP` existing memakai sumber jadwal, edit program di Wakakur lalu pilih sumber nilai `JP/Minggu per Rombel` atau gunakan preset cepatnya.
 
 ## Status Saat Ini
 
