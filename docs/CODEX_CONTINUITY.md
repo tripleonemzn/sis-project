@@ -5,12 +5,12 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-04-29 21:08 WIB
-- Current status: Follow-up lebar kop surat PKL sudah selesai dan live. Kop PKL sekarang menghapus margin kiri-kanan internal `40px` pada area kop dan garis bawah, sehingga lebar kop mengikuti area cetak seperti kop BA.
+- Last updated: 2026-04-29 21:31 WIB
+- Current status: Follow-up QR/barcode tanda tangan kepala sekolah pada surat PKL sudah selesai dan live. QR PKL sekarang memakai pola seperti BA: QR dibuat internal oleh backend, mengarah ke link pendek `https://siskgb2.id/v/pkl/:token`, dan saat discan membuka halaman verifikasi dokumen publik.
 - Objective/task aktif:
   - Menjaga fitur operasional lintas web/mobile tetap user-friendly dan aman untuk produksi.
 - Batch terakhir selesai:
-  - `Waka Humas - standardisasi cetak surat PKL`
+  - `Waka Humas - standardisasi QR verifikasi surat PKL`
 - Progress batch ini:
   - `100%`
 - Progress roadmap perangkat ajar dinamis:
@@ -20,27 +20,39 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
   - Commit: `pending`
-  - Title: `fix(internship): align pkl letter header width`
+  - Title: `fix(internship): standardize pkl letter qr verification`
   - Summary:
-    - generator HTML surat PKL menyamakan margin wrapper kop dengan pola BA
-    - garis bawah kop surat PKL kini melebar mengikuti area cetak, bukan menyempit dengan margin internal
-    - perubahan khusus layout cetak, tanpa perubahan API/query/data flow
+    - generator HTML surat PKL tidak lagi memakai QR eksternal `api.qrserver.com`
+    - QR tanda tangan kepala sekolah sekarang memakai data URL internal dari backend dan link pendek `/v/pkl/:token`
+    - ditambahkan endpoint publik verifikasi surat PKL serta halaman publik verifikasi dengan pola visual seperti BA
+    - fallback print legacy `/print/pkl/:id` ikut memakai endpoint QR internal agar tidak ada pola barcode lama yang berbeda
 - Area/file disentuh:
   - `backend/src/controllers/internship.controller.ts`
+  - `backend/src/routes/public.routes.ts`
+  - `frontend/src/App.tsx`
+  - `frontend/src/pages/print/PklLetterPrint.tsx`
+  - `frontend/src/pages/public/PklLetterVerificationPage.tsx`
   - `docs/CODEX_CONTINUITY.md`
 - Verifikasi batch ini:
   - `cd backend && npm run build`
+  - `cd frontend && npm run build`
   - `git diff --check`
+  - `rg -n "api.qrserver.com|Validasi\\+SMK\\+KGB2" backend/src frontend/src -S` tidak menemukan sisa source lama
   - `cd backend && npm run service:restart`
   - `cd backend && npm run service:health`
+  - `cd frontend && npm run deploy`
+  - `GET https://siskgb2.id/api/public/pkl-letters/qr/16?date=2026-04-29&letterNumber=TEST&companyName=TEST` berhasil `200`
+  - hasil sample QR berisi `https://siskgb2.id/v/pkl/16-1-20260429-290457c7-eYxC0UXMHY`
+  - endpoint verifikasi token sample berhasil `200` dan `valid true`
+  - route publik `https://siskgb2.id/v/pkl/test` merespons SPA `200`
 - Publish/live status:
   - Backend sudah restart via PM2 dan health `Backend:200`, `Backend API:200`
-  - Web source tidak berubah; tidak perlu deploy frontend baru
+  - Web sudah deploy ke `/var/www/html`
   - Mobile source code tidak berubah; tidak ada OTA baru
 - Remaining work:
   - Commit perubahan task dan dokumentasi, push ke `origin/main`, lalu final clean check.
 - Residual risk:
-  - Route print legacy `/print/pkl` dan `/print/pkl-group` masih ada di codebase sebagai fallback lama, tetapi tombol operasional Waka Humas sudah tidak memakainya.
+  - Token verifikasi PKL bersifat stateless dan ditandatangani, sehingga tidak perlu migrasi database. Jika ke depan butuh audit arsip per nomor surat permanen, bisa ditingkatkan menjadi record dokumen tersimpan.
 
 ## Status Saat Ini
 

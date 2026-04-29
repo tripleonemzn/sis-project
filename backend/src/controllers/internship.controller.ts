@@ -2,8 +2,10 @@ import { Request, Response } from 'express';
 import prisma from '../utils/prisma';
 import { ApiError, ApiResponse, asyncHandler } from '../utils/api';
 import crypto from 'crypto';
+import QRCode from 'qrcode';
 import { InternshipStatus } from '@prisma/client';
 import { AuthRequest } from '../types';
+import { resolvePublicAppBaseUrl } from '../utils/publicAppBaseUrl';
 import {
   listHistoricalStudentsByIds,
   resolveHistoricalStudentScope,
@@ -706,6 +708,74 @@ const escapeLetterHtml = (value?: unknown) =>
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
 
+const PKL_LETTER_TOKEN_SECRET =
+  process.env.PKL_LETTER_TOKEN_SECRET || process.env.JWT_SECRET || 'sis-pkl-letter-verification-v1';
+
+const normalizePklTokenText = (value?: unknown) => String(value ?? '').trim().replace(/\s+/g, ' ');
+
+const formatPklTokenDateKey = (value?: unknown) => {
+  const date = value ? new Date(String(value)) : new Date();
+  if (Number.isNaN(date.getTime())) return '00000000';
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}${month}${day}`;
+};
+
+const signPklLetterPayload = (payload: string) =>
+  crypto.createHmac('sha256', PKL_LETTER_TOKEN_SECRET).update(payload).digest('base64url').slice(0, 10);
+
+const safeEqualTokenPart = (left: string, right: string) => {
+  const leftBuffer = Buffer.from(left);
+  const rightBuffer = Buffer.from(right);
+  return leftBuffer.length === rightBuffer.length && crypto.timingSafeEqual(leftBuffer, rightBuffer);
+};
+
+const buildPklLetterVerificationToken = (internships: any[], config: any) => {
+  const ids = internships
+    .map((item) => Number(item?.id))
+    .filter((id) => Number.isFinite(id) && id > 0)
+    .sort((a, b) => a - b);
+  const primaryId = ids[0] || 0;
+  const count = Math.max(ids.length, 1);
+  const dateKey = formatPklTokenDateKey(config?.date);
+  const fingerprint = crypto
+    .createHash('sha256')
+    .update(
+      [
+        'pkl-letter-v1',
+        ids.join(','),
+        normalizePklTokenText(config?.letterNumber),
+        normalizePklTokenText(config?.companyName || internships[0]?.companyName),
+        normalizePklTokenText(config?.date),
+      ].join('|'),
+    )
+    .digest('hex')
+    .slice(0, 8);
+  const payload = `${primaryId}.${count}.${dateKey}.${fingerprint}`;
+  return `${primaryId}-${count}-${dateKey}-${fingerprint}-${signPklLetterPayload(payload)}`;
+};
+
+const parsePklLetterVerificationToken = (token?: string) => {
+  const match = String(token || '').match(/^(\d+)-(\d+)-(\d{8})-([a-f0-9]{8})-([A-Za-z0-9_-]{10})$/);
+  if (!match) return null;
+  const [, primaryId, count, dateKey, fingerprint, signature] = match;
+  const payload = `${primaryId}.${count}.${dateKey}.${fingerprint}`;
+  const expectedSignature = signPklLetterPayload(payload);
+  if (!safeEqualTokenPart(signature, expectedSignature)) return null;
+  return {
+    primaryId: Number(primaryId),
+    count: Number(count),
+    dateKey,
+  };
+};
+
+const formatPklVerificationDateLabel = (dateKey: string) => {
+  if (!/^\d{8}$/.test(dateKey) || dateKey === '00000000') return '-';
+  const date = new Date(Number(dateKey.slice(0, 4)), Number(dateKey.slice(4, 6)) - 1, Number(dateKey.slice(6, 8)));
+  return date.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+};
+
 const buildStandardLetterHeaderHtml = (header: StandardSchoolDocumentHeaderSnapshot) => {
   const competencyLine = Array.from(
     new Set((header.competencyNames || []).map((item) => String(item || '').trim()).filter(Boolean)),
@@ -743,11 +813,12 @@ const buildStandardLetterHeaderHtml = (header: StandardSchoolDocumentHeaderSnaps
 };
 
 // Helper function to generate letter HTML
-const generateLetterHTML = (
+const generateLetterHTML = async (
   internships: any[],
   config: any,
   principal: any,
   documentHeader: StandardSchoolDocumentHeaderSnapshot,
+  req: Request,
 ) => {
   const { letterNumber, attachment, subject, date, openingText, closingText, signatureSpace, useBarcode, contactPersons } = config;
   
@@ -772,6 +843,11 @@ const generateLetterHTML = (
 
   const principalName = principal?.name || 'H. IYAN RASTIYAN, S.Pd., M.Pd';
   const principalNuptk = principal?.nuptk || '-';
+  const verificationToken = buildPklLetterVerificationToken(internships, config);
+  const verificationUrl = `${resolvePublicAppBaseUrl(req)}/v/pkl/${verificationToken}`;
+  const verificationQrDataUrl = useBarcode
+    ? await QRCode.toDataURL(verificationUrl, { width: 128, margin: 1 })
+    : '';
 
   return `
     <style>
@@ -857,8 +933,9 @@ const generateLetterHTML = (
             <p style="margin-bottom: 0;">Hormat Kami,</p>
             <p style="margin-top: 0; margin-bottom: 0;">Kepala Sekolah,</p>
             <div style="${useBarcode ? 'margin: 10px 0;' : `height: ${signatureSpace * 20}px;`} display: flex; align-items: center; justify-content: flex-start;">
-              ${useBarcode ? `<img src="https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=Validasi+SMK+KGB2+${encodeURIComponent(principalName)}" alt="QR Code" style="width: 100px; height: 100px;" />` : ''}
+              ${useBarcode ? `<img src="${verificationQrDataUrl}" alt="QR Verifikasi Surat PKL" style="width: 100px; height: 100px;" />` : ''}
             </div>
+            ${useBarcode ? `<div style="max-width: 220px; margin: -6px 0 8px 0; color: #475569; font-size: 8px; font-style: italic; line-height: 1.2; word-break: break-all;">Verifikasi: ${escapeLetterHtml(verificationUrl)}</div>` : ''}
             <p style="font-weight: bold; text-decoration: underline; margin-bottom: 0;">${principalName}</p>
             <p style="margin-top: 0;">NUPTK. ${principalNuptk}</p>
           </div>
@@ -919,9 +996,11 @@ export const printGroupLetter = asyncHandler(async (req: Request, res: Response)
   });
   const documentHeader = await resolveStandardSchoolDocumentHeaderSnapshot();
 
-  const lettersHtml = Object.values(groupedInternships).map(group => 
-    generateLetterHTML(group, config, principal, documentHeader)
-  ).join('<div style="page-break-before: always;"></div>');
+  const letterParts: string[] = [];
+  for (const group of Object.values(groupedInternships)) {
+    letterParts.push(await generateLetterHTML(group, config, principal, documentHeader, req));
+  }
+  const lettersHtml = letterParts.join('<div style="page-break-before: always;"></div>');
 
   res.status(200).json(new ApiResponse(200, { html: lettersHtml }, 'Surat kelompok berhasil digenerate'));
 });
@@ -957,9 +1036,86 @@ export const getPrintLetterHtml = asyncHandler(async (req: Request, res: Respons
   });
   const documentHeader = await resolveStandardSchoolDocumentHeaderSnapshot();
 
-  const html = generateLetterHTML([normalizedInternship], parsedConfig, principal, documentHeader);
+  const html = await generateLetterHTML([normalizedInternship], parsedConfig, principal, documentHeader, req);
 
   res.status(200).json(new ApiResponse(200, { html }, 'HTML surat berhasil diambil'));
+});
+
+export const verifyPublicPklLetter = asyncHandler(async (req: Request, res: Response) => {
+  const parsedToken = parsePklLetterVerificationToken(req.params.token);
+  if (!parsedToken || !parsedToken.primaryId) {
+    throw new ApiError(404, 'Tautan verifikasi surat PKL tidak valid.');
+  }
+
+  const internship = await prisma.internship.findUnique({
+    where: { id: parsedToken.primaryId },
+    include: {
+      student: {
+        select: {
+          name: true,
+          nis: true,
+          studentClass: { select: { name: true } },
+        },
+      },
+      academicYear: {
+        select: { name: true },
+      },
+    },
+  });
+
+  if (!internship) {
+    throw new ApiError(404, 'Data surat PKL tidak ditemukan.');
+  }
+
+  const normalizedInternship = await hydrateInternshipWithHistoricalStudentClass(internship);
+
+  res.status(200).json(new ApiResponse(200, {
+    valid: true,
+    documentType: 'Surat Permohonan Praktik Kerja Lapangan (PKL)',
+    token: req.params.token,
+    verifiedAt: new Date().toISOString(),
+    issuedDate: formatPklVerificationDateLabel(parsedToken.dateKey),
+    participantCount: parsedToken.count,
+    companyName: normalizedInternship!.companyName,
+    academicYearName: normalizedInternship!.academicYear?.name || '-',
+    student: {
+      name: normalizedInternship!.student?.name || '-',
+      nis: normalizedInternship!.student?.nis || '-',
+      className: normalizedInternship!.student?.studentClass?.name || '-',
+    },
+  }, 'Verifikasi surat PKL berhasil.'));
+});
+
+export const getPublicPklLetterQr = asyncHandler(async (req: Request, res: Response) => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id) || id <= 0) {
+    throw new ApiError(400, 'ID surat PKL tidak valid.');
+  }
+
+  const internship = await prisma.internship.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      companyName: true,
+    },
+  });
+
+  if (!internship) {
+    throw new ApiError(404, 'Data PKL tidak ditemukan.');
+  }
+
+  const token = buildPklLetterVerificationToken([internship], {
+    date: req.query.date,
+    letterNumber: req.query.letterNumber,
+    companyName: req.query.companyName || internship.companyName,
+  });
+  const verificationUrl = `${resolvePublicAppBaseUrl(req)}/v/pkl/${token}`;
+  const qrDataUrl = await QRCode.toDataURL(verificationUrl, { width: 128, margin: 1 });
+
+  res.status(200).json(new ApiResponse(200, {
+    verificationUrl,
+    qrDataUrl,
+  }, 'QR verifikasi surat PKL berhasil dibuat.'));
 });
 
 

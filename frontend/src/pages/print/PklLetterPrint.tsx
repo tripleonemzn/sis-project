@@ -98,6 +98,24 @@ const PklLetterPrint: React.FC = () => {
     queryFn: () => userService.getUsers({ role: 'PRINCIPAL', limit: 1 }),
   });
 
+  const { data: verificationQr } = useQuery({
+    queryKey: ['pkl-letter-verification-qr', normalizedInternshipId, letterDate, letterNumber, companyName],
+    enabled: useBarcode && hasValidInternshipId,
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (letterDate) params.set('date', letterDate);
+      if (letterNumber) params.set('letterNumber', letterNumber);
+      if (companyName) params.set('companyName', companyName);
+      const response = await fetch(`/api/public/pkl-letters/qr/${normalizedInternshipId}?${params.toString()}`);
+      if (!response.ok) {
+        throw new Error('QR verifikasi surat PKL gagal dibuat.');
+      }
+      const payload = await response.json();
+      return payload?.data as { qrDataUrl: string; verificationUrl: string };
+    },
+    retry: false,
+  });
+
   const internship = internshipData?.data?.data || internshipData?.data;
   const principal = principalData?.data?.[0];
   const isLoading = isLoadingInternship || isLoadingPrincipal;
@@ -399,14 +417,19 @@ Kepala SMK Karya Guna Bhakti 2 Kota Bekasi mengajukan permohonan siswa/i kami un
                 display: 'flex',
                 alignItems: 'center'
               }}>
-                {useBarcode && (
+                {useBarcode && verificationQr?.qrDataUrl && (
                   <img 
-                    src={`https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=Validasi+SMK+KGB2+${encodeURIComponent(principal?.name || '')}`} 
-                    alt="QR Code" 
+                    src={verificationQr.qrDataUrl}
+                    alt="QR Verifikasi Surat PKL"
                     className="w-[100px] h-[100px]" 
                   />
                 )}
               </div>
+              {useBarcode && verificationQr?.verificationUrl && (
+                <div className="mb-2 -mt-1 max-w-[220px] break-all text-[8px] italic leading-tight text-slate-600">
+                  Verifikasi: {verificationQr.verificationUrl}
+                </div>
+              )}
 
               <p className="font-bold underline mb-0">{principal?.name || 'H. IYAN RASTIYAN, S.Pd., M.Pd'}</p>
               <p className="mt-0 text-sm">NUPTK. {principal?.nuptk || '-'}</p>
