@@ -85,6 +85,12 @@ type ReferenceOption = {
   snapshot: Record<string, string>;
 };
 
+type ReferenceProgramMeta = {
+  total: number;
+  limit: number;
+  loaded: number;
+};
+
 type OutletUser = {
   id?: number;
   role?: string;
@@ -1357,6 +1363,8 @@ export const LearningResourceGenerator = ({
   const quickEditSectionsRef = useRef<EntrySectionForm[]>([]);
   const [quickEditActiveSectionId, setQuickEditActiveSectionId] = useState('');
   const [referenceSearchTerms, setReferenceSearchTerms] = useState<Record<string, string>>({});
+  const [referenceServerSearchInput, setReferenceServerSearchInput] = useState('');
+  const [debouncedReferenceServerSearch, setDebouncedReferenceServerSearch] = useState('');
   const printIframeRef = useRef<HTMLIFrameElement | null>(null);
   const programCode = useMemo(() => normalizeProgramCode(type), [type]);
   const isPageEditor = editorMode === 'create';
@@ -1648,7 +1656,13 @@ export const LearningResourceGenerator = ({
     staleTime: 10 * 1000,
   });
   const referenceEntriesQuery = useQuery({
-    queryKey: ['teaching-resource-reference-entries', academicYearId, user?.id || 0, referenceSourceProgramCodes],
+    queryKey: [
+      'teaching-resource-reference-entries',
+      academicYearId,
+      user?.id || 0,
+      referenceSourceProgramCodes,
+      debouncedReferenceServerSearch,
+    ],
     enabled:
       Boolean(academicYearId) &&
       Boolean(user?.id) &&
@@ -1658,14 +1672,28 @@ export const LearningResourceGenerator = ({
       const response = await teachingResourceProgramService.getReferenceEntries({
         academicYearId,
         programCodes: referenceSourceProgramCodes,
+        search: debouncedReferenceServerSearch || undefined,
         limitPerProgram: 250,
       });
-      return new Map(
-        ensureArray<{ programCode?: string; rows?: TeachingResourceEntry[] }>(response.data?.programs).map((program) => [
-          normalizeTeachingResourceProgramCode(program.programCode),
-          ensureArray<TeachingResourceEntry>(program.rows),
-        ]),
-      );
+      const entriesByProgram = new Map<string, TeachingResourceEntry[]>();
+      const metaByProgram = new Map<string, ReferenceProgramMeta>();
+      ensureArray<{ programCode?: string; rows?: TeachingResourceEntry[]; total?: number; limit?: number }>(
+        response.data?.programs,
+      ).forEach((program) => {
+        const sourceProgramCode = normalizeTeachingResourceProgramCode(program.programCode);
+        if (!sourceProgramCode) return;
+        const programRows = ensureArray<TeachingResourceEntry>(program.rows);
+        entriesByProgram.set(sourceProgramCode, programRows);
+        metaByProgram.set(sourceProgramCode, {
+          total: Number(program.total || 0),
+          limit: Number(program.limit || response.data?.limitPerProgram || 0),
+          loaded: programRows.length,
+        });
+      });
+      return {
+        entriesByProgram,
+        metaByProgram,
+      };
     },
     staleTime: 30 * 1000,
     refetchOnWindowFocus: false,
@@ -1677,7 +1705,7 @@ export const LearningResourceGenerator = ({
   const totalPages = Math.max(1, Number(entryPayload?.totalPages || 1));
   const referenceOptionsByColumnKey = useMemo(() => {
     const map = new Map<string, ReferenceOption[]>();
-    const referenceEntriesByProgram = referenceEntriesQuery.data || new Map<string, TeachingResourceEntry[]>();
+    const referenceEntriesByProgram = referenceEntriesQuery.data?.entriesByProgram || new Map<string, TeachingResourceEntry[]>();
 
     const matchesContext = (entry: TeachingResourceEntry, binding?: TeachingResourceFieldBinding): boolean => {
       if (!binding || !selectedContext) return true;
@@ -1798,6 +1826,13 @@ export const LearningResourceGenerator = ({
     selectedContext,
   ]);
 
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      setDebouncedReferenceServerSearch(referenceServerSearchInput);
+    }, 350);
+    return () => window.clearTimeout(timeout);
+  }, [referenceServerSearchInput]);
+
   const buildReferenceSearchKey = (
     scope: 'quick' | 'editor',
     sectionId: string,
@@ -1816,6 +1851,20 @@ export const LearningResourceGenerator = ({
       }
       return next;
     });
+    const serverSearchValue = value.trim();
+    setReferenceServerSearchInput(serverSearchValue.length >= 2 ? serverSearchValue : '');
+  };
+
+  const resetReferenceSearch = () => {
+    setReferenceSearchTerms({});
+    setReferenceServerSearchInput('');
+    setDebouncedReferenceServerSearch('');
+  };
+
+  const getReferenceLimitHelperText = (sourceProgramCode: string, sourceProgramLabel: string): string => {
+    const meta = referenceEntriesQuery.data?.metaByProgram.get(sourceProgramCode);
+    if (!meta || meta.total <= meta.loaded) return '';
+    return `Menampilkan ${meta.loaded} dari ${meta.total} dokumen ${sourceProgramLabel}. Persempit pencarian jika referensi belum terlihat.`;
   };
 
   const filterReferenceOptions = (options: ReferenceOption[], searchTerm: string): ReferenceOption[] => {
@@ -1912,7 +1961,7 @@ export const LearningResourceGenerator = ({
     setEntryTags('');
     setSelectedContextKey('');
     setSections(normalizeSectionsForEditor(buildDefaultSections(activeProgramMeta)));
-    setReferenceSearchTerms({});
+    resetReferenceSearch();
   };
 
   const initializeCreate = (openAsModal = true) => {
@@ -2021,7 +2070,7 @@ export const LearningResourceGenerator = ({
     setQuickEditEntryId(null);
     setQuickEditSections([]);
     setQuickEditActiveSectionId('');
-    setReferenceSearchTerms({});
+    resetReferenceSearch();
     if (isPageEditor) {
       navigate(listPath);
     }
@@ -2397,7 +2446,7 @@ export const LearningResourceGenerator = ({
     quickEditSectionsRef.current = [];
     setQuickEditSections([]);
     setQuickEditActiveSectionId('');
-    setReferenceSearchTerms({});
+    resetReferenceSearch();
   };
 
   useEffect(() => {
@@ -2710,6 +2759,9 @@ export const LearningResourceGenerator = ({
         referenceSelectValue,
       );
       const showReferenceSearch = referenceSelectOptions.length > 6 || Boolean(referenceSearchTerm);
+      const referenceLimitHelperText = getReferenceLimitHelperText(sourceProgramCode, sourceProgramLabel);
+      const referenceSearchHelperText =
+        referenceEntriesQuery.isFetching && referenceSearchTerm.trim().length >= 2 ? 'Mencari referensi sumber...' : '';
       const disableReferenceSelect =
         !row?.id || !hasReferenceBinding || (referenceSelectOptions.length === 0 && !referenceSelectValue);
       const referencePlaceholder = !hasReferenceBinding
@@ -2751,6 +2803,10 @@ export const LearningResourceGenerator = ({
             <p className="px-1 text-[10px] leading-4 text-slate-500">Belum ada data sumber yang cocok.</p>
           ) : referenceSearchTerm && filteredReferenceSelectOptions.length === 0 ? (
             <p className="px-1 text-[10px] leading-4 text-slate-500">Tidak ada referensi yang cocok dengan pencarian.</p>
+          ) : referenceSearchHelperText ? (
+            <p className="px-1 text-[10px] leading-4 text-slate-500">{referenceSearchHelperText}</p>
+          ) : referenceLimitHelperText ? (
+            <p className="px-1 text-[10px] leading-4 text-slate-500">{referenceLimitHelperText}</p>
           ) : null}
         </div>
       );
@@ -3203,6 +3259,9 @@ export const LearningResourceGenerator = ({
       referenceSelectValue,
     );
     const showReferenceSearch = referenceSelectOptions.length > 6 || Boolean(referenceSearchTerm);
+    const referenceLimitHelperText = getReferenceLimitHelperText(sourceProgramCode, sourceProgramLabel);
+    const referenceSearchHelperText =
+      referenceEntriesQuery.isFetching && referenceSearchTerm.trim().length >= 2 ? 'Mencari referensi sumber...' : '';
     const disableReferenceSelect =
       !row?.id || !hasReferenceBinding || (referenceSelectOptions.length === 0 && !referenceSelectValue);
     const referencePlaceholder = !hasReferenceBinding
@@ -3255,8 +3314,12 @@ export const LearningResourceGenerator = ({
           </select>
           {referenceSearchTerm && filteredReferenceSelectOptions.length === 0 ? (
             <p className="text-[11px] text-gray-500">Tidak ada referensi yang cocok dengan pencarian.</p>
+          ) : referenceSearchHelperText ? (
+            <p className="text-[11px] text-gray-500">{referenceSearchHelperText}</p>
           ) : referenceHelperText ? (
             <p className="text-[11px] text-gray-500">{referenceHelperText}</p>
+          ) : referenceLimitHelperText ? (
+            <p className="text-[11px] text-gray-500">{referenceLimitHelperText}</p>
           ) : null}
         </div>
       );
