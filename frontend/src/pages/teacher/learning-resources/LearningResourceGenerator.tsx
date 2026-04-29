@@ -18,6 +18,8 @@ import {
   type TeachingResourceFieldSourceType,
   type TeachingResourceProgram,
   type TeachingResourceProgramSectionSchema,
+  type TeachingResourceProjectedReferenceOption,
+  type TeachingResourceReferenceProjectionRequest,
   type TeachingResourceSignatureDefaults,
   normalizeTeachingResourceProgramCode,
   teachingResourceProgramService,
@@ -1451,7 +1453,6 @@ export const LearningResourceGenerator = ({
     });
     return Array.from(codes).sort();
   }, [activeProgramSchemaSections]);
-
   const ensureDerivedSections = (sourceSections: EntrySectionForm[]): EntrySectionForm[] =>
     applyDerivedSheetSections(sourceSections, activeProgramSchemaMap);
 
@@ -1630,6 +1631,42 @@ export const LearningResourceGenerator = ({
     () => resolveSemesterLabel(activeAcademicYear?.semester),
     [activeAcademicYear?.semester],
   );
+  const referenceProjectionRequests = useMemo<TeachingResourceReferenceProjectionRequest[]>(() => {
+    const requests: TeachingResourceReferenceProjectionRequest[] = [];
+    activeProgramSchemaSections.forEach((section) => {
+      const sectionKey = String(section.key || '').trim();
+      ensureArray<EntrySectionColumnForm>(section.columns).forEach((column) => {
+        if (!isDocumentReferencePickerColumn(column)) return;
+        const columnKey = String(column.key || '').trim();
+        const sourceProgramCode = normalizeTeachingResourceProgramCode(column.binding?.sourceProgramCode);
+        const candidates = extractReferenceCandidates(column);
+        if (!sectionKey || !columnKey || !sourceProgramCode || candidates.length === 0) return;
+        requests.push({
+          requestKey: `${sectionKey}::${columnKey}`,
+          sourceProgramCode,
+          candidates,
+          filterByContext: Boolean(column.binding?.filterByContext) || undefined,
+          matchBySubject: Boolean(column.binding?.matchBySubject) || undefined,
+          matchByClassLevel: Boolean(column.binding?.matchByClassLevel) || undefined,
+          matchByMajor: Boolean(column.binding?.matchByMajor) || undefined,
+          matchByActiveSemester: Boolean(column.binding?.matchByActiveSemester) || undefined,
+          context: selectedContext
+            ? {
+                subjectId: Number(selectedContext.subjectId || 0) || undefined,
+                classLevel: String(selectedContext.classLevel || '').trim() || undefined,
+                programKeahlian: String(selectedContext.programKeahlian || '').trim() || undefined,
+                semester: activeSemesterLabel || undefined,
+              }
+            : undefined,
+        });
+      });
+    });
+    return requests;
+  }, [activeProgramSchemaSections, activeSemesterLabel, selectedContext]);
+  const referenceProjectionRequestKey = useMemo(
+    () => JSON.stringify(referenceProjectionRequests),
+    [referenceProjectionRequests],
+  );
   const signatureDefaultsQuery = useQuery({
     queryKey: ['teaching-resource-signature-defaults', academicYearId],
     enabled: Boolean(academicYearId),
@@ -1661,6 +1698,7 @@ export const LearningResourceGenerator = ({
       academicYearId,
       user?.id || 0,
       referenceSourceProgramCodes,
+      referenceProjectionRequestKey,
       debouncedReferenceServerSearch,
     ],
     enabled:
@@ -1674,10 +1712,20 @@ export const LearningResourceGenerator = ({
         programCodes: referenceSourceProgramCodes,
         search: debouncedReferenceServerSearch || undefined,
         limitPerProgram: 250,
+        referenceRequests: referenceProjectionRequests,
+        includeRows: false,
       });
       const entriesByProgram = new Map<string, TeachingResourceEntry[]>();
       const metaByProgram = new Map<string, ReferenceProgramMeta>();
-      ensureArray<{ programCode?: string; rows?: TeachingResourceEntry[]; total?: number; limit?: number }>(
+      const projectedOptionsByRequestKey = new Map<string, ReferenceOption[]>();
+      ensureArray<{
+        programCode?: string;
+        rows?: TeachingResourceEntry[];
+        total?: number;
+        limit?: number;
+        loaded?: number;
+        options?: TeachingResourceProjectedReferenceOption[];
+      }>(
         response.data?.programs,
       ).forEach((program) => {
         const sourceProgramCode = normalizeTeachingResourceProgramCode(program.programCode);
@@ -1687,12 +1735,30 @@ export const LearningResourceGenerator = ({
         metaByProgram.set(sourceProgramCode, {
           total: Number(program.total || 0),
           limit: Number(program.limit || response.data?.limitPerProgram || 0),
-          loaded: programRows.length,
+          loaded: Number(program.loaded || programRows.length || 0),
+        });
+        ensureArray<TeachingResourceProjectedReferenceOption>(program.options).forEach((option) => {
+          const requestKey = String(option.requestKey || '').trim();
+          if (!requestKey) return;
+          const currentOptions = projectedOptionsByRequestKey.get(requestKey) || [];
+          currentOptions.push({
+            selectValue: option.selectValue,
+            value: option.value,
+            label: option.label,
+            sourceProgramCode: normalizeTeachingResourceProgramCode(option.sourceProgramCode),
+            sourceEntryId: Number(option.sourceEntryId || 0),
+            sourceEntryTitle: option.sourceEntryTitle,
+            sourceFieldKey: option.sourceFieldKey,
+            sourceFieldIdentity: option.sourceFieldIdentity,
+            snapshot: option.snapshot || {},
+          });
+          projectedOptionsByRequestKey.set(requestKey, currentOptions);
         });
       });
       return {
         entriesByProgram,
         metaByProgram,
+        projectedOptionsByRequestKey,
       };
     },
     staleTime: 30 * 1000,
@@ -1706,6 +1772,8 @@ export const LearningResourceGenerator = ({
   const referenceOptionsByColumnKey = useMemo(() => {
     const map = new Map<string, ReferenceOption[]>();
     const referenceEntriesByProgram = referenceEntriesQuery.data?.entriesByProgram || new Map<string, TeachingResourceEntry[]>();
+    const projectedOptionsByRequestKey =
+      referenceEntriesQuery.data?.projectedOptionsByRequestKey || new Map<string, ReferenceOption[]>();
 
     const matchesContext = (entry: TeachingResourceEntry, binding?: TeachingResourceFieldBinding): boolean => {
       if (!binding || !selectedContext) return true;
@@ -1797,6 +1865,12 @@ export const LearningResourceGenerator = ({
     activeProgramSchemaSections.forEach((section) => {
       ensureArray<EntrySectionColumnForm>(section.columns).forEach((column) => {
         if (!isDocumentReferencePickerColumn(column)) return;
+        const requestKey = `${String(section.key || '').trim()}::${String(column.key || '').trim()}`;
+        const projectedOptions = projectedOptionsByRequestKey.get(requestKey);
+        if (projectedOptions) {
+          map.set(requestKey, projectedOptions);
+          return;
+        }
         const sourceProgramCode = normalizeTeachingResourceProgramCode(column.binding?.sourceProgramCode);
         if (!sourceProgramCode) return;
         const referenceEntries = referenceEntriesByProgram.get(sourceProgramCode) || [];

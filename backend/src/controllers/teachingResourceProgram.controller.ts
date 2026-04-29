@@ -192,6 +192,36 @@ type TeachingResourceEntryContent = {
   [key: string]: unknown;
 };
 
+type TeachingResourceReferenceProjectionRequest = {
+  requestKey: string;
+  sourceProgramCode: string;
+  candidates: string[];
+  filterByContext?: boolean;
+  matchBySubject?: boolean;
+  matchByClassLevel?: boolean;
+  matchByMajor?: boolean;
+  matchByActiveSemester?: boolean;
+  context?: {
+    subjectId?: number;
+    classLevel?: string;
+    programKeahlian?: string;
+    semester?: string;
+  };
+};
+
+type TeachingResourceProjectedReferenceOption = {
+  requestKey: string;
+  selectValue: string;
+  value: string;
+  label: string;
+  sourceProgramCode: string;
+  sourceEntryId: number;
+  sourceEntryTitle?: string;
+  sourceFieldKey?: string;
+  sourceFieldIdentity?: string;
+  snapshot: Record<string, string>;
+};
+
 const PROGRAMS_CACHE_TTL_MS = 15000;
 const programsResponseCache = new Map<string, { expiresAt: number; payload: unknown }>();
 const TEACHING_RESOURCE_ENTRY_STATUSES: TeachingResourceEntryStatus[] = ['DRAFT', 'SUBMITTED', 'APPROVED', 'REJECTED'];
@@ -942,6 +972,121 @@ function normalizeProgramCode(raw: unknown): string {
   return normalized;
 }
 
+function normalizeReferenceToken(raw: unknown): string {
+  return String(raw || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9.]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+function extractReferenceCandidatesFromColumn(column: Partial<TeachingResourceColumnSchema> | null | undefined): string[] {
+  const candidates = new Set<string>();
+  [
+    column?.binding?.sourceFieldIdentity,
+    column?.binding?.sourceDocumentFieldIdentity,
+    column?.fieldIdentity,
+    column?.bindingKey,
+    column?.semanticKey,
+    column?.key,
+  ].forEach((item) => {
+    const token = String(item || '').trim();
+    if (!token) return;
+    const normalized = normalizeReferenceToken(token);
+    if (normalized) candidates.add(normalized);
+    const tail = normalizeReferenceToken(token.split('.').pop());
+    if (tail) candidates.add(tail);
+  });
+  return Array.from(candidates);
+}
+
+function buildReferenceSnapshotFromRow(
+  columns: Array<Partial<TeachingResourceColumnSchema>>,
+  row: Record<string, string>,
+): Record<string, string> {
+  const snapshot: Record<string, string> = {};
+  columns.forEach((column) => {
+    const key = String(column.key || '').trim();
+    const value = String(row[key] || '').trim();
+    if (!key || !value) return;
+    const tokens = new Set<string>([
+      normalizeReferenceToken(key),
+      ...extractReferenceCandidatesFromColumn(column),
+    ]);
+    tokens.forEach((token) => {
+      if (!token || snapshot[token]) return;
+      snapshot[token] = value;
+    });
+  });
+  Object.entries(row).forEach(([key, rawValue]) => {
+    const normalizedKey = normalizeReferenceToken(key);
+    const value = String(rawValue || '').trim();
+    if (!normalizedKey || !value || snapshot[normalizedKey]) return;
+    snapshot[normalizedKey] = value;
+  });
+  return snapshot;
+}
+
+function parseReferenceProjectionRequests(raw: unknown): TeachingResourceReferenceProjectionRequest[] {
+  const source = String(raw || '').trim();
+  if (!source) return [];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(source);
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(parsed)) return [];
+  const requests: TeachingResourceReferenceProjectionRequest[] = [];
+  parsed.forEach((item, index) => {
+      if (!item || typeof item !== 'object') return;
+      const input = item as {
+        requestKey?: unknown;
+        sourceProgramCode?: unknown;
+        candidates?: unknown;
+        filterByContext?: unknown;
+        matchBySubject?: unknown;
+        matchByClassLevel?: unknown;
+        matchByMajor?: unknown;
+        matchByActiveSemester?: unknown;
+        context?: {
+          subjectId?: unknown;
+          classLevel?: unknown;
+          programKeahlian?: unknown;
+          semester?: unknown;
+        };
+      };
+      const sourceProgramCode = normalizeProgramCode(input.sourceProgramCode);
+      const requestKey = String(input.requestKey || `${sourceProgramCode || 'source'}::${index}`).trim();
+      const candidates = Array.isArray(input.candidates)
+        ? Array.from(
+            new Set(input.candidates.map((candidate) => normalizeReferenceToken(candidate)).filter(Boolean)),
+          )
+        : [];
+      if (!sourceProgramCode || !requestKey || candidates.length === 0) return;
+      requests.push({
+        requestKey,
+        sourceProgramCode,
+        candidates,
+        filterByContext: toBoolean(input.filterByContext, false) || undefined,
+        matchBySubject: toBoolean(input.matchBySubject, false) || undefined,
+        matchByClassLevel: toBoolean(input.matchByClassLevel, false) || undefined,
+        matchByMajor: toBoolean(input.matchByMajor, false) || undefined,
+        matchByActiveSemester: toBoolean(input.matchByActiveSemester, false) || undefined,
+        context: input.context
+          ? {
+              subjectId: toNumber(input.context.subjectId, 0) || undefined,
+              classLevel: normalizeClassLevelToken(input.context.classLevel) || undefined,
+              programKeahlian: String(input.context.programKeahlian || '').trim() || undefined,
+              semester: String(input.context.semester || '').trim() || undefined,
+          }
+          : undefined,
+      });
+    });
+  return requests.slice(0, 50);
+}
+
 function normalizeRoleContext(raw: unknown): RoleContext {
   const value = String(raw || '').trim().toLowerCase();
   if (value === 'teacher') return 'teacher';
@@ -1537,6 +1682,161 @@ function sanitizeEntryStatus(raw: unknown, fallback: TeachingResourceEntryStatus
   const status = String(raw || '').trim().toUpperCase() as TeachingResourceEntryStatus;
   if (TEACHING_RESOURCE_ENTRY_STATUSES.includes(status)) return status;
   return fallback;
+}
+
+function toReferenceEntrySections(
+  content: Prisma.JsonValue | TeachingResourceEntryContent | null,
+  sourceProgram?: TeachingResourceProgramPayload,
+) {
+  const rawContent = content && typeof content === 'object' ? (content as TeachingResourceEntryContent) : {};
+  const rawSections = Array.isArray(rawContent.sections) ? rawContent.sections : [];
+  const schemaMap = new Map<string, TeachingResourceSectionSchema>();
+  (sourceProgram?.schema?.sections || []).forEach((section) => {
+    schemaMap.set(String(section.key || '').trim(), section);
+  });
+
+  return rawSections
+    .map((section) => {
+      if (!section || typeof section !== 'object') return null;
+      const schemaKey = String(section.schemaKey || '').trim();
+      const schema = schemaMap.get(schemaKey);
+      const rawColumns = Array.isArray(section.columns) && section.columns.length > 0 ? section.columns : schema?.columns || [];
+      const columns = rawColumns
+        .map((column) => (column && typeof column === 'object' ? (column as Partial<TeachingResourceColumnSchema>) : null))
+        .filter((column): column is Partial<TeachingResourceColumnSchema> => Boolean(column));
+      const rows = Array.isArray(section.rows)
+        ? section.rows
+            .map((row) => {
+              if (!row || typeof row !== 'object') return null;
+              const normalizedRow: Record<string, string> = {};
+              Object.entries(row as Record<string, unknown>).forEach(([key, value]) => {
+                const rowKey = String(key || '').trim();
+                if (!rowKey) return;
+                normalizedRow[rowKey] = String(value ?? '').trim();
+              });
+              return normalizedRow;
+            })
+            .filter((row): row is Record<string, string> => Boolean(row))
+        : [];
+      return {
+        schemaKey,
+        title: String(section.title || '').trim(),
+        columns,
+        rows,
+      };
+    })
+    .filter((section): section is NonNullable<typeof section> => Boolean(section));
+}
+
+function extractReferenceEntryContext(
+  entry: { classLevel?: string | null; content: Prisma.JsonValue },
+  sourceProgram?: TeachingResourceProgramPayload,
+) {
+  const contextSection = toReferenceEntrySections(entry.content, sourceProgram).find((section) => {
+    const key = String(section.schemaKey || '').toLowerCase();
+    const title = String(section.title || '').toLowerCase();
+    return key.includes('konteks') || title.includes('konteks');
+  });
+  const firstRow = contextSection?.rows?.[0] || {};
+  return {
+    tingkat: String(firstRow.tingkat || entry.classLevel || '').trim(),
+    programKeahlian: String(firstRow.program_keahlian || '').trim(),
+    semester: String(firstRow.semester || '').trim(),
+  };
+}
+
+function referenceEntryMatchesProjectionContext(
+  entry: {
+    subjectId?: number | null;
+    classLevel?: string | null;
+    content: Prisma.JsonValue;
+  },
+  sourceProgram: TeachingResourceProgramPayload | undefined,
+  request: TeachingResourceReferenceProjectionRequest,
+): boolean {
+  const context = request.context;
+  if (!context) return true;
+
+  const shouldMatchSubject = Boolean(request.filterByContext) || Boolean(request.matchBySubject);
+  const shouldMatchClassLevel = Boolean(request.filterByContext) || Boolean(request.matchByClassLevel);
+  const shouldMatchMajor = Boolean(request.filterByContext) || Boolean(request.matchByMajor);
+  const shouldMatchSemester = Boolean(request.matchByActiveSemester);
+  const entryContext = extractReferenceEntryContext(entry, sourceProgram);
+  const entryMajor = String(entryContext.programKeahlian || '').trim().toLowerCase();
+  const entrySemester = String(entryContext.semester || '').trim().toLowerCase();
+
+  if (shouldMatchSubject && Number(entry.subjectId || 0) !== Number(context.subjectId || 0)) return false;
+  if (
+    shouldMatchClassLevel &&
+    normalizeClassLevelToken(entryContext.tingkat || entry.classLevel || '') !== normalizeClassLevelToken(context.classLevel)
+  ) {
+    return false;
+  }
+  if (shouldMatchMajor && entryMajor && entryMajor !== String(context.programKeahlian || '').trim().toLowerCase()) {
+    return false;
+  }
+  if (shouldMatchSemester && entrySemester && entrySemester !== String(context.semester || '').trim().toLowerCase()) {
+    return false;
+  }
+  return true;
+}
+
+function buildProjectedReferenceOptions(
+  entry: {
+    id: number;
+    programCode: string;
+    subjectId?: number | null;
+    classLevel?: string | null;
+    title: string;
+    content: Prisma.JsonValue;
+  },
+  sourceProgram: TeachingResourceProgramPayload | undefined,
+  requests: TeachingResourceReferenceProjectionRequest[],
+): TeachingResourceProjectedReferenceOption[] {
+  const sourceProgramCode = normalizeProgramCode(entry.programCode);
+  const relevantRequests = requests.filter(
+    (request) =>
+      request.sourceProgramCode === sourceProgramCode &&
+      referenceEntryMatchesProjectionContext(entry, sourceProgram, request),
+  );
+  if (relevantRequests.length === 0) return [];
+
+  const sections = toReferenceEntrySections(entry.content, sourceProgram);
+  const options: TeachingResourceProjectedReferenceOption[] = [];
+
+  sections.forEach((section) => {
+    section.rows.forEach((row) => {
+      const snapshot = buildReferenceSnapshotFromRow(section.columns, row);
+      section.columns.forEach((column) => {
+        const columnKey = String(column.key || '').trim();
+        if (!columnKey) return;
+        const columnCandidates = extractReferenceCandidatesFromColumn(column);
+        if (columnCandidates.length === 0) return;
+        const value = String(row[columnKey] || '').trim();
+        if (!value) return;
+        const label =
+          entry.title && entry.title.trim() && entry.title.trim() !== value ? `${value} - ${entry.title}` : value;
+
+        relevantRequests.forEach((request) => {
+          if (!columnCandidates.some((candidate) => request.candidates.includes(candidate))) return;
+          options.push({
+            requestKey: request.requestKey,
+            selectValue: `${entry.id}::${columnKey}::${value}`,
+            value,
+            label,
+            sourceProgramCode,
+            sourceEntryId: Number(entry.id),
+            sourceEntryTitle: String(entry.title || '').trim() || undefined,
+            sourceFieldKey: columnKey,
+            sourceFieldIdentity: String(column.fieldIdentity || '').trim() || undefined,
+            snapshot,
+          });
+        });
+      });
+    });
+  });
+
+  return options;
 }
 
 function sanitizeEntryContent(raw: unknown): TeachingResourceEntryContent {
@@ -2448,6 +2748,8 @@ export const getTeachingResourceReferenceEntries = asyncHandler(async (req: Requ
   const search = String(req.query?.search || '').trim();
   const selectedTeacherId = Number(req.query?.teacherId || 0);
   const roleUpper = String(user.role).trim().toUpperCase();
+  const referenceRequests = parseReferenceProjectionRequests(req.query?.referenceRequests);
+  const includeRows = toBoolean(req.query?.includeRows, referenceRequests.length === 0);
 
   if (programCodes.length === 0) {
     throw new ApiError(400, 'Program sumber referensi wajib diisi.');
@@ -2486,6 +2788,11 @@ export const getTeachingResourceReferenceEntries = asyncHandler(async (req: Requ
     return where;
   };
 
+  const programMetaByCode =
+    referenceRequests.length > 0
+      ? new Map((await loadPrograms(academicYearId)).map((program) => [normalizeProgramCode(program.code), program]))
+      : new Map<string, TeachingResourceProgramPayload>();
+
   const programs = await Promise.all(
     programCodes.map(async (programCode) => {
       const where = buildWhere(programCode);
@@ -2517,12 +2824,40 @@ export const getTeachingResourceReferenceEntries = asyncHandler(async (req: Requ
           },
         }),
       ]);
+      const sourceProgram = programMetaByCode.get(programCode);
+      const optionDedupe = new Set<string>();
+      const options =
+        referenceRequests.length > 0
+          ? rows
+              .flatMap((entry) =>
+                buildProjectedReferenceOptions(
+                  {
+                    id: Number(entry.id),
+                    programCode: String(entry.programCode || ''),
+                    subjectId: Number(entry.subjectId || 0) || null,
+                    classLevel: String(entry.classLevel || '').trim() || null,
+                    title: String(entry.title || ''),
+                    content: entry.content,
+                  },
+                  sourceProgram,
+                  referenceRequests,
+                ),
+              )
+              .filter((option) => {
+                const token = `${option.requestKey}::${option.selectValue}`.toLowerCase();
+                if (optionDedupe.has(token)) return false;
+                optionDedupe.add(token);
+                return true;
+              })
+          : [];
 
       return {
         programCode,
         total,
         limit: limitPerProgram,
-        rows,
+        loaded: rows.length,
+        rows: includeRows ? rows : [],
+        options,
       };
     }),
   );

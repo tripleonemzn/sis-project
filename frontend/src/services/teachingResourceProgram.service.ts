@@ -109,6 +109,36 @@ export interface TeachingResourceEntryReferenceSelection {
   snapshot?: Record<string, string>;
 }
 
+export interface TeachingResourceReferenceProjectionRequest {
+  requestKey: string;
+  sourceProgramCode: string;
+  candidates: string[];
+  filterByContext?: boolean;
+  matchBySubject?: boolean;
+  matchByClassLevel?: boolean;
+  matchByMajor?: boolean;
+  matchByActiveSemester?: boolean;
+  context?: {
+    subjectId?: number;
+    classLevel?: string;
+    programKeahlian?: string;
+    semester?: string;
+  };
+}
+
+export interface TeachingResourceProjectedReferenceOption {
+  requestKey: string;
+  selectValue: string;
+  value: string;
+  label: string;
+  sourceProgramCode: string;
+  sourceEntryId: number;
+  sourceEntryTitle?: string;
+  sourceFieldKey?: string;
+  sourceFieldIdentity?: string;
+  snapshot: Record<string, string>;
+}
+
 export interface TeachingResourceProgramColumnSchema {
   key: string;
   label: string;
@@ -336,11 +366,14 @@ export const teachingResourceProgramService = {
     search?: string;
     teacherId?: number;
     limitPerProgram?: number;
+    referenceRequests?: TeachingResourceReferenceProjectionRequest[];
+    includeRows?: boolean;
   }) => {
     const response = await api.get('/teaching-resources/entries/references', {
       params: {
         ...params,
         programCodes: params?.programCodes?.join(','),
+        referenceRequests: params?.referenceRequests?.length ? JSON.stringify(params.referenceRequests) : undefined,
       },
     });
     return response.data as {
@@ -355,7 +388,9 @@ export const teachingResourceProgramService = {
           programCode: string;
           total: number;
           limit: number;
+          loaded?: number;
           rows: TeachingResourceEntry[];
+          options?: TeachingResourceProjectedReferenceOption[];
         }>;
       };
     };
