@@ -8,6 +8,10 @@ import {
   listHistoricalStudentsByIds,
   resolveHistoricalStudentScope,
 } from '../utils/studentAcademicHistory';
+import {
+  resolveStandardSchoolDocumentHeaderSnapshot,
+  type StandardSchoolDocumentHeaderSnapshot,
+} from '../utils/standardSchoolDocumentHeader';
 
 function hasHumasDuty(duties?: string[] | null) {
   if (!Array.isArray(duties)) return false;
@@ -694,8 +698,57 @@ export const updateIndustryGrade = asyncHandler(async (req: Request, res: Respon
   res.status(200).json(new ApiResponse(200, internship, 'Nilai industri berhasil diupdate'));
 });
 
+const escapeLetterHtml = (value?: unknown) =>
+  String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
+const buildStandardLetterHeaderHtml = (header: StandardSchoolDocumentHeaderSnapshot) => {
+  const competencyLine = Array.from(
+    new Set((header.competencyNames || []).map((item) => String(item || '').trim()).filter(Boolean)),
+  )
+    .map(escapeLetterHtml)
+    .join(' &nbsp; | &nbsp; ');
+  const campusesHtml = (header.campuses || [])
+    .map(
+      (campus) =>
+        `<p style="margin: 0; font-family: 'Times New Roman', Times, serif; font-size: 10px;">${escapeLetterHtml(campus.label)} : ${escapeLetterHtml(campus.address)}</p>`,
+    )
+    .join('');
+
+  return `
+      <div style="display: flex; align-items: center; justify-content: space-between; padding: 0 0 5px 0; margin-bottom: 10px; margin-left: 40px; margin-right: 40px;">
+          <div style="width: 95px; display: flex; justify-content: center; align-items: center;">
+            <img src="${escapeLetterHtml(header.foundationLogoPath)}" alt="Logo Yayasan" style="width: 88px; height: auto; object-fit: contain;" />
+          </div>
+          <div style="text-align: center; flex: 1; padding: 0 10px; line-height: 1.15;">
+            <h3 style="margin: 0; font-family: 'Times New Roman', Times, serif; font-size: 14px; font-weight: bold; letter-spacing: 0.3px; text-transform: uppercase;">${escapeLetterHtml(header.foundationName)}</h3>
+            <h2 style="margin: 0; font-family: 'Times New Roman', Times, serif; font-size: 14px; font-weight: bold; text-transform: uppercase;">${escapeLetterHtml(header.schoolFormalName)}</h2>
+            <p style="margin: 0; font-family: 'Times New Roman', Times, serif; font-size: 12px; font-weight: normal;">${competencyLine}</p>
+            <p style="margin: 0; font-family: 'Times New Roman', Times, serif; font-size: 12px;">NSS : ${escapeLetterHtml(header.nss)} &nbsp; | &nbsp; NPSN : ${escapeLetterHtml(header.npsn)}</p>
+            <p style="margin: 2px 0 0; font-family: 'Times New Roman', Times, serif; font-size: 14px; font-weight: bold; text-transform: uppercase;">${escapeLetterHtml(header.accreditationLabel)}</p>
+            ${campusesHtml}
+            <p style="margin: 0; font-family: 'Times New Roman', Times, serif; font-size: 10px;">Email : ${escapeLetterHtml(header.email)} &nbsp; | &nbsp; Website : ${escapeLetterHtml(header.website)}</p>
+          </div>
+          <div style="width: 95px; display: flex; justify-content: center; align-items: center;">
+            <img src="${escapeLetterHtml(header.schoolLogoPath)}" alt="Logo Sekolah" style="width: 88px; height: auto; object-fit: contain;" />
+          </div>
+        </div>
+        <div style="margin: 0 40px 2px; border-top: 1px solid #000;"></div>
+        <div style="margin: 0 40px 15px; border-top: 2px solid #000;"></div>
+  `;
+};
+
 // Helper function to generate letter HTML
-const generateLetterHTML = (internships: any[], config: any, principal: any) => {
+const generateLetterHTML = (
+  internships: any[],
+  config: any,
+  principal: any,
+  documentHeader: StandardSchoolDocumentHeaderSnapshot,
+) => {
   const { letterNumber, attachment, subject, date, openingText, closingText, signatureSpace, useBarcode, contactPersons } = config;
   
   // Use first internship for company details
@@ -739,25 +792,7 @@ const generateLetterHTML = (internships: any[], config: any, principal: any) => 
       }
     </style>
     <div class="page-wrapper" style="font-family: 'Times New Roman', serif; max-width: 100%; margin: 0 auto; line-height: 1.15;">
-      <!-- KOP SURAT -->
-      <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 4px double #000; padding: 0 0 5px 0; margin-bottom: 15px; margin-left: 40px; margin-right: 40px;">
-          <div style="width: 85px; display: flex; justify-content: center; align-items: center;">
-            <img src="/logo-yayasan.png" alt="Logo Yayasan" style="width: 85px; height: auto;" />
-          </div>
-          <div style="text-align: center; flex: 1; padding: 0 5px; line-height: 1.2;">
-            <h3 style="margin: 0; font-family: 'Times New Roman', Times, serif; font-size: 14px; font-weight: bold; letter-spacing: 0.5px; text-transform: uppercase;">YAYASAN PENDIDIKAN AL AMIEN</h3>
-            <h2 style="margin: 0; font-family: 'Times New Roman', Times, serif; font-size: 14px; font-weight: bold; white-space: nowrap; text-transform: uppercase;">SEKOLAH MENENGAH KEJURUAN (SMK) KARYA GUNA BHAKTI 2</h2>
-            <p style="margin: 0; font-family: 'Times New Roman', Times, serif; font-size: 13px; font-weight: normal;">Teknik Komputer dan Jaringan  |  Manajemen Perkantoran  |  Akuntansi</p>
-            <p style="margin: 0; font-family: 'Times New Roman', Times, serif; font-size: 12px;">NSS : 342026504072  |  NPSN : 20223112</p>
-            <p style="margin: 2px 0; font-family: 'Times New Roman', Times, serif; font-size: 14px; font-weight: bold; text-transform: uppercase;">STATUS TERAKREDITASI "A"</p>
-            <p style="margin: 0; font-family: 'Times New Roman', Times, serif; font-size: 10px;">Kampus A : Jl. Anggrek 1 RT/RW. 002/016 Duren Jaya Bekasi Timur Telp. (021) 883525851</p>
-            <p style="margin: 0; font-family: 'Times New Roman', Times, serif; font-size: 10px;">Kampus B : Jl. H. Ujan RT/RW. 005/007 Duren Jaya Bekasi Timur Telp. 081211625618</p>
-            <p style="margin: 0; font-family: 'Times New Roman', Times, serif; font-size: 10px;">Email : informasi@smkkgb2.sch.id  |  Website : www.smkkgb2.sch.id</p>
-          </div>
-          <div style="width: 85px; display: flex; justify-content: center; align-items: center;">
-            <img src="/logo-kgb2.png" alt="Logo KGB2" style="width: 85px; height: auto;" />
-          </div>
-        </div>
+      ${buildStandardLetterHeaderHtml(documentHeader)}
       
       <div class="content-wrapper" style="padding-left: 64px; padding-right: 64px;">
         <div class="content-area" style="line-height: 1.2; margin-left: 0; margin-right: 0;">
@@ -882,9 +917,10 @@ export const printGroupLetter = asyncHandler(async (req: Request, res: Response)
     where: { role: 'PRINCIPAL' },
     select: { name: true, nuptk: true }
   });
+  const documentHeader = await resolveStandardSchoolDocumentHeaderSnapshot();
 
   const lettersHtml = Object.values(groupedInternships).map(group => 
-    generateLetterHTML(group, config, principal)
+    generateLetterHTML(group, config, principal, documentHeader)
   ).join('<div style="page-break-before: always;"></div>');
 
   res.status(200).json(new ApiResponse(200, { html: lettersHtml }, 'Surat kelompok berhasil digenerate'));
@@ -919,8 +955,9 @@ export const getPrintLetterHtml = asyncHandler(async (req: Request, res: Respons
     where: { role: 'PRINCIPAL' },
     select: { name: true, nuptk: true }
   });
+  const documentHeader = await resolveStandardSchoolDocumentHeaderSnapshot();
 
-  const html = generateLetterHTML([normalizedInternship], parsedConfig, principal);
+  const html = generateLetterHTML([normalizedInternship], parsedConfig, principal, documentHeader);
 
   res.status(200).json(new ApiResponse(200, { html }, 'HTML surat berhasil diambil'));
 });

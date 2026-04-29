@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useOutletContext } from 'react-router-dom';
 import { useActiveAcademicYear } from '../../../hooks/useActiveAcademicYear';
@@ -88,6 +88,14 @@ interface AcademicYear {
   isActive: boolean;
 }
 
+type PrintLetterResponse = {
+  data?: {
+    data?: {
+      html?: string;
+    };
+  };
+};
+
 export const InternshipApprovalPage = () => {
   const [statusFilter, setStatusFilter] = useState<string>('PROPOSED');
   const [searchQuery, setSearchQuery] = useState('');
@@ -163,6 +171,7 @@ export const InternshipApprovalPage = () => {
   const [isPrinting, setIsPrinting] = useState(false);
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [isIndividualPrintModalOpen, setIsIndividualPrintModalOpen] = useState(false);
+  const printIframeRef = useRef<HTMLIFrameElement>(null);
   const [printType, setPrintType] = useState<'individual' | 'group'>('group');
   const [printConfig, setPrintConfig] = useState({
     letterNumber: 'B.108/KGB2.K/K/AK/I/2026',
@@ -196,6 +205,48 @@ Adapun nama siswa/i kami adalah:`,
   });
 
   const queryClient = useQueryClient();
+
+  const writePrintHtml = (htmlContent: string) => {
+    const iframe = printIframeRef.current;
+    if (!iframe?.contentWindow) {
+      toast.error('Area cetak belum siap. Silakan coba lagi.');
+      return false;
+    }
+
+    const printDoc = iframe.contentWindow.document;
+    printDoc.open();
+    printDoc.write(`<!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8" />
+          <title>Surat PKL</title>
+          <style>
+            html, body {
+              margin: 0;
+              padding: 0;
+              background: #fff;
+              color: #000;
+              -webkit-print-color-adjust: exact;
+              print-color-adjust: exact;
+            }
+          </style>
+        </head>
+        <body>${htmlContent}</body>
+      </html>`);
+    printDoc.close();
+
+    window.setTimeout(() => {
+      iframe.contentWindow?.focus();
+      iframe.contentWindow?.print();
+    }, 350);
+    return true;
+  };
+
+  const buildPrintPayload = () => ({
+    ...printConfig,
+    openingText: printConfig.openingText?.replace(/\n/g, '<br/>'),
+    closingText: printConfig.closingText?.replace(/\n/g, '<br/>'),
+  });
 
   // Load saved contact persons from database preferences
   useEffect(() => {
@@ -313,14 +364,9 @@ Adapun nama siswa/i kami adalah:`,
 
     setIsPrinting(true);
     try {
-      // Process text to HTML (replace newlines with <br/>)
-      const configToPrint = {
-        ...printConfig,
-        openingText: printConfig.openingText?.replace(/\n/g, '<br/>'),
-        closingText: printConfig.closingText?.replace(/\n/g, '<br/>')
-      };
+      const configToPrint = buildPrintPayload();
 
-      let response: { data: { data: { html: string } } };
+      let response: PrintLetterResponse;
       if (printType === 'group') {
         console.log("Fetching group print data...");
         response = await internshipService.printGroupLetter({
@@ -333,27 +379,11 @@ Adapun nama siswa/i kami adalah:`,
         return;
       }
 
-      // Handle HTML response for group print
       const htmlContent = response.data?.data?.html;
       console.log("Group print HTML content received:", !!htmlContent);
       
       if (htmlContent) {
-        // Save to localStorage FIRST (more reliable than sessionStorage across tabs)
-        localStorage.setItem('pkl_group_print_data', JSON.stringify({ html: htmlContent }));
-        
-        // Open in new tab - SIMPLEST WAY & Force tab
-        const url = '/print/pkl-group';
-        const printWindow = window.open(url, '_blank');
-        if (printWindow) {
-          printWindow.focus();
-        } else {
-          // Fallback if blocked
-          const a = document.createElement('a');
-          a.href = url;
-          a.target = '_blank';
-          a.rel = 'noopener noreferrer';
-          a.click();
-        }
+        writePrintHtml(htmlContent);
       } else {
         toast.error('Gagal memuat konten surat');
       }
@@ -611,38 +641,36 @@ Adapun nama siswa/i kami adalah:`,
     }
   };
 
-  const handleExecuteIndividualPrint = () => {
+  const handleExecuteIndividualPrint = async () => {
     if (!selectedInternship) return;
-    
-    // Prepare data to pass to the print page
-    const printData = {
-      ...printConfig,
-      internshipId: selectedInternship.id,
-      companyName: printConfig.companyName || selectedInternship.companyName,
-      companyAddress: printConfig.companyAddress || selectedInternship.companyAddress,
-      student: selectedInternship.student,
-      colleagues: selectedInternship.colleagues,
-      academicYear: selectedInternship.academicYear
-    };
-    
-    // Save to localStorage for PklLetterPrint.tsx to pick up (more reliable than sessionStorage across tabs)
-    localStorage.setItem(`pkl_print_config_${selectedInternship.id}`, JSON.stringify(printData));
-    
-    // Open print page in new tab - Force new tab by avoiding window features
-    const url = `/print/pkl/${selectedInternship.id}`;
-    const win = window.open(url, '_blank');
-    if (win) {
-      win.focus();
-    } else {
-      // Fallback if blocked
-      const a = document.createElement('a');
-      a.href = url;
-      a.target = '_blank';
-      a.rel = 'noopener noreferrer';
-      a.click();
+
+    setIsPrinting(true);
+    try {
+      const response = await internshipService.getPrintLetterHtml(selectedInternship.id, {
+        ...buildPrintPayload(),
+        companyName: printConfig.companyName || selectedInternship.companyName,
+        companyAddress: printConfig.companyAddress || selectedInternship.companyAddress,
+        recipientName: printConfig.recipientName || selectedInternship.mentorName,
+        startDate: printConfig.startDate || selectedInternship.startDate,
+        endDate: printConfig.endDate || selectedInternship.endDate,
+      }) as PrintLetterResponse;
+
+      const htmlContent = response.data?.data?.html;
+      if (!htmlContent) {
+        toast.error('Gagal memuat konten surat');
+        return;
+      }
+
+      if (writePrintHtml(htmlContent)) {
+        setIsIndividualPrintModalOpen(false);
+      }
+    } catch (error: unknown) {
+      console.error("handleExecuteIndividualPrint error:", error);
+      const err = error as ApiError;
+      toast.error(err.response?.data?.message || 'Gagal memuat surat');
+    } finally {
+      setIsPrinting(false);
     }
-    
-    setIsIndividualPrintModalOpen(false);
   };
 
   const closeModal = () => {
@@ -1842,9 +1870,10 @@ Adapun nama siswa/i kami adalah:`,
                 </button>
                 <button
                   onClick={handleExecuteIndividualPrint}
+                  disabled={isPrinting}
                   className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex justify-center items-center gap-2 font-bold shadow-lg"
                 >
-                  <Printer className="w-5 h-5" />
+                  {isPrinting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Printer className="w-5 h-5" />}
                   Cetak Surat
                 </button>
               </div>
@@ -1853,7 +1882,11 @@ Adapun nama siswa/i kami adalah:`,
         </div>
       )}
 
-      {/* Hidden Print Iframe (Legacy - Can be removed later) */}
+      <iframe
+        ref={printIframeRef}
+        title="pkl-letter-print-frame"
+        className="hidden"
+      />
     </div>
   );
 };

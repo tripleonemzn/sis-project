@@ -5,12 +5,12 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-04-29 20:32 WIB
-- Current status: Perbaikan lintas fitur untuk keluhan user sudah selesai dan sudah live. Cetak rapor wali kelas kini tidak lagi default diam-diam ke nama ayah; backend menyiapkan kandidat tanda tangan `Wali`, `Ibu`, lalu `Ayah`, dan web rapor SBTS/SAS/SAT menampilkan popup pilihan saat ada lebih dari satu kandidat. Aplikasi mobile siswa kini menyediakan aksi buka/unduh lampiran pada materi dan tugas memakai URL file existing.
+- Last updated: 2026-04-29 20:58 WIB
+- Current status: Perbaikan duty Waka Humas pada menu `Persetujuan PKL` sudah selesai dan sudah live. Alur `Konfigurasi & Cetak Surat` tidak lagi membuka tab baru untuk cetak surat PKL; cetak kolektif dan individual sekarang memakai print iframe tersembunyi dari konteks halaman aktif. Kop surat PKL juga sudah memakai snapshot kop standar sekolah yang sama source-of-truth-nya dengan dokumen BA.
 - Objective/task aktif:
   - Menjaga fitur operasional lintas web/mobile tetap user-friendly dan aman untuk produksi.
 - Batch terakhir selesai:
-  - `Cross-feature fix - tanda tangan orang tua/wali rapor + lampiran mobile siswa`
+  - `Waka Humas - standardisasi cetak surat PKL`
 - Progress batch ini:
   - `100%`
 - Progress roadmap perangkat ajar dinamis:
@@ -19,46 +19,35 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
-  - Commit: `9da6d10`
-  - Title: `fix(reports-mobile): improve parent signatures and attachments`
+  - Commit: `pending`
+  - Title: `fix(internship): standardize pkl letter printing`
   - Summary:
-    - fallback tanda tangan orang tua/wali rapor kini memakai urutan aman `guardianName -> motherName -> fatherName`, bukan memprioritaskan ayah saat wali kosong
-    - payload rapor menyertakan kandidat tanda tangan agar wali kelas bisa memilih `Wali`, `Ibu`, `Ayah`, atau isi manual sebelum print
-    - halaman rapor SBTS/SAS/SAT memakai popup ringan sebelum print jika kandidat tanda tangan lebih dari satu
-    - layar mobile siswa `Materi & Tugas` kini punya tombol `Unduh Lampiran` untuk materi dan `Unduh Lampiran Tugas` untuk tugas, serta tombol buka video jika ada URL video
-    - perubahan tidak menambah endpoint, polling, query berat, atau fan-out request baru
+    - tombol cetak surat PKL kolektif di konfigurasi Waka Humas tidak lagi menyimpan HTML ke localStorage lalu membuka `/print/pkl-group`
+    - tombol cetak surat PKL individual tidak lagi membuka `/print/pkl/:id` di tab baru
+    - kedua alur cetak memakai iframe tersembunyi dan langsung memanggil browser print dialog dari halaman aktif
+    - backend generator surat PKL memakai `resolveStandardSchoolDocumentHeaderSnapshot()` untuk kop surat standar sekolah, termasuk daftar kompetensi keahlian dinamis dari data jurusan
+    - perubahan tidak menambah polling/query agresif; hanya memakai endpoint cetak existing saat user menekan tombol cetak
 - Area/file disentuh:
-  - `backend/src/services/report.service.ts`
-  - `frontend/src/pages/teacher/homeroom/ParentSignaturePrintDialog.tsx`
-  - `frontend/src/pages/teacher/homeroom/HomeroomReportSbtsPage.tsx`
-  - `frontend/src/pages/teacher/homeroom/HomeroomReportSasPage.tsx`
-  - `frontend/src/pages/teacher/homeroom/HomeroomReportSatPage.tsx`
-  - `frontend/src/services/report.service.ts`
-  - `mobile-app/app/(app)/learning.tsx`
+  - `backend/src/controllers/internship.controller.ts`
+  - `frontend/src/pages/teacher/internship/InternshipApprovalPage.tsx`
   - `docs/CODEX_CONTINUITY.md`
 - Verifikasi batch ini:
   - `cd backend && npm run build`
   - `cd frontend && npm run build`
-  - `cd mobile-app && npm run typecheck`
-  - `cd mobile-app && npm run audit:parity:check`
   - `git diff --check`
   - `cd backend && npm run service:restart`
   - `cd backend && npm run service:health`
   - `cd frontend && npm run deploy`
-  - `curl -I https://siskgb2.id/teacher/wali-kelas/rapor-sbts`
-  - `cd mobile-app && npm run check:ota:testers`
-  - `cd mobile-app && npm run update:testers`
+  - `curl -I https://siskgb2.id/teacher/internship/approval`
 - Publish/live status:
   - Backend sudah restart via PM2 dan health `Backend:200`, `Backend API:200`
   - Web sudah deploy live ke `/var/www/html/`
-  - Route rapor `https://siskgb2.id/teacher/wali-kelas/rapor-sbts` merespons `HTTP/1.1 200 OK`
-  - Mobile OTA sudah publish ke channel `pilot-live`
-  - OTA update group ID: `33de4cac-23ad-4a61-bc8d-1aa93a52b8ad`
-  - Push notify update berhasil dikirim: `recipients=20`, `sent=20`, `failed=0`, `stale=0`
+  - Route Waka Humas `https://siskgb2.id/teacher/internship/approval` merespons `HTTP/1.1 200 OK`
+  - Mobile source code tidak berubah; tidak ada OTA baru
 - Remaining work:
-  - Tidak ada sisa pekerjaan untuk batch ini selain commit dokumentasi handoff dan final clean check.
+  - Commit perubahan task dan dokumentasi, push ke `origin/main`, lalu final clean check.
 - Residual risk:
-  - Pilihan tanda tangan rapor belum menyimpan preferensi permanen per siswa; pemilihan dilakukan saat print agar aman dan tidak mengubah data induk keluarga.
+  - Route print legacy `/print/pkl` dan `/print/pkl-group` masih ada di codebase sebagai fallback lama, tetapi tombol operasional Waka Humas sudah tidak memakainya.
 
 ## Status Saat Ini
 
