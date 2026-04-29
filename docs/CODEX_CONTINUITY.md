@@ -5,12 +5,12 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-04-29 14:56 WIB
-- Current status: Bug opsi referensi multiline CP -> ATP sudah diperbaiki dan sudah live. Cell sumber seperti `Tujuan Pembelajaran`, `Konten/Materi`, dan `Dimensi Profil` yang berisi beberapa subbaris kini diproyeksikan menjadi opsi referensi per subbaris, bukan satu opsi besar yang selalu terlihat sebagai baris pertama (`1.1`). Snapshot referensi juga mengikuti index subbaris yang sama agar pilihan `1.2`, `1.3`, dst. membawa materi/dimensi yang sejajar.
+- Last updated: 2026-04-29 20:32 WIB
+- Current status: Perbaikan lintas fitur untuk keluhan user sudah selesai dan sudah live. Cetak rapor wali kelas kini tidak lagi default diam-diam ke nama ayah; backend menyiapkan kandidat tanda tangan `Wali`, `Ibu`, lalu `Ayah`, dan web rapor SBTS/SAS/SAT menampilkan popup pilihan saat ada lebih dari satu kandidat. Aplikasi mobile siswa kini menyediakan aksi buka/unduh lampiran pada materi dan tugas memakai URL file existing.
 - Objective/task aktif:
-  - Menjaga perangkat ajar dinamis tetap terintegrasi lintas menu, khususnya alokasi JP dari beban mengajar menuju ATP/Prota/Promes/Matriks.
+  - Menjaga fitur operasional lintas web/mobile tetap user-friendly dan aman untuk produksi.
 - Batch terakhir selesai:
-  - `Follow-up - Opsi referensi multiline per subbaris (web/backend)`
+  - `Cross-feature fix - tanda tangan orang tua/wali rapor + lampiran mobile siswa`
 - Progress batch ini:
   - `100%`
 - Progress roadmap perangkat ajar dinamis:
@@ -19,36 +19,46 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
-  - Commit: `d21ac25`
-  - Title: `fix(curriculum): split multiline reference options`
+  - Commit: `9da6d10`
+  - Title: `fix(reports-mobile): improve parent signatures and attachments`
   - Summary:
-    - backend projection referensi sekarang memecah nilai multiline menjadi opsi per baris dengan snapshot per index
-    - fallback frontend untuk opsi referensi dari rows lokal mengikuti perilaku yang sama
-    - data entry ATP existing sudah benar menyimpan TP multiline `1.1` sampai `1.4`; bug yang terlihat adalah opsi dropdown referensi yang sebelumnya hanya punya 1 opsi multiline
-    - perubahan tetap scoped ke endpoint referensi perangkat ajar dan renderer guru, tanpa polling/query baru
+    - fallback tanda tangan orang tua/wali rapor kini memakai urutan aman `guardianName -> motherName -> fatherName`, bukan memprioritaskan ayah saat wali kosong
+    - payload rapor menyertakan kandidat tanda tangan agar wali kelas bisa memilih `Wali`, `Ibu`, `Ayah`, atau isi manual sebelum print
+    - halaman rapor SBTS/SAS/SAT memakai popup ringan sebelum print jika kandidat tanda tangan lebih dari satu
+    - layar mobile siswa `Materi & Tugas` kini punya tombol `Unduh Lampiran` untuk materi dan `Unduh Lampiran Tugas` untuk tugas, serta tombol buka video jika ada URL video
+    - perubahan tidak menambah endpoint, polling, query berat, atau fan-out request baru
 - Area/file disentuh:
-  - `backend/src/controllers/teachingResourceProgram.controller.ts`
-  - `frontend/src/pages/teacher/learning-resources/LearningResourceGenerator.tsx`
+  - `backend/src/services/report.service.ts`
+  - `frontend/src/pages/teacher/homeroom/ParentSignaturePrintDialog.tsx`
+  - `frontend/src/pages/teacher/homeroom/HomeroomReportSbtsPage.tsx`
+  - `frontend/src/pages/teacher/homeroom/HomeroomReportSasPage.tsx`
+  - `frontend/src/pages/teacher/homeroom/HomeroomReportSatPage.tsx`
+  - `frontend/src/services/report.service.ts`
+  - `mobile-app/app/(app)/learning.tsx`
   - `docs/CODEX_CONTINUITY.md`
 - Verifikasi batch ini:
   - `cd backend && npm run build`
   - `cd frontend && npm run build`
+  - `cd mobile-app && npm run typecheck`
+  - `cd mobile-app && npm run audit:parity:check`
   - `git diff --check`
   - `cd backend && npm run service:restart`
   - `cd backend && npm run service:health`
   - `cd frontend && npm run deploy`
-  - `curl -I https://siskgb2.id/teacher/wakasek/teaching-resource-programs`
-  - `curl -I https://siskgb2.id/teacher/learning-resources/atp`
+  - `curl -I https://siskgb2.id/teacher/wali-kelas/rapor-sbts`
+  - `cd mobile-app && npm run check:ota:testers`
+  - `cd mobile-app && npm run update:testers`
 - Publish/live status:
   - Backend sudah restart via PM2 dan health `Backend:200`, `Backend API:200`
   - Web sudah deploy live ke `/var/www/html/`
-  - Route Wakakur `https://siskgb2.id/teacher/wakasek/teaching-resource-programs` merespons `HTTP/1.1 200 OK`
-  - Route guru `https://siskgb2.id/teacher/learning-resources/atp` merespons `HTTP/1.1 200 OK`
-  - Mobile source code tidak berubah; belum ada OTA baru
+  - Route rapor `https://siskgb2.id/teacher/wali-kelas/rapor-sbts` merespons `HTTP/1.1 200 OK`
+  - Mobile OTA sudah publish ke channel `pilot-live`
+  - OTA update group ID: `33de4cac-23ad-4a61-bc8d-1aa93a52b8ad`
+  - Push notify update berhasil dikirim: `recipients=20`, `sent=20`, `failed=0`, `stale=0`
 - Remaining work:
-  - Commit dokumentasi hash final, push ke `origin/main`, dan pastikan worktree clean.
+  - Tidak ada sisa pekerjaan untuk batch ini selain commit dokumentasi handoff dan final clean check.
 - Residual risk:
-  - Browser yang masih memegang cache/query lama mungkin perlu reload halaman ATP agar opsi referensi baru terbaca.
+  - Pilihan tanda tangan rapor belum menyimpan preferensi permanen per siswa; pemilihan dilakukan saat print agar aman dan tidak mengubah data induk keluarga.
 
 ## Status Saat Ini
 
