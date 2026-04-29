@@ -357,6 +357,21 @@ const sanitizeSectionColumns = (value: unknown): EntrySectionColumnForm[] => {
   }, []);
 };
 
+const mergeSectionColumnsWithSchema = (
+  savedColumns: EntrySectionColumnForm[],
+  schemaColumns: EntrySectionColumnForm[],
+): EntrySectionColumnForm[] => {
+  if (schemaColumns.length === 0) return savedColumns;
+  if (savedColumns.length === 0) return schemaColumns;
+
+  const schemaKeys = new Set(schemaColumns.map((column) => String(column.key || '').trim()).filter(Boolean));
+  const customSavedColumns = savedColumns.filter((column) => {
+    const key = String(column.key || '').trim();
+    return key && !schemaKeys.has(key);
+  });
+  return [...schemaColumns, ...customSavedColumns];
+};
+
 const toErrorMessage = (error: unknown, fallback: string): string => {
   if (!error || typeof error !== 'object') return fallback;
   const normalized = error as {
@@ -455,7 +470,8 @@ const parseEntrySections = (
       defaultSections.find((sectionItem) => String(sectionItem.schemaKey || '').trim() === String(schemaKey || '').trim()) ||
       defaultSections[index];
     const parsedColumns = sanitizeSectionColumns(item.columns);
-    const effectiveColumns = parsedColumns.length > 0 ? parsedColumns : ensureArray<EntrySectionColumnForm>(fallbackSection?.columns);
+    const fallbackColumns = ensureArray<EntrySectionColumnForm>(fallbackSection?.columns);
+    const effectiveColumns = mergeSectionColumnsWithSchema(parsedColumns, fallbackColumns);
     const parsedRows = Array.isArray(item.rows)
       ? item.rows
           .map((rawRow, rowIndex) => {
@@ -503,7 +519,13 @@ const parseEntrySections = (
     if (parsed.title.length === 0 && parsed.body.length === 0 && parsed.rows.length === 0 && parsed.columns.length === 0) return;
     normalized.push(parsed);
   });
-  return normalized.length > 0 ? normalized : defaultSections;
+  if (normalized.length === 0) return defaultSections;
+  const existingSchemaKeys = new Set(normalized.map((section) => String(section.schemaKey || '').trim()).filter(Boolean));
+  const missingDefaultSections = defaultSections.filter((section) => {
+    const schemaKey = String(section.schemaKey || '').trim();
+    return schemaKey && !existingSchemaKeys.has(schemaKey);
+  });
+  return [...normalized, ...missingDefaultSections];
 };
 
 const toEntryRawSections = (entry: TeachingResourceEntry) => {
@@ -662,10 +684,8 @@ const extractReferenceCandidates = (column: Partial<EntrySectionColumnForm> | nu
   return Array.from(candidates);
 };
 
-const isDocumentReferenceColumn = (column: Partial<EntrySectionColumnForm> | null | undefined): boolean => {
-  const sourceType = String(column?.sourceType || '').trim().toUpperCase();
-  return sourceType === 'DOCUMENT_REFERENCE' || sourceType === 'DOCUMENT_SNAPSHOT';
-};
+const isDocumentReferencePickerColumn = (column: Partial<EntrySectionColumnForm> | null | undefined): boolean =>
+  String(column?.sourceType || '').trim().toUpperCase() === 'DOCUMENT_REFERENCE';
 
 const buildReferenceSnapshot = (
   columns: Array<Partial<EntrySectionColumnForm>>,
@@ -915,7 +935,7 @@ const getColumnDataType = (column?: Pick<EntrySectionColumnForm, 'dataType'> | n
     .toUpperCase();
 
 const isSystemManagedColumn = (column: EntrySectionColumnForm): boolean => {
-  if (isDocumentReferenceColumn(column)) return false;
+  if (isDocumentReferencePickerColumn(column)) return false;
   const valueSource = String(column.valueSource || 'MANUAL').trim().toUpperCase();
   const dataType = getColumnDataType(column);
   return Boolean(column.readOnly) || dataType === 'READONLY_BOUND' || (!!valueSource && valueSource !== 'MANUAL');
@@ -1414,7 +1434,7 @@ export const LearningResourceGenerator = ({
     const codes = new Set<string>();
     activeProgramSchemaSections.forEach((section) => {
       ensureArray<EntrySectionColumnForm>(section.columns).forEach((column) => {
-        if (!isDocumentReferenceColumn(column)) return;
+        if (!isDocumentReferencePickerColumn(column)) return;
         const sourceProgramCode = normalizeTeachingResourceProgramCode(column.binding?.sourceProgramCode);
         if (!sourceProgramCode) return;
         codes.add(sourceProgramCode);
@@ -1632,7 +1652,7 @@ export const LearningResourceGenerator = ({
       Boolean(academicYearId) &&
       Boolean(user?.id) &&
       referenceSourceProgramCodes.length > 0 &&
-      (Boolean(isPageEditor) || Boolean(isEditorOpen)),
+      (Boolean(isPageEditor) || Boolean(isEditorOpen) || Boolean(quickEditEntryId)),
     queryFn: async () => {
       const results = await Promise.all(
         referenceSourceProgramCodes.map(async (sourceProgramCode) => {
@@ -1750,7 +1770,7 @@ export const LearningResourceGenerator = ({
 
     activeProgramSchemaSections.forEach((section) => {
       ensureArray<EntrySectionColumnForm>(section.columns).forEach((column) => {
-        if (!isDocumentReferenceColumn(column)) return;
+        if (!isDocumentReferencePickerColumn(column)) return;
         const sourceProgramCode = normalizeTeachingResourceProgramCode(column.binding?.sourceProgramCode);
         if (!sourceProgramCode) return;
         const referenceEntries = referenceEntriesByProgram.get(sourceProgramCode) || [];
@@ -2505,6 +2525,84 @@ export const LearningResourceGenerator = ({
     );
   };
 
+  const applyQuickDocumentReferenceSelection = (
+    sectionId: string,
+    rowId: string,
+    sourceColumn: EntrySectionColumnForm,
+    selectionToken: string,
+  ) => {
+    setQuickEditSectionsWithDerived((prev) =>
+      prev.map((item) => {
+        if (item.id !== sectionId) return item;
+        return {
+          ...item,
+          rows: item.rows.map((row) => {
+            if (row.id !== rowId) return row;
+            const columnKey = String(sourceColumn.key || '').trim();
+            const referenceOptions =
+              referenceOptionsByColumnKey.get(`${String(item.schemaKey || '').trim()}::${columnKey}`) || [];
+            const selectedOption = referenceOptions.find((option) => option.selectValue === selectionToken);
+            const nextValues = {
+              ...row.values,
+              [columnKey]: selectedOption?.value || '',
+            };
+            const nextReferenceSelections = {
+              ...(row.referenceSelections || {}),
+            };
+
+            if (selectedOption) {
+              nextReferenceSelections[columnKey] = {
+                sectionSchemaKey: String(item.schemaKey || '').trim() || undefined,
+                columnKey,
+                selectionToken: selectedOption.selectValue,
+                sourceProgramCode: selectedOption.sourceProgramCode,
+                sourceEntryId: selectedOption.sourceEntryId,
+                sourceEntryTitle: selectedOption.sourceEntryTitle,
+                sourceFieldKey: selectedOption.sourceFieldKey,
+                sourceFieldIdentity: selectedOption.sourceFieldIdentity,
+                value: selectedOption.value,
+                label: selectedOption.label,
+                snapshot: selectedOption.snapshot,
+              };
+            } else {
+              delete nextReferenceSelections[columnKey];
+            }
+
+            const selectedSourceProgramCode = normalizeTeachingResourceProgramCode(
+              selectedOption?.sourceProgramCode || sourceColumn.binding?.sourceProgramCode,
+            );
+            item.columns.forEach((targetColumn) => {
+              const targetKey = String(targetColumn.key || '').trim();
+              if (!targetKey || targetKey === columnKey) return;
+              if (String(targetColumn.sourceType || '').trim().toUpperCase() !== 'DOCUMENT_SNAPSHOT') return;
+              const targetProgramCode = normalizeTeachingResourceProgramCode(targetColumn.binding?.sourceProgramCode);
+              if (selectedSourceProgramCode && targetProgramCode && targetProgramCode !== selectedSourceProgramCode) return;
+              const allowManualOverride = Boolean(targetColumn.binding?.allowManualOverride);
+              if (!selectedOption) {
+                if (!allowManualOverride) nextValues[targetKey] = '';
+                return;
+              }
+              if (allowManualOverride && String(nextValues[targetKey] || '').trim()) return;
+              const candidates = extractBindingCandidates(targetColumn);
+              for (const candidate of candidates) {
+                const resolvedValue = String(selectedOption.snapshot[candidate] || '').trim();
+                if (!resolvedValue) continue;
+                nextValues[targetKey] = resolvedValue;
+                break;
+              }
+            });
+
+            return {
+              ...row,
+              values: nextValues,
+              referenceSelections: Object.keys(nextReferenceSelections).length > 0 ? nextReferenceSelections : undefined,
+            };
+          }),
+        };
+      }),
+    );
+  };
+
   const renderQuickEditCellControl = (
     section: EntrySectionForm,
     row: EntrySectionForm['rows'][number] | undefined,
@@ -2522,10 +2620,64 @@ export const LearningResourceGenerator = ({
       readOnly ? 'cursor-not-allowed bg-slate-50 text-slate-500' : ''
     }`;
 
-    if (isDocumentReferenceColumn(column)) {
+    if (isDocumentReferencePickerColumn(column)) {
+      const referenceSelection = row?.referenceSelections?.[columnKey];
+      const referenceOptions =
+        referenceOptionsByColumnKey.get(`${String(section.schemaKey || '').trim()}::${columnKey}`) || [];
+      const referenceSelectValue =
+        String(referenceSelection?.selectionToken || '').trim() ||
+        referenceOptions.find((option) => option.value === value)?.selectValue ||
+        '';
+      const sourceProgramCode = normalizeTeachingResourceProgramCode(column.binding?.sourceProgramCode);
+      const sourceFieldIdentity =
+        String(column.binding?.sourceFieldIdentity || column.binding?.sourceDocumentFieldIdentity || '').trim();
+      const sourceProgramLabel =
+        String(programMetaByCode.get(sourceProgramCode)?.label || '').trim() || sourceProgramCode || 'dokumen sumber';
+      const hasReferenceBinding = Boolean(sourceProgramCode && sourceFieldIdentity);
+      const fallbackReferenceOption =
+        referenceSelectValue &&
+        !referenceOptions.some((option) => option.selectValue === referenceSelectValue)
+          ? {
+              selectValue: referenceSelectValue,
+              value: String(referenceSelection?.value || value || '').trim(),
+              label: String(referenceSelection?.label || referenceSelection?.sourceEntryTitle || value || 'Referensi tersimpan').trim(),
+              sourceProgramCode: sourceProgramCode || String(referenceSelection?.sourceProgramCode || '').trim(),
+              sourceEntryId: Number(referenceSelection?.sourceEntryId || 0),
+              sourceEntryTitle: String(referenceSelection?.sourceEntryTitle || '').trim() || undefined,
+              sourceFieldKey: String(referenceSelection?.sourceFieldKey || '').trim() || undefined,
+              sourceFieldIdentity: String(referenceSelection?.sourceFieldIdentity || '').trim() || undefined,
+              snapshot: {},
+            }
+          : null;
+      const referenceSelectOptions = [...(fallbackReferenceOption ? [fallbackReferenceOption] : []), ...referenceOptions].filter(
+        (option, index, collection) =>
+          collection.findIndex((candidate) => candidate.selectValue === option.selectValue) === index,
+      );
+      const disableReferenceSelect =
+        !row?.id || !hasReferenceBinding || (referenceSelectOptions.length === 0 && !referenceSelectValue);
+      const referencePlaceholder = !hasReferenceBinding
+        ? 'Referensi belum dikonfigurasi'
+        : referenceSelectOptions.length > 0
+          ? 'Pilih referensi'
+          : `Isi ${sourceProgramLabel} dulu`;
       return (
-        <div className="min-h-[42px] whitespace-pre-wrap px-1 py-1 text-xs leading-relaxed text-slate-500">
-          {value || row?.referenceSelections?.[columnKey]?.label || 'Edit referensi dari editor lengkap'}
+        <div className="space-y-1">
+          <select
+            value={referenceSelectValue}
+            disabled={disableReferenceSelect}
+            onChange={(event) => applyQuickDocumentReferenceSelection(section.id, row?.id || '', column, event.target.value)}
+            className={selectClassName}
+          >
+            <option value="">{referencePlaceholder}</option>
+            {referenceSelectOptions.map((option) => (
+              <option key={`quick-${columnKey}-${option.selectValue}`} value={option.selectValue}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+          {disableReferenceSelect && hasReferenceBinding ? (
+            <p className="px-1 text-[10px] leading-4 text-slate-500">Belum ada data sumber yang cocok.</p>
+          ) : null}
         </div>
       );
     }
@@ -2988,7 +3140,7 @@ export const LearningResourceGenerator = ({
     }`;
     const selectClassName = `${inputClassName} ${readOnly ? 'cursor-not-allowed' : ''}`;
 
-    if (isDocumentReferenceColumn(column)) {
+    if (isDocumentReferencePickerColumn(column)) {
       return (
         <div className="space-y-1">
           <select
