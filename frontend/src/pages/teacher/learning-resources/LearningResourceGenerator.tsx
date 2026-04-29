@@ -1356,6 +1356,7 @@ export const LearningResourceGenerator = ({
   const [quickEditSections, setQuickEditSections] = useState<EntrySectionForm[]>([]);
   const quickEditSectionsRef = useRef<EntrySectionForm[]>([]);
   const [quickEditActiveSectionId, setQuickEditActiveSectionId] = useState('');
+  const [referenceSearchTerms, setReferenceSearchTerms] = useState<Record<string, string>>({});
   const printIframeRef = useRef<HTMLIFrameElement | null>(null);
   const programCode = useMemo(() => normalizeProgramCode(type), [type]);
   const isPageEditor = editorMode === 'create';
@@ -1800,6 +1801,54 @@ export const LearningResourceGenerator = ({
     selectedContext,
   ]);
 
+  const buildReferenceSearchKey = (
+    scope: 'quick' | 'editor',
+    sectionId: string,
+    rowId: string | undefined,
+    columnKey: string,
+  ) => `${scope}::${sectionId}::${rowId || 'row'}::${columnKey}`;
+
+  const updateReferenceSearchTerm = (key: string, value: string) => {
+    setReferenceSearchTerms((prev) => {
+      const next = { ...prev };
+      const normalizedValue = value.trimStart();
+      if (normalizedValue) {
+        next[key] = normalizedValue;
+      } else {
+        delete next[key];
+      }
+      return next;
+    });
+  };
+
+  const filterReferenceOptions = (options: ReferenceOption[], searchTerm: string): ReferenceOption[] => {
+    const terms = searchTerm
+      .trim()
+      .toLowerCase()
+      .split(/\s+/)
+      .filter(Boolean);
+    if (terms.length === 0) return options;
+
+    return options.filter((option) => {
+      const haystack = [option.label, option.value, option.sourceEntryTitle, option.sourceFieldKey, option.sourceFieldIdentity]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      return terms.every((term) => haystack.includes(term));
+    });
+  };
+
+  const keepSelectedReferenceOptionVisible = (
+    options: ReferenceOption[],
+    allOptions: ReferenceOption[],
+    selectedValue: string,
+  ): ReferenceOption[] => {
+    if (!selectedValue) return options;
+    if (options.some((option) => option.selectValue === selectedValue)) return options;
+    const selectedOption = allOptions.find((option) => option.selectValue === selectedValue);
+    return selectedOption ? [selectedOption, ...options] : options;
+  };
+
   useEffect(() => {
     if (viewMode === 'review' && !canReview) {
       setViewMode('mine');
@@ -1866,6 +1915,7 @@ export const LearningResourceGenerator = ({
     setEntryTags('');
     setSelectedContextKey('');
     setSections(normalizeSectionsForEditor(buildDefaultSections(activeProgramMeta)));
+    setReferenceSearchTerms({});
   };
 
   const initializeCreate = (openAsModal = true) => {
@@ -1974,6 +2024,7 @@ export const LearningResourceGenerator = ({
     setQuickEditEntryId(null);
     setQuickEditSections([]);
     setQuickEditActiveSectionId('');
+    setReferenceSearchTerms({});
     if (isPageEditor) {
       navigate(listPath);
     }
@@ -2349,6 +2400,7 @@ export const LearningResourceGenerator = ({
     quickEditSectionsRef.current = [];
     setQuickEditSections([]);
     setQuickEditActiveSectionId('');
+    setReferenceSearchTerms({});
   };
 
   useEffect(() => {
@@ -2653,23 +2705,46 @@ export const LearningResourceGenerator = ({
         (option, index, collection) =>
           collection.findIndex((candidate) => candidate.selectValue === option.selectValue) === index,
       );
+      const referenceSearchKey = buildReferenceSearchKey('quick', section.id, row?.id, columnKey);
+      const referenceSearchTerm = referenceSearchTerms[referenceSearchKey] || '';
+      const filteredReferenceSelectOptions = keepSelectedReferenceOptionVisible(
+        filterReferenceOptions(referenceSelectOptions, referenceSearchTerm),
+        referenceSelectOptions,
+        referenceSelectValue,
+      );
+      const showReferenceSearch = referenceSelectOptions.length > 6 || Boolean(referenceSearchTerm);
       const disableReferenceSelect =
         !row?.id || !hasReferenceBinding || (referenceSelectOptions.length === 0 && !referenceSelectValue);
       const referencePlaceholder = !hasReferenceBinding
         ? 'Referensi belum dikonfigurasi'
-        : referenceSelectOptions.length > 0
+        : referenceSelectOptions.length > 0 && filteredReferenceSelectOptions.length === 0
+          ? 'Tidak ada hasil'
+          : referenceSelectOptions.length > 0
           ? 'Pilih referensi'
           : `Isi ${sourceProgramLabel} dulu`;
       return (
         <div className="space-y-1">
+          {showReferenceSearch ? (
+            <input
+              type="search"
+              value={referenceSearchTerm}
+              disabled={disableReferenceSelect}
+              onChange={(event) => updateReferenceSearchTerm(referenceSearchKey, event.target.value)}
+              placeholder={`Cari ${sourceProgramLabel}`}
+              className="h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-700 focus:border-blue-500 focus:outline-none disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500"
+            />
+          ) : null}
           <select
             value={referenceSelectValue}
             disabled={disableReferenceSelect}
-            onChange={(event) => applyQuickDocumentReferenceSelection(section.id, row?.id || '', column, event.target.value)}
+            onChange={(event) => {
+              applyQuickDocumentReferenceSelection(section.id, row?.id || '', column, event.target.value);
+              updateReferenceSearchTerm(referenceSearchKey, '');
+            }}
             className={selectClassName}
           >
             <option value="">{referencePlaceholder}</option>
-            {referenceSelectOptions.map((option) => (
+            {filteredReferenceSelectOptions.map((option) => (
               <option key={`quick-${columnKey}-${option.selectValue}`} value={option.selectValue}>
                 {option.label}
               </option>
@@ -2677,6 +2752,8 @@ export const LearningResourceGenerator = ({
           </select>
           {disableReferenceSelect && hasReferenceBinding ? (
             <p className="px-1 text-[10px] leading-4 text-slate-500">Belum ada data sumber yang cocok.</p>
+          ) : referenceSearchTerm && filteredReferenceSelectOptions.length === 0 ? (
+            <p className="px-1 text-[10px] leading-4 text-slate-500">Tidak ada referensi yang cocok dengan pencarian.</p>
           ) : null}
         </div>
       );
@@ -3121,11 +3198,21 @@ export const LearningResourceGenerator = ({
       (option, index, collection) =>
         collection.findIndex((candidate) => candidate.selectValue === option.selectValue) === index,
     );
+    const referenceSearchKey = buildReferenceSearchKey('editor', section.id, row?.id, columnKey);
+    const referenceSearchTerm = referenceSearchTerms[referenceSearchKey] || '';
+    const filteredReferenceSelectOptions = keepSelectedReferenceOptionVisible(
+      filterReferenceOptions(referenceSelectOptions, referenceSearchTerm),
+      referenceSelectOptions,
+      referenceSelectValue,
+    );
+    const showReferenceSearch = referenceSelectOptions.length > 6 || Boolean(referenceSearchTerm);
     const disableReferenceSelect =
       !row?.id || !hasReferenceBinding || (referenceSelectOptions.length === 0 && !referenceSelectValue);
     const referencePlaceholder = !hasReferenceBinding
       ? 'Referensi belum dikonfigurasi'
-      : referenceSelectOptions.length > 0
+      : referenceSelectOptions.length > 0 && filteredReferenceSelectOptions.length === 0
+        ? 'Tidak ada hasil'
+        : referenceSelectOptions.length > 0
         ? 'Pilih Referensi'
         : 'Belum ada data sumber';
     const referenceHelperText = !hasReferenceBinding
@@ -3143,20 +3230,37 @@ export const LearningResourceGenerator = ({
     if (isDocumentReferencePickerColumn(column)) {
       return (
         <div className="space-y-1">
+          {showReferenceSearch ? (
+            <input
+              type="search"
+              value={referenceSearchTerm}
+              disabled={disableReferenceSelect}
+              onChange={(event) => updateReferenceSearchTerm(referenceSearchKey, event.target.value)}
+              placeholder={`Cari ${sourceProgramLabel}`}
+              className={inputClassName}
+            />
+          ) : null}
           <select
             value={referenceSelectValue}
             disabled={disableReferenceSelect}
-            onChange={(event) => applyDocumentReferenceSelection(section.id, row?.id || '', column, event.target.value)}
+            onChange={(event) => {
+              applyDocumentReferenceSelection(section.id, row?.id || '', column, event.target.value);
+              updateReferenceSearchTerm(referenceSearchKey, '');
+            }}
             className={selectClassName}
           >
             <option value="">{referencePlaceholder}</option>
-            {referenceSelectOptions.map((option) => (
+            {filteredReferenceSelectOptions.map((option) => (
               <option key={`${columnKey}-${option.selectValue}`} value={option.selectValue}>
                 {option.label}
               </option>
             ))}
           </select>
-          {referenceHelperText ? <p className="text-[11px] text-gray-500">{referenceHelperText}</p> : null}
+          {referenceSearchTerm && filteredReferenceSelectOptions.length === 0 ? (
+            <p className="text-[11px] text-gray-500">Tidak ada referensi yang cocok dengan pencarian.</p>
+          ) : referenceHelperText ? (
+            <p className="text-[11px] text-gray-500">{referenceHelperText}</p>
+          ) : null}
         </div>
       );
     }
