@@ -5,12 +5,12 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-04-29 11:24 WIB
-- Current status: Follow-up konfigurasi semester dokumen pada perangkat ajar web sudah selesai di source dan build frontend sudah lolos. Wakakur kini bisa membedakan `Semester Aktif` yang dikunci dari header dengan `Pilihan Dokumen` seperti `Ganjil, Genap` untuk dokumen tahunan/distribusi waktu.
+- Last updated: 2026-04-29 12:05 WIB
+- Current status: Follow-up bug simpan konfigurasi perangkat ajar sudah diperbaiki dan sudah live. Endpoint daftar program perangkat ajar tidak lagi memakai cache in-memory per worker PM2, sehingga setelah Wakakur menyimpan konfigurasi, sisi Wakakur dan guru tidak lagi berisiko membaca schema lama dari worker lain. Frontend Wakakur juga memakai response update langsung sebagai state terbaru sebelum refetch.
 - Objective/task aktif:
   - Menyelesaikan perapihan UX role guru pada halaman dokumen perangkat ajar agar lebih fleksibel saat menulis judul, lebih aman saat print, dan lebih operasional saat mengedit isi tabel.
 - Batch terakhir selesai:
-  - `Follow-up - Semester dokumen untuk distribusi waktu perangkat ajar (web)`
+  - `Follow-up - Fix persist/refresh konfigurasi program perangkat ajar (web/backend)`
 - Progress batch ini:
   - `100%`
 - Progress roadmap perangkat ajar dinamis:
@@ -19,35 +19,35 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
-  - Commit: `d3a265c`
-  - Title: `feat(curriculum): support document semester options`
+  - Commit: `pending`
+  - Title: `fix(curriculum): prevent stale teaching resource program config`
   - Summary:
-    - editor Wakakur menambahkan `Cara Isi: Pilihan dokumen` untuk kolom yang opsinya ditentukan oleh konfigurasi, bukan oleh semester aktif operasional
-    - preset `Distribusi Waktu` sekarang membuat kolom `Semester` sebagai dropdown dokumen editable berisi `Ganjil, Genap`
-    - label tipe data `Semester Sistem` dirapikan menjadi `Semester` agar tidak memberi kesan selalu terkunci ke semester aktif
-    - editor guru memakai `column.options` untuk kolom semester bila tersedia, sehingga opsi tetap berasal dari schema Wakakur
+    - backend `GET /api/teaching-resources/programs` tidak lagi memakai response cache in-memory yang bisa stale antar-worker PM2
+    - frontend Wakakur memakai response dari `updatePrograms` untuk memperbarui tabel lokal, lalu baru melakukan invalidate/refetch
+    - perubahan ini menutup gejala `simpan berhasil` tetapi halaman guru/Wakakur masih melihat konfigurasi lama
 - Area/file disentuh:
-  - `frontend/src/pages/teacher/learning-resources/LearningResourceGenerator.tsx`
+  - `backend/src/controllers/teachingResourceProgram.controller.ts`
   - `frontend/src/pages/teacher/wakasek/curriculum/TeachingResourceProgramManagementPage.tsx`
   - `docs/CODEX_CONTINUITY.md`
 - Verifikasi batch ini:
+  - `cd backend && npm run build`
+  - `cd backend && npm run service:restart`
+  - `cd backend && npm run service:health`
   - `cd frontend && npm run build`
   - `git diff --check`
   - `cd frontend && npm run deploy`
   - `curl -I https://siskgb2.id/teacher/wakasek/teaching-resource-programs`
   - `curl -I https://siskgb2.id/teacher/learning-resources/cp`
-  - `curl -I https://siskgb2.id/teacher/learning-resources/atp`
 - Publish/live status:
-  - Backend tidak berubah; tidak perlu restart service
+  - Backend sudah restart via PM2 dan health `Backend:200`, `Backend API:200`
   - Web sudah deploy live ke `/var/www/html/` lewat `npm run deploy`
   - Route Wakakur `https://siskgb2.id/teacher/wakasek/teaching-resource-programs` merespons `HTTP/1.1 200 OK`
   - Route guru `https://siskgb2.id/teacher/learning-resources/cp` merespons `HTTP/1.1 200 OK`
-  - Route guru `https://siskgb2.id/teacher/learning-resources/atp` merespons `HTTP/1.1 200 OK`
   - Mobile source code tidak berubah; belum ada OTA baru
 - Remaining work:
-  - Push commit ke `origin/main` dan pastikan worktree clean.
+  - Commit, push ke `origin/main`, dan pastikan worktree clean.
 - Residual risk:
-  - Perubahan frontend-only, tidak menambah endpoint, polling, query, atau runtime backend baru. Existing program yang sudah telanjur memakai `Semester Aktif` tetap perlu diedit Wakakur ke `Pilihan Dokumen` bila memang dimaksudkan sebagai dokumen tahunan.
+  - Perubahan ini menghapus cache kecil pada endpoint konfigurasi program. Payload program perangkat ajar kecil dan bounded, sehingga dampak beban server rendah; ini lebih aman daripada stale config pada workflow simpan operasional.
 
 ## Status Saat Ini
 

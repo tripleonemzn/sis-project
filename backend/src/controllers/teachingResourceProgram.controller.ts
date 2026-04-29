@@ -2332,7 +2332,8 @@ export const getTeachingResourcePrograms = asyncHandler(async (req: Request, res
     authRole,
     authUserId,
   });
-  const cachedPayload = getProgramsCache(cacheKey);
+  const shouldUseCache = false;
+  const cachedPayload = shouldUseCache ? getProgramsCache(cacheKey) : null;
   if (cachedPayload) {
     return res
       .status(200)
@@ -2349,7 +2350,9 @@ export const getTeachingResourcePrograms = asyncHandler(async (req: Request, res
     roleContext,
     programs: filterPrograms(programs, roleContext, includeInactive, teacherScope),
   };
-  setProgramsCache(cacheKey, payload);
+  if (shouldUseCache) {
+    setProgramsCache(cacheKey, payload);
+  }
 
   return res
     .status(200)

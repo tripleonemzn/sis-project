@@ -2308,15 +2308,16 @@ export default function TeachingResourceProgramManagementPage() {
         targetClassLevels: row.targetClassLevels,
         schema: row.schema,
       }));
-      await teachingResourceProgramService.updatePrograms({
+      const response = await teachingResourceProgramService.updatePrograms({
         academicYearId: Number(selectedAcademicYearId),
         programs: payload,
       });
-      setRows(candidateRows);
-      await programsQuery.refetch();
+      const savedRows = normalizeOrder(toProgramRows(response));
+      setRows(savedRows.length > 0 ? savedRows : candidateRows);
       await queryClient.invalidateQueries({ queryKey: ['teaching-resource-program-config'] });
       await queryClient.invalidateQueries({ queryKey: ['sidebar-teaching-resource-programs'] });
       setIsDirty(false);
+      await programsQuery.refetch();
       toast.success(successMessage);
       return true;
     } catch (error) {
