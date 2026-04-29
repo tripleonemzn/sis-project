@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { AlertTriangle, ArrowDown, ArrowUp, Pencil, Plus, Save, Trash2, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, Pencil, Plus, Save, Trash2, X } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -1487,195 +1487,6 @@ function inferBlueprintMode(schema?: TeachingResourceProgramSchema): ProgramBlue
   return 'FREEFORM';
 }
 
-function summarizeSchema(schema?: TeachingResourceProgramSchema) {
-  const sections = Array.isArray(schema?.sections) ? schema.sections : [];
-  const tableSections = sections.filter((section) => (section.editorType || 'TABLE') === 'TABLE');
-  const textSections = sections.filter((section) => section.editorType === 'TEXT');
-  const repeatableSections = sections.filter((section) => section.repeatable);
-  const totalColumns = tableSections.reduce((total, section) => total + (section.columns || []).length, 0);
-
-  return {
-    totalSections: sections.length,
-    tableSections: tableSections.length,
-    textSections: textSections.length,
-    repeatableSections: repeatableSections.length,
-    totalColumns,
-  };
-}
-
-function summarizeSectionTeacherExperience(section: TeachingResourceProgramSectionSchema) {
-  const columns = Array.isArray(section.columns) ? section.columns : [];
-  const editorType = section.editorType || 'TABLE';
-  const systemColumns = columns.filter((column) => inferFieldSourceType(column) === 'SYSTEM');
-  const referencePickerColumns = columns.filter((column) => inferFieldSourceType(column) === 'DOCUMENT_REFERENCE');
-  const snapshotColumns = columns.filter(
-    (column) => inferFieldSourceType(column) === 'DOCUMENT_SNAPSHOT' || String(column.valueSource || '').trim().toUpperCase() === 'BOUND',
-  );
-  const manualColumns = columns.filter((column) => {
-    const sourceType = inferFieldSourceType(column);
-    return sourceType === 'MANUAL' || sourceType === 'STATIC_OPTION' || sourceType === 'DERIVED';
-  });
-
-  let headline = 'Guru mengisi bagian ini secara manual.';
-  if (editorType === 'TEXT') {
-    headline = 'Guru menulis narasi atau catatan pada bagian ini.';
-  } else if (referencePickerColumns.length > 0 && snapshotColumns.length > 0) {
-    headline = 'Guru memilih referensi, lalu kolom turunan ikut terisi otomatis.';
-  } else if (referencePickerColumns.length > 0) {
-    headline = 'Guru memilih data dari dokumen lain pada bagian ini.';
-  } else if (systemColumns.length === columns.length && columns.length > 0) {
-    headline = 'Bagian ini hampir seluruhnya tampil otomatis dari sistem.';
-  } else if (manualColumns.length > 0 && systemColumns.length > 0) {
-    headline = 'Guru melihat konteks sistem lalu melengkapi kolom manual yang diperlukan.';
-  } else if (manualColumns.length > 0) {
-    headline = 'Guru mengisi tabel utama baris per baris.';
-  }
-
-  const chips: string[] = [];
-  if (manualColumns.length > 0) chips.push(`${manualColumns.length} kolom manual`);
-  if (systemColumns.length > 0) chips.push(`${systemColumns.length} kolom sistem`);
-  if (referencePickerColumns.length > 0) chips.push(`${referencePickerColumns.length} picker referensi`);
-  if (snapshotColumns.length > 0) chips.push(`${snapshotColumns.length} kolom otomatis`);
-
-  return {
-    headline,
-    chips,
-    systemColumns: systemColumns.length,
-    referencePickerColumns: referencePickerColumns.length,
-    snapshotColumns: snapshotColumns.length,
-    manualColumns: manualColumns.length,
-  };
-}
-
-function buildTeacherFacingPreview(
-  draft: CreateProgramDraft,
-  schemaSummary: ReturnType<typeof summarizeSchema>,
-): {
-  workloadLabel: string;
-  workloadTone: string;
-  headline: string;
-  steps: string[];
-  printNotes: string[];
-  highlights: string[];
-} {
-  const sections = Array.isArray(draft.schema.sections) ? draft.schema.sections : [];
-  const allColumns = sections.flatMap((section) => (section.editorType || 'TABLE') === 'TABLE' ? section.columns || [] : []);
-  const manualColumns = allColumns.filter((column) => {
-    const sourceType = inferFieldSourceType(column);
-    return sourceType === 'MANUAL' || sourceType === 'STATIC_OPTION' || sourceType === 'DERIVED';
-  }).length;
-  const systemColumns = allColumns.filter((column) => inferFieldSourceType(column) === 'SYSTEM').length;
-  const referencePickerColumns = allColumns.filter((column) => inferFieldSourceType(column) === 'DOCUMENT_REFERENCE').length;
-  const snapshotColumns = allColumns.filter(
-    (column) => inferFieldSourceType(column) === 'DOCUMENT_SNAPSHOT' || String(column.valueSource || '').trim().toUpperCase() === 'BOUND',
-  ).length;
-  const textSections = sections.filter((section) => section.editorType === 'TEXT').length;
-
-  let workloadLabel = 'Ringan';
-  let workloadTone = 'bg-emerald-50 text-emerald-700 border-emerald-200';
-  if (manualColumns >= 8 || schemaSummary.totalSections >= 5) {
-    workloadLabel = 'Sedang';
-    workloadTone = 'bg-amber-50 text-amber-700 border-amber-200';
-  }
-  if (manualColumns >= 14 || schemaSummary.totalSections >= 7) {
-    workloadLabel = 'Padat';
-    workloadTone = 'bg-rose-50 text-rose-700 border-rose-200';
-  }
-
-  const steps: string[] = [];
-  if (systemColumns > 0) {
-    steps.push('Saat membuka dokumen, guru langsung melihat konteks otomatis seperti mapel, tingkat, semester, atau tahun ajaran.');
-  }
-  if (referencePickerColumns > 0) {
-    steps.push('Guru memilih data dari dokumen sumber yang sudah dibuat lebih dulu, lalu sistem membaca referensi yang sesuai.');
-  }
-  if (snapshotColumns > 0) {
-    steps.push('Beberapa kolom akan terisi otomatis dari referensi terpilih, jadi guru tidak perlu mengetik ulang data yang sama.');
-  }
-  if (manualColumns > 0) {
-    steps.push(`Guru tetap mengisi ${manualColumns} kolom manual sesuai kebutuhan operasional dokumen.`);
-  }
-  if (textSections > 0) {
-    steps.push('Bagian narasi atau catatan tetap tersedia untuk arahan, refleksi, atau keterangan tambahan.');
-  }
-  if (steps.length === 0) {
-    steps.push('Dokumen ini masih sangat kosong; guru kemungkinan belum mendapat alur isi yang jelas.');
-  }
-
-  const printNotes: string[] = [];
-  if (draft.schema.printRules?.showInstitutionHeader) printNotes.push('Print memakai header sekolah.');
-  if (draft.schema.printRules?.showDocumentTitle) printNotes.push('Judul dokumen ikut tampil saat dicetak.');
-  if (draft.schema.printRules?.compactTable) printNotes.push('Tabel dibuat lebih ringkas saat print.');
-  if ((draft.schema.printRules?.signatureMode || 'SYSTEM_DEFAULT') === 'MANUAL') {
-    printNotes.push('Tanda tangan print diatur manual.');
-  } else {
-    printNotes.push('Tanda tangan print mengikuti default sistem.');
-  }
-
-  const highlights = [
-    `${schemaSummary.totalSections} bagian dokumen`,
-    `${schemaSummary.totalColumns} kolom total`,
-    `${referencePickerColumns} kolom referensi`,
-    `${snapshotColumns} kolom otomatis`,
-  ];
-
-  return {
-    workloadLabel,
-    workloadTone,
-    headline:
-      manualColumns === 0 && referencePickerColumns === 0
-        ? 'Dokumen ini lebih banyak tampil otomatis dan relatif ringan untuk guru.'
-        : referencePickerColumns > 0
-          ? 'Dokumen ini sudah mulai terasa terintegrasi: guru memilih referensi, lalu melengkapi sisanya.'
-          : 'Dokumen ini masih berfokus pada input manual guru, tetapi sudah bisa diarahkan lebih rapi.',
-    steps,
-    printNotes,
-    highlights,
-  };
-}
-
-function summarizeSectionPreviewLayout(section: TeachingResourceProgramSectionSchema): {
-  title: string;
-  note: string;
-  chips: Array<{ label: string; tone: 'manual' | 'system' | 'reference' | 'snapshot' }>;
-} {
-  const columns = Array.isArray(section.columns) ? section.columns : [];
-  const previewColumns: Array<{ label: string; tone: 'manual' | 'system' | 'reference' | 'snapshot' }> = columns
-    .slice(0, 4)
-    .map((column) => {
-      const sourceType = inferFieldSourceType(column);
-      const tone =
-        sourceType === 'SYSTEM'
-          ? 'system'
-          : sourceType === 'DOCUMENT_REFERENCE'
-          ? 'reference'
-          : sourceType === 'DOCUMENT_SNAPSHOT'
-            ? 'snapshot'
-            : 'manual';
-    return {
-      label: column.label || column.key || 'Kolom',
-      tone,
-    };
-    });
-
-  if ((section.editorType || 'TABLE') === 'TEXT') {
-    return {
-      title: section.label || 'Bagian Narasi',
-      note: section.bodyPlaceholder || 'Guru menulis narasi atau catatan pada area ini.',
-      chips: [],
-    };
-  }
-
-  return {
-    title: section.label || 'Tabel Isian',
-    note:
-      columns.length > 4
-        ? `Menampilkan ${Math.min(columns.length, 4)} kolom awal dari total ${columns.length} kolom.`
-        : 'Pratinjau ringkas header tabel yang akan dilihat guru.',
-    chips: previewColumns,
-  };
-}
-
 function validateProgramDraftSchema(draft: CreateProgramDraft): DraftSchemaIssue[] {
   const issues: DraftSchemaIssue[] = [];
   const sections = Array.isArray(draft.schema.sections) ? draft.schema.sections : [];
@@ -1795,10 +1606,6 @@ function validateProgramDraftSchema(draft: CreateProgramDraft): DraftSchemaIssue
   });
 
   return issues;
-}
-
-function getColumnDataTypeLabel(dataType?: TeachingResourceColumnDataType) {
-  return COLUMN_DATA_TYPE_OPTIONS.find((option) => option.value === (dataType || 'TEXT'))?.label || 'Teks Singkat';
 }
 
 export default function TeachingResourceProgramManagementPage() {
@@ -2335,11 +2142,8 @@ export default function TeachingResourceProgramManagementPage() {
   const isLoading = isActiveYearLoading || (Boolean(selectedAcademicYearId) && programsQuery.isLoading);
   const draftBlueprintMode = inferBlueprintMode(createDraft.schema);
   const draftBlueprint = BLUEPRINT_MODE_OPTIONS.find((option) => option.value === draftBlueprintMode) || BLUEPRINT_MODE_OPTIONS[4];
-  const draftSchemaSummary = summarizeSchema(createDraft.schema);
-  const draftTeacherPreview = buildTeacherFacingPreview(createDraft, draftSchemaSummary);
   const draftSchemaIssues = validateProgramDraftSchema(createDraft);
   const draftSchemaErrorCount = draftSchemaIssues.filter((issue) => issue.severity === 'error').length;
-  const draftSchemaWarningCount = draftSchemaIssues.filter((issue) => issue.severity === 'warning').length;
   const showAdvancedEditor = false;
 
   return (
@@ -2393,7 +2197,6 @@ export default function TeachingResourceProgramManagementPage() {
                   <th className="px-3 py-2">Kode</th>
                   <th className="px-3 py-2">Label Program</th>
                   <th className="px-3 py-2">Label Pendek</th>
-                  <th className="px-3 py-2">Keterangan Dokumen</th>
                   <th className="px-3 py-2">Target Kelas</th>
                   <th className="px-3 py-2">Status</th>
                   <th className="px-3 py-2">Menu Guru</th>
@@ -2408,7 +2211,6 @@ export default function TeachingResourceProgramManagementPage() {
                     </td>
                     <td className="px-3 py-3 font-medium text-gray-900">{row.label}</td>
                     <td className="px-3 py-3 text-gray-700">{row.shortLabel}</td>
-                    <td className="px-3 py-3 text-gray-600">{row.description || '-'}</td>
                     <td className="px-3 py-3">
                       <div className="flex min-w-[180px] flex-wrap gap-2">
                         {row.targetClassLevels.length > 0 ? (
@@ -2571,19 +2373,6 @@ export default function TeachingResourceProgramManagementPage() {
                         );
                       })}
                     </div>
-                  </div>
-                  <div className="xl:col-span-4">
-                    <label className="mb-1 block text-sm font-medium text-gray-700">Keterangan Dokumen</label>
-                    <textarea
-                      value={createDraft.description}
-                      onChange={(event) => setCreateDraft((prev) => ({ ...prev, description: event.target.value }))}
-                      rows={2}
-                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                      placeholder="Contoh: CAPAIAN PEMBELAJARAN FASE F"
-                    />
-                    <p className="mt-1 text-xs leading-5 text-gray-500">
-                      Opsional. Jika diisi, keterangan ini tampil pada dokumen guru dan hasil print. Baris pertama bisa dipakai sebagai judul blok.
-                    </p>
                   </div>
                   <label className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700">
                     <input
@@ -2832,243 +2621,6 @@ export default function TeachingResourceProgramManagementPage() {
                   </div>
                 </div>
                 ) : null}
-              </div>
-
-              <div className="rounded-xl border border-gray-200 bg-white p-4">
-                <div className="mb-3">
-                  <div>
-                    <h3 className="text-sm font-semibold text-gray-900">Yang Akan Dilihat Guru</h3>
-                    <p className="text-xs text-gray-500">
-                      Ringkasan sederhana agar Wakakur bisa langsung membayangkan bentuk isian guru sebelum menyimpan program.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="mb-4 grid grid-cols-1 gap-4 xl:grid-cols-[1.2fr_0.8fr]">
-                  <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <div className="text-sm font-semibold text-blue-900">Gambaran Cepat untuk Guru</div>
-                        <p className="mt-1 text-xs leading-5 text-blue-800">{draftTeacherPreview.headline}</p>
-                      </div>
-                      <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${draftTeacherPreview.workloadTone}`}>
-                        Beban isi: {draftTeacherPreview.workloadLabel}
-                      </span>
-                    </div>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {draftTeacherPreview.highlights.map((item) => (
-                        <span
-                          key={`teacher-preview-highlight-${item}`}
-                          className="inline-flex rounded-full border border-blue-200 bg-white px-2 py-1 text-xs text-blue-700"
-                        >
-                          {item}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
-                    <div className="text-sm font-semibold text-emerald-900">Arah Print</div>
-                    <div className="mt-2 space-y-2">
-                      {draftTeacherPreview.printNotes.map((item) => (
-                        <div key={`print-note-${item}`} className="text-xs leading-5 text-emerald-800">
-                          {item}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
-                  <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-3">
-                    <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Jumlah Bagian</div>
-                    <div className="mt-1 text-xl font-bold text-gray-900">{draftSchemaSummary.totalSections}</div>
-                  </div>
-                  <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-3">
-                    <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Bagian Tabel</div>
-                    <div className="mt-1 text-xl font-bold text-gray-900">{draftSchemaSummary.tableSections}</div>
-                  </div>
-                  <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-3">
-                    <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Bagian Teks</div>
-                    <div className="mt-1 text-xl font-bold text-gray-900">{draftSchemaSummary.textSections}</div>
-                  </div>
-                  <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-3">
-                    <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Kolom Isian</div>
-                    <div className="mt-1 text-xl font-bold text-gray-900">{draftSchemaSummary.totalColumns}</div>
-                  </div>
-                  <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-3">
-                    <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Bisa Ditambah</div>
-                    <div className="mt-1 text-xl font-bold text-gray-900">{draftSchemaSummary.repeatableSections}</div>
-                  </div>
-                </div>
-
-                <div className="mt-4 rounded-xl border border-gray-200 bg-gray-50 p-4">
-                  <div className="mb-3 text-sm font-semibold text-gray-900">Alur yang Akan Dijalani Guru</div>
-                  <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-                    {draftTeacherPreview.steps.map((step, stepIndex) => (
-                      <div key={`teacher-flow-${stepIndex + 1}`} className="rounded-xl border border-gray-200 bg-white px-3 py-3">
-                        <div className="text-[11px] font-semibold uppercase tracking-wide text-blue-700">Langkah {stepIndex + 1}</div>
-                        <div className="mt-1 text-xs leading-5 text-gray-600">{step}</div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {draftSchemaIssues.length > 0 ? (
-                  <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
-                    <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <div className="flex items-center gap-2 text-sm font-semibold text-amber-900">
-                          <AlertTriangle size={16} />
-                          Perlu Dirapikan Sebelum Simpan
-                        </div>
-                        <p className="mt-1 text-xs leading-5 text-amber-800">
-                          Pemeriksaan ini membantu menangkap bagian dokumen yang masih kosong atau sambungan data yang belum lengkap.
-                        </p>
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        {draftSchemaErrorCount > 0 ? (
-                          <span className="inline-flex rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-700">
-                            {draftSchemaErrorCount} error
-                          </span>
-                        ) : null}
-                        {draftSchemaWarningCount > 0 ? (
-                          <span className="inline-flex rounded-full border border-amber-200 bg-white px-3 py-1 text-xs font-semibold text-amber-700">
-                            {draftSchemaWarningCount} warning
-                          </span>
-                        ) : null}
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      {draftSchemaIssues.map((issue, issueIndex) => (
-                        <div
-                          key={`draft-schema-issue-${issueIndex}`}
-                          className={`rounded-lg border px-3 py-2 text-xs leading-5 ${
-                            issue.severity === 'error'
-                              ? 'border-rose-200 bg-rose-50 text-rose-800'
-                              : 'border-amber-200 bg-white text-amber-900'
-                          }`}
-                        >
-                          <span className="font-semibold">{issue.severity === 'error' ? 'Error' : 'Warning'}:</span> {issue.message}
-                          {issue.sectionLabel ? ` | ${issue.sectionLabel}` : ''}
-                          {issue.columnLabel ? ` | ${issue.columnLabel}` : ''}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ) : (
-                  <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-xs leading-5 text-emerald-800">
-                    Struktur dasar dokumen sudah lolos pemeriksaan awal. Wakakur masih boleh menyempurnakan isi, tetapi tidak ada masalah konfigurasi utama yang terdeteksi saat ini.
-                  </div>
-                )}
-
-                <div className="mt-4 space-y-3">
-                  {createDraft.schema.sections.map((section, sectionIndex) => (
-                    <div key={`${section.key}-summary-${sectionIndex}`} className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
-                      {(() => {
-                        const teacherExperience = summarizeSectionTeacherExperience(section);
-                        const previewLayout = summarizeSectionPreviewLayout(section);
-                        return (
-                          <>
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div>
-                          <div className="text-sm font-semibold text-gray-900">
-                            Bagian {sectionIndex + 1}: {section.label || `Bagian ${sectionIndex + 1}`}
-                          </div>
-                          <p className="mt-1 text-xs leading-5 text-gray-500">
-                            {section.description || 'Belum ada deskripsi section.'}
-                          </p>
-                          <p className="mt-2 text-xs font-medium leading-5 text-gray-700">
-                            Guru nanti: {teacherExperience.headline}
-                          </p>
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                          <span className="inline-flex rounded-full border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700">
-                            {section.editorType === 'TEXT' ? 'Teks / Narasi' : 'Tabel Isian'}
-                          </span>
-                          <span className="inline-flex rounded-full border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700">
-                            {section.defaultRows || 1} baris awal
-                          </span>
-                          {section.repeatable ? (
-                            <span className="inline-flex rounded-full border border-blue-200 bg-blue-50 px-2 py-1 text-xs text-blue-700">
-                              Bisa ditambah
-                            </span>
-                          ) : null}
-                          {teacherExperience.chips.map((chip) => (
-                            <span
-                              key={`${section.key}-teacher-chip-${chip}`}
-                              className="inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs text-emerald-700"
-                            >
-                              {chip}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-
-                      {section.editorType === 'TABLE' ? (
-                        <>
-                          <div className="mt-3 rounded-xl border border-gray-200 bg-white p-3">
-                            <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Pratinjau Header Tabel</div>
-                            <div className="mt-2 flex flex-wrap gap-2">
-                              {previewLayout.chips.length > 0 ? (
-                                previewLayout.chips.map((chip, chipIndex) => (
-                                  <span
-                                    key={`${section.key}-preview-chip-${chipIndex}`}
-                                    className={`inline-flex rounded-full border px-2 py-1 text-xs ${
-                                      chip.tone === 'system'
-                                        ? 'border-sky-200 bg-sky-50 text-sky-700'
-                                        : chip.tone === 'reference'
-                                          ? 'border-violet-200 bg-violet-50 text-violet-700'
-                                          : chip.tone === 'snapshot'
-                                            ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                                            : 'border-gray-200 bg-gray-50 text-gray-700'
-                                    }`}
-                                  >
-                                    {chip.label}
-                                  </span>
-                                ))
-                              ) : (
-                                <span className="text-xs text-gray-500">Belum ada kolom tabel.</span>
-                              )}
-                            </div>
-                            <div className="mt-2 text-[11px] leading-5 text-gray-500">{previewLayout.note}</div>
-                          </div>
-                          <div className="mt-3 flex flex-wrap gap-2">
-                            {(section.columns || []).length > 0 ? (
-                              (section.columns || []).map((column, columnIndex) => (
-                                <span
-                                  key={`${section.key}-${column.key}-summary-${columnIndex}`}
-                                  className="inline-flex rounded-full border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700"
-                                >
-                                  {column.label || `Kolom ${columnIndex + 1}`} · {getColumnDataTypeLabel(column.dataType)}
-                                </span>
-                              ))
-                            ) : (
-                              <span className="text-xs text-gray-500">Belum ada kolom tabel.</span>
-                            )}
-                          </div>
-                        </>
-                      ) : (
-                        <div className="mt-3 rounded-xl border border-gray-200 bg-white p-3">
-                          <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Pratinjau Blok Narasi</div>
-                          <div className="mt-2 rounded-lg border border-dashed border-gray-200 bg-gray-50 p-3">
-                            <div className="mb-2 h-3 w-40 rounded-full bg-gray-200" />
-                            <div className="space-y-2">
-                              <div className="h-2 w-full rounded-full bg-gray-100" />
-                              <div className="h-2 w-11/12 rounded-full bg-gray-100" />
-                              <div className="h-2 w-8/12 rounded-full bg-gray-100" />
-                            </div>
-                          </div>
-                          <div className="mt-2 text-[11px] leading-5 text-gray-500">
-                            Petunjuk judul: {section.titlePlaceholder || '-'} | Petunjuk isi: {section.bodyPlaceholder || '-'}
-                          </div>
-                        </div>
-                      )}
-                          </>
-                        );
-                      })()}
-                    </div>
-                  ))}
-                </div>
               </div>
 
               {showAdvancedEditor ? (

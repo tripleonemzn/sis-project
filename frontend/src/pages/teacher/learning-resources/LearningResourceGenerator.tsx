@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, Plus, Printer, Save, Send, X } from 'lucide-react';
+import { AlertTriangle, Check, Pencil, Plus, Printer, RotateCcw, Save, Send, Trash2, X } from 'lucide-react';
 import { useNavigate, useOutletContext } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import ReactQuill from 'react-quill-new';
@@ -134,7 +134,6 @@ const DOCUMENT_TITLE_QUILL_MODULES = {
 const DOCUMENT_TITLE_QUILL_FORMATS = ['align', 'bold', 'italic', 'underline', 'size'];
 
 const ENTRY_LIMIT = 12;
-const LEGACY_DEFAULT_PROGRAM_DESCRIPTION = 'Program perangkat ajar tambahan sesuai kebijakan kurikulum.';
 const TEACHING_RESOURCE_PROGRAM_CONFIG_QUERY_KEY = (academicYearId: number) => [
   'teaching-resource-program-config',
   'teacher',
@@ -750,39 +749,6 @@ const createDocumentTitleHtml = (value: unknown): string => {
   return plainText ? `<p>${escapeHtml(plainText)}</p>` : '';
 };
 
-const normalizeProgramDocumentNoteText = (value: unknown): string => {
-  const normalized = String(value || '')
-    .replace(/\r\n/g, '\n')
-    .trim();
-  if (!normalized) return '';
-  if (normalized === LEGACY_DEFAULT_PROGRAM_DESCRIPTION) return '';
-  return normalized;
-};
-
-const splitProgramDocumentNote = (
-  value: unknown,
-): {
-  title: string;
-  body: string;
-} | null => {
-  const normalized = normalizeProgramDocumentNoteText(value);
-  if (!normalized) return null;
-  const lines = normalized
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean);
-  if (lines.length <= 1) {
-    return {
-      title: '',
-      body: normalized,
-    };
-  }
-  return {
-    title: lines[0],
-    body: lines.slice(1).join('\n'),
-  };
-};
-
 const sanitizeDocumentTitleHtml = (value: unknown): string => {
   const rawValue = String(value || '').trim();
   if (!rawValue) return '';
@@ -851,6 +817,18 @@ const sanitizeDocumentTitleHtml = (value: unknown): string => {
 const formatMultilineHtml = (value: unknown): string => {
   const safe = escapeHtml(value);
   return safe.replace(/\n/g, '<br />');
+};
+
+const splitCellLines = (value: unknown): string[] => {
+  const lines = String(value ?? '')
+    .replace(/\r\n/g, '\n')
+    .split('\n');
+  return lines.length > 0 ? lines : [''];
+};
+
+const formatStablePlaceDate = (value?: string | null): string => {
+  const date = value ? new Date(value) : new Date();
+  return `Bekasi, ${formatLongDate(Number.isNaN(date.getTime()) ? new Date() : date)}`;
 };
 
 const formatWeekGridPrintHtml = (value: unknown): string => {
@@ -1351,6 +1329,7 @@ export const LearningResourceGenerator = ({
   const [entryTitleHtml, setEntryTitleHtml] = useState('');
   const [entrySummary, setEntrySummary] = useState('');
   const [entryNotes, setEntryNotes] = useState('');
+  const [entrySignaturePlaceDate, setEntrySignaturePlaceDate] = useState('');
   const [entryTags, setEntryTags] = useState('');
   const [sections, setSections] = useState<EntrySectionForm[]>(() => [createSection()]);
   const [quickEditEntryId, setQuickEditEntryId] = useState<number | null>(null);
@@ -1397,11 +1376,6 @@ export const LearningResourceGenerator = ({
   const effectiveDescription = useMemo(() => {
     return description;
   }, [description]);
-
-  const programDocumentNote = useMemo(
-    () => splitProgramDocumentNote(activeProgramMeta?.description),
-    [activeProgramMeta?.description],
-  );
 
   const activeProgramSchemaSections = useMemo(
     () =>
@@ -1867,6 +1841,7 @@ export const LearningResourceGenerator = ({
     setEntryTitleHtml('');
     setEntrySummary('');
     setEntryNotes('');
+    setEntrySignaturePlaceDate('');
     setEntryTags('');
     setSelectedContextKey('');
     setSections(normalizeSectionsForEditor(buildDefaultSections(activeProgramMeta)));
@@ -1891,6 +1866,7 @@ export const LearningResourceGenerator = ({
     setEditingEntry(null);
     setEntrySummary('');
     setEntryNotes('');
+    setEntrySignaturePlaceDate(formatStablePlaceDate());
     setEntryTags('');
     setSelectedContextKey(defaultContextKey);
     setEntryTitleHtml(
@@ -1926,6 +1902,11 @@ export const LearningResourceGenerator = ({
     );
     setEntrySummary(String(entry.summary || ''));
     setEntryNotes(String((entry.content?.notes as string) || ''));
+    setEntrySignaturePlaceDate(
+      String(entry.content?.signaturePlaceDate || '').trim() ||
+        extractEntrySignatureValues(entry).placeDate ||
+        formatStablePlaceDate(entry.createdAt),
+    );
     setEntryTags((entry.tags || []).join(', '));
     setSelectedContextKey(matchedContext ? String(matchedContext.key) : '');
     setSections(normalizeSectionsForEditor(parseEntrySections(entry, buildDefaultSections(activeProgramMeta))));
@@ -2021,6 +2002,7 @@ export const LearningResourceGenerator = ({
           references: referencePayload.references,
           referenceSelections: referencePayload.referenceSelections,
           notes: entryNotes.trim() || undefined,
+          signaturePlaceDate: entrySignaturePlaceDate.trim() || undefined,
           schemaVersion: Number(activeProgramMeta?.schema?.version || 1),
           schemaSourceSheet: String(activeProgramMeta?.schema?.sourceSheet || '').trim() || undefined,
           contextScope: selectedContext
@@ -2075,6 +2057,7 @@ export const LearningResourceGenerator = ({
           references: referencePayload.references,
           referenceSelections: referencePayload.referenceSelections,
           notes: entryNotes.trim() || undefined,
+          signaturePlaceDate: entrySignaturePlaceDate.trim() || undefined,
           schemaVersion: Number(activeProgramMeta?.schema?.version || 1),
           schemaSourceSheet: String(activeProgramMeta?.schema?.sourceSheet || '').trim() || undefined,
           contextScope: selectedContext
@@ -2159,6 +2142,7 @@ export const LearningResourceGenerator = ({
             ? entry.content.referenceSelections
             : undefined,
           notes: String(entry.content?.notes || '').trim() || undefined,
+          signaturePlaceDate: String(entry.content?.signaturePlaceDate || '').trim() || undefined,
           schemaVersion: Number(activeProgramMeta?.schema?.version || entry.content?.schemaVersion || 1),
           schemaSourceSheet:
             String(activeProgramMeta?.schema?.sourceSheet || entry.content?.schemaSourceSheet || '').trim() || undefined,
@@ -2193,6 +2177,22 @@ export const LearningResourceGenerator = ({
 
   const isTableSection = (section: EntrySectionForm): boolean =>
     (resolveSectionSchema(section)?.editorType || 'TEXT') === 'TABLE';
+
+  const isContextLikeTableSection = (section: EntrySectionForm): boolean => {
+    const sectionSchema = resolveSectionSchema(section);
+    const blockType = String(sectionSchema?.blockType || '').trim().toUpperCase();
+    const sectionLabel = `${sectionSchema?.label || ''} ${section.title || ''}`.trim().toLowerCase();
+    const visibleColumns = getVisibleSectionColumns(section);
+    const isSystemOnlyContextTable =
+      isTableSection(section) &&
+      visibleColumns.length > 0 &&
+      section.rows.length <= 1 &&
+      visibleColumns.every((column) => isSystemManagedColumn(column));
+    return blockType === 'CONTEXT' || sectionLabel.includes('konteks') || isSystemOnlyContextTable;
+  };
+
+  const isTeacherEditableTableSection = (section: EntrySectionForm): boolean =>
+    isTableSection(section) && !isContextLikeTableSection(section);
 
   const getMinimumRowCount = (_section: EntrySectionForm): number => 1;
 
@@ -2291,7 +2291,7 @@ export const LearningResourceGenerator = ({
 
   const getEntryTableSections = (entry: TeachingResourceEntry): EntrySectionForm[] =>
     ensureDerivedSections(parseEntrySections(entry, buildDefaultSections(activeProgramMeta))).filter((section) =>
-      isTableSection(section),
+      isTeacherEditableTableSection(section),
     );
 
   const closeQuickEdit = () => {
@@ -2317,7 +2317,7 @@ export const LearningResourceGenerator = ({
     if (quickEditEntryId === editableEntry.id) return;
 
     const parsedSections = ensureDerivedSections(parseEntrySections(editableEntry, buildDefaultSections(activeProgramMeta)));
-    const tableSections = parsedSections.filter((section) => isTableSection(section));
+    const tableSections = parsedSections.filter((section) => isTeacherEditableTableSection(section));
     setQuickEditEntryId(editableEntry.id);
     setQuickEditSections(parsedSections);
     setQuickEditActiveSectionId(tableSections[0]?.id || '');
@@ -2340,6 +2340,37 @@ export const LearningResourceGenerator = ({
                 }
               : row,
           ),
+        };
+      }),
+    );
+  };
+
+  const updateQuickEditRowCellLine = (
+    sectionId: string,
+    rowId: string,
+    columnKey: string,
+    lineIndex: number,
+    value: string,
+  ) => {
+    setQuickEditSectionsWithDerived((prev) =>
+      prev.map((item) => {
+        if (item.id !== sectionId) return item;
+        return {
+          ...item,
+          rows: item.rows.map((row) => {
+            if (row.id !== rowId) return row;
+            const currentLines = splitCellLines(row.values[columnKey]);
+            const replacementLines = String(value).replace(/\r\n/g, '\n').split('\n');
+            const nextLines = [...currentLines];
+            nextLines.splice(Math.max(0, lineIndex), 1, ...replacementLines);
+            return {
+              ...row,
+              values: {
+                ...row.values,
+                [columnKey]: nextLines.join('\n'),
+              },
+            };
+          }),
         };
       }),
     );
@@ -2446,9 +2477,10 @@ export const LearningResourceGenerator = ({
     section: EntrySectionForm,
     row: EntrySectionForm['rows'][number] | undefined,
     column: EntrySectionColumnForm,
+    lineIndex = 0,
   ) => {
     const columnKey = String(column.key || '').trim();
-    const value = String(row?.values?.[columnKey] || '');
+    const value = splitCellLines(row?.values?.[columnKey])[lineIndex] ?? '';
     const dataType = getColumnDataType(column);
     const readOnly = isSystemManagedColumn(column);
     const tableCellControlClassName = `block w-full border-0 bg-transparent px-1 py-1 text-xs leading-relaxed text-slate-800 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-400 ${
@@ -2606,7 +2638,9 @@ export const LearningResourceGenerator = ({
           rows={2}
           value={value}
           disabled={readOnly}
-          onChange={(event) => updateQuickEditRowCell(section.id, row?.id || '', columnKey, event.target.value)}
+          onChange={(event) =>
+            updateQuickEditRowCellLine(section.id, row?.id || '', columnKey, lineIndex, event.target.value)
+          }
           onInput={(event) => {
             event.currentTarget.style.height = 'auto';
             event.currentTarget.style.height = `${event.currentTarget.scrollHeight}px`;
@@ -2622,7 +2656,7 @@ export const LearningResourceGenerator = ({
         type="text"
         value={value}
         disabled={readOnly}
-        onChange={(event) => updateQuickEditRowCell(section.id, row?.id || '', columnKey, event.target.value)}
+        onChange={(event) => updateQuickEditRowCellLine(section.id, row?.id || '', columnKey, lineIndex, event.target.value)}
         placeholder={column.placeholder || ''}
         className={tableCellControlClassName}
       />
@@ -3258,13 +3292,30 @@ export const LearningResourceGenerator = ({
       .join('')}</tr>`;
     const tbody = rows
       .map((row) => {
-        const cells = headers
-          .map((header) => {
-            const classAttribute = renderPrintClassAttribute(getPrintColumnClassName(header.column));
-            return `<td${classAttribute}>${formatCellPrintHtml(row.values?.[header.key], header.column)}</td>`;
+        const lineGroups = headers.map((header) => splitCellLines(row.values?.[header.key]));
+        const maxLineCount = Math.max(1, ...lineGroups.map((lines) => lines.length));
+        return Array.from({ length: maxLineCount })
+          .map((_, lineIndex) => {
+            const cells = headers
+              .map((header, headerIndex) => {
+                const lines = lineGroups[headerIndex] || [''];
+                if (lines.length <= 1 && lineIndex > 0) return '';
+                const classAttribute = renderPrintClassAttribute(getPrintColumnClassName(header.column));
+                const rowSpanAttribute = lines.length <= 1 && maxLineCount > 1 ? ` rowspan="${maxLineCount}"` : '';
+                const valignAttribute = rowSpanAttribute ? ' style="vertical-align: middle;"' : '';
+                const lineValue = lines[Math.min(lineIndex, lines.length - 1)];
+                const content =
+                  lines.length > 1 && lineIndex >= lines.length
+                    ? ''
+                    : lines.length > 1 && !String(lineValue || '').trim()
+                      ? ''
+                      : formatCellPrintHtml(lineValue, header.column);
+                return `<td${classAttribute}${rowSpanAttribute}${valignAttribute}>${content}</td>`;
+              })
+              .join('');
+            return `<tr>${cells}</tr>`;
           })
           .join('');
-        return `<tr>${cells}</tr>`;
       })
       .join('');
 
@@ -3284,18 +3335,10 @@ export const LearningResourceGenerator = ({
     const printableSections = parseEntrySections(entry, defaultSections).filter((section) => {
       const sectionSchema = resolveSectionSchema(section);
       const blockType = String(sectionSchema?.blockType || '').trim().toUpperCase();
-      const sectionLabel = `${sectionSchema?.label || ''} ${section.title || ''}`.trim().toLowerCase();
-      const visibleColumns = getVisibleSectionColumns(section);
-      const isSystemOnlyContextTable =
-        isTableSection(section) &&
-        visibleColumns.length > 0 &&
-        section.rows.length <= 1 &&
-        visibleColumns.every((column) => isSystemManagedColumn(column));
       return (
         blockType !== 'CONTEXT' &&
         blockType !== 'SIGNATURE' &&
-        !sectionLabel.includes('konteks') &&
-        !isSystemOnlyContextTable
+        !isContextLikeTableSection(section)
       );
     });
     const contextLabelRaw = resolveEntryContextLabel(entry, assignmentLabelMap);
@@ -3311,7 +3354,10 @@ export const LearningResourceGenerator = ({
       principalTitle: String(signatureDefaultsQuery.data?.principal?.roleTitle || 'Kepala Sekolah').trim(),
       principalName: String(signatureDefaultsQuery.data?.principal?.name || '-').trim(),
     });
-    const printDateLine = signatureValues.placeDate || `Bekasi, ${formatLongDate(new Date())}`;
+    const printDateLine =
+      String(entry.content?.signaturePlaceDate || '').trim() ||
+      signatureValues.placeDate ||
+      formatStablePlaceDate(entry.createdAt);
     const programPrintRules = activeProgramMeta?.schema?.printRules;
     const printTitleHtml =
       sanitizeDocumentTitleHtml(entry.content?.titleHtml) || createDocumentTitleHtml(entry.title || effectiveTitle);
@@ -3321,11 +3367,6 @@ export const LearningResourceGenerator = ({
       ['Tingkat', contextValues.tingkat],
       ['Program Keahlian', contextValues.programKeahlian],
     ].filter(([, value]) => String(value || '').trim());
-    const documentNoteHtml = programDocumentNote
-      ? `<section class="document-note">${
-          programDocumentNote.title ? `<h3>${escapeHtml(programDocumentNote.title)}</h3>` : ''
-        }<div>${formatMultilineHtml(programDocumentNote.body)}</div></section>`
-      : '';
 
     return `
       <!doctype html>
@@ -3352,24 +3393,6 @@ export const LearningResourceGenerator = ({
           .doc-context { width: 100%; max-width: 520px; margin-bottom: 12px; font-size: 13px; border-collapse: collapse; }
           .doc-context td { border: none; padding: 2px 0; }
           .doc-context td:first-child { width: 150px; }
-          .document-note {
-            margin: 10px 0 14px;
-            border: 1px solid #000;
-            page-break-inside: avoid;
-          }
-          .document-note h3 {
-            margin: 0;
-            border-bottom: 1px solid #000;
-            background: #f1f5f9;
-            padding: 5px 7px;
-            font-size: 13px;
-            text-transform: uppercase;
-          }
-          .document-note div {
-            padding: 7px;
-            font-size: 12px;
-            line-height: 1.5;
-          }
           section { margin-bottom: 14px; page-break-inside: avoid; }
           section h3 { margin: 0 0 8px; font-size: 14px; }
           .text-block {
@@ -3464,7 +3487,6 @@ export const LearningResourceGenerator = ({
             .map(([label, value]) => `<tr><td>${escapeHtml(label)}</td><td>: ${escapeHtml(value)}</td></tr>`)
             .join('')}
         </table>
-        ${documentNoteHtml}
         ${printableSections.map(renderSectionPrintHtml).join('')}
         <div class="signature-wrap">
           <div class="signature-box">
@@ -3654,7 +3676,9 @@ export const LearningResourceGenerator = ({
                     const canEdit = isOwner && entry.status !== 'APPROVED';
                     const canDelete = isOwner && entry.status !== 'APPROVED';
                     const isQuickEditing = quickEditEntryId === entry.id;
-                    const quickSections = isQuickEditing ? quickEditSections.filter((section) => isTableSection(section)) : [];
+                    const quickSections = isQuickEditing
+                      ? quickEditSections.filter((section) => isTeacherEditableTableSection(section))
+                      : [];
                     const activeQuickSection =
                       quickSections.find((section) => section.id === quickEditActiveSectionId) || quickSections[0] || null;
                     const visibleQuickColumns = activeQuickSection ? getVisibleSectionColumns(activeQuickSection) : [];
@@ -3687,23 +3711,25 @@ export const LearningResourceGenerator = ({
                           </td>
                           <td className="px-3 py-3 text-sm text-gray-700">{formatDateTime(entry.updatedAt)}</td>
                           <td className="px-3 py-3">
-                            <div className="flex flex-col items-center gap-2">
-                              <div className="flex flex-wrap items-center justify-center gap-2">
+                            <div className="flex flex-nowrap items-center justify-end gap-2">
                                 <button
                                   type="button"
                                   onClick={() => handlePrintEntry(entry)}
-                                  className="inline-flex items-center gap-1 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                                  title="Print"
+                                  aria-label="Print"
+                                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
                                 >
-                                  <Printer size={12} />
-                                  Print
+                                  <Printer size={14} />
                                 </button>
                                 {canEdit ? (
                                   <button
                                     type="button"
                                     onClick={() => openEdit(entry)}
-                                    className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                                    title="Edit Lengkap"
+                                    aria-label="Edit Lengkap"
+                                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
                                   >
-                                    Edit Lengkap
+                                    <Pencil size={14} />
                                   </button>
                                 ) : null}
                                 {canDelete ? (
@@ -3714,21 +3740,23 @@ export const LearningResourceGenerator = ({
                                       if (!confirmed) return;
                                       deleteMutation.mutate(entry.id);
                                     }}
-                                    className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-100"
+                                    title="Hapus"
+                                    aria-label="Hapus"
+                                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
                                   >
-                                    Hapus
+                                    <Trash2 size={14} />
                                   </button>
                                 ) : null}
-                              </div>
                               {canSubmit ? (
                                 <button
                                   type="button"
                                   onClick={() => submitMutation.mutate(entry.id)}
                                   disabled={submitMutation.isPending}
-                                  className="inline-flex w-fit items-center justify-center gap-1 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+                                  title="Kirim Review"
+                                  aria-label="Kirim Review"
+                                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60"
                                 >
-                                  <Send size={12} />
-                                  Kirim Review
+                                  <Send size={14} />
                                 </button>
                               ) : null}
                               {showReviewActions ? (
@@ -3742,9 +3770,11 @@ export const LearningResourceGenerator = ({
                                       })
                                     }
                                     disabled={reviewMutation.isPending}
-                                    className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-60"
+                                    title="Setujui"
+                                    aria-label="Setujui"
+                                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 disabled:opacity-60"
                                   >
-                                    Setujui
+                                    <Check size={14} />
                                   </button>
                                   <button
                                     type="button"
@@ -3757,9 +3787,11 @@ export const LearningResourceGenerator = ({
                                       });
                                     }}
                                     disabled={reviewMutation.isPending}
-                                    className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-100 disabled:opacity-60"
+                                    title="Revisi"
+                                    aria-label="Revisi"
+                                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 disabled:opacity-60"
                                   >
-                                    Revisi
+                                    <RotateCcw size={14} />
                                   </button>
                                 </>
                               ) : null}
@@ -3815,19 +3847,6 @@ export const LearningResourceGenerator = ({
                                   </div>
                                 ) : null}
 
-                                {programDocumentNote ? (
-                                  <div className="mt-3 overflow-hidden rounded-lg border border-slate-300 bg-slate-50">
-                                    {programDocumentNote.title ? (
-                                      <div className="border-b border-slate-300 px-3 py-2 text-xs font-semibold uppercase text-slate-800">
-                                        {programDocumentNote.title}
-                                      </div>
-                                    ) : null}
-                                    <div className="whitespace-pre-wrap px-3 py-2 text-xs leading-6 text-slate-700">
-                                      {programDocumentNote.body}
-                                    </div>
-                                  </div>
-                                ) : null}
-
                                 <div className="mt-3 rounded-lg border border-slate-300">
                                   <table className="w-full table-fixed border-collapse text-xs">
                                     <thead className="bg-slate-100">
@@ -3844,19 +3863,45 @@ export const LearningResourceGenerator = ({
                                       </tr>
                                     </thead>
                                     <tbody>
-                                      {compactQuickRows.map((row) => (
-                                        <tr key={`quick-row-${row.id}`} className="border-b border-slate-100 last:border-b-0">
-                                          {compactQuickColumns.map((column) => (
-                                            <td
-                                              key={`quick-cell-${row.id}-${column.key}`}
-                                              style={getQuickColumnStyle(column, compactQuickColumns)}
-                                              className="border border-slate-300 bg-white p-1 align-top"
-                                            >
-                                              {renderQuickEditCellControl(activeQuickSection, row, column)}
-                                            </td>
-                                          ))}
-                                        </tr>
-                                      ))}
+                                      {compactQuickRows.map((row) => {
+                                        const lineCounts = compactQuickColumns.map((column) =>
+                                          splitCellLines(row.values[String(column.key || '').trim()]).length,
+                                        );
+                                        const maxLineCount = Math.max(1, ...lineCounts);
+                                        return Array.from({ length: maxLineCount }).map((_, lineIndex) => (
+                                          <tr
+                                            key={`quick-row-${row.id}-${lineIndex}`}
+                                            className="border-b border-slate-100 last:border-b-0"
+                                          >
+                                            {compactQuickColumns.map((column) => {
+                                              const columnKey = String(column.key || '').trim();
+                                              const cellLines = splitCellLines(row.values[columnKey]);
+                                              if (cellLines.length <= 1 && lineIndex > 0) return null;
+                                              if (cellLines.length > 1 && lineIndex >= cellLines.length) {
+                                                return (
+                                                  <td
+                                                    key={`quick-cell-${row.id}-${column.key}-${lineIndex}`}
+                                                    style={getQuickColumnStyle(column, compactQuickColumns)}
+                                                    className="border border-slate-300 bg-white p-1 align-top"
+                                                  />
+                                                );
+                                              }
+                                              return (
+                                                <td
+                                                  key={`quick-cell-${row.id}-${column.key}-${lineIndex}`}
+                                                  rowSpan={cellLines.length <= 1 ? maxLineCount : undefined}
+                                                  style={getQuickColumnStyle(column, compactQuickColumns)}
+                                                  className={`border border-slate-300 bg-white p-1 ${
+                                                    cellLines.length <= 1 && maxLineCount > 1 ? 'align-middle' : 'align-top'
+                                                  }`}
+                                                >
+                                                  {renderQuickEditCellControl(activeQuickSection, row, column, lineIndex)}
+                                                </td>
+                                              );
+                                            })}
+                                          </tr>
+                                        ));
+                                      })}
                                     </tbody>
                                   </table>
                                 </div>
@@ -3869,7 +3914,7 @@ export const LearningResourceGenerator = ({
                                     + Tambah Baris
                                   </button>
                                   <p className="text-[11px] text-slate-500">
-                                    Tekan Enter di dalam sel untuk menambah baris teks pada kolom yang sama.
+                                    Tekan Enter di dalam sel untuk membuat subbaris pada kolom tersebut.
                                   </p>
                                 </div>
 
@@ -4008,18 +4053,18 @@ export const LearningResourceGenerator = ({
                 />
               </div>
 
-              {programDocumentNote ? (
-                <div className="overflow-hidden rounded-lg border border-slate-300 bg-slate-50">
-                  {programDocumentNote.title ? (
-                    <div className="border-b border-slate-300 px-3 py-2 text-xs font-semibold uppercase text-slate-800">
-                      {programDocumentNote.title}
-                    </div>
-                  ) : null}
-                  <div className="whitespace-pre-wrap px-3 py-2 text-xs leading-6 text-slate-700">
-                    {programDocumentNote.body}
-                  </div>
-                </div>
-              ) : null}
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-500">Tempat, Tanggal Tanda Tangan</label>
+                <input
+                  value={entrySignaturePlaceDate}
+                  onChange={(event) => setEntrySignaturePlaceDate(event.target.value)}
+                  placeholder="Contoh: Bekasi, 29 April 2026"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                />
+                <p className="mt-1 text-[11px] text-gray-500">
+                  Tanggal ini disimpan pada dokumen, sehingga hasil print tidak berubah mengikuti tanggal hari ini.
+                </p>
+              </div>
 
               <div className="space-y-2 rounded-lg border border-gray-200 bg-gray-50 p-3">
                 <div className="flex items-center justify-between">

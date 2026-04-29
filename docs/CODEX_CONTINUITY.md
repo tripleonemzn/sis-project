@@ -5,12 +5,12 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-04-28 21:00 WIB
-- Current status: follow-up keterangan dokumen program perangkat ajar sudah selesai dan siap/live setelah deploy. Field deskripsi program di Wakakur kini difungsikan sebagai `Keterangan Dokumen` opsional; jika kosong tidak tampil, jika diisi tampil pada editor guru, inline table, dan hasil print sebelum tabel utama.
+- Last updated: 2026-04-29 08:36 WIB
+- Current status: follow-up UX Wakakur/Guru untuk `Perangkat Ajar` sudah selesai dan siap/live setelah deploy. Keterangan dokumen dari program Wakakur dihapus, preview `Yang Akan Dilihat Guru` di popup Wakakur dihapus, quick table guru hanya menampilkan section isi utama, aksi dokumen dibuat ikon satu baris, multiline cell dibuat sebagai subbaris dengan merge/rowspan otomatis, dan tanggal tanda tangan kini bisa disimpan per dokumen.
 - Objective/task aktif:
   - Menyelesaikan perapihan UX role guru pada halaman dokumen perangkat ajar agar lebih fleksibel saat menulis judul, lebih aman saat print, dan lebih operasional saat mengedit isi tabel.
 - Batch terakhir selesai:
-  - `Batch 26 - Fungsikan deskripsi program sebagai keterangan dokumen (web)`
+  - `Batch 27 - Rapikan aksi, quick table, dan tanggal print perangkat ajar (web)`
 - Progress batch ini:
   - `100%`
 - Progress roadmap perangkat ajar dinamis:
@@ -22,11 +22,13 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - Commit: `pending commit`
   - Title: `pending commit`
   - Summary:
-    - field `Deskripsi` pada kelola program Wakakur diganti label menjadi `Keterangan Dokumen`
-    - program baru tidak lagi otomatis diisi deskripsi default generik; legacy default lama juga disembunyikan agar dianggap kosong
-    - keterangan dokumen dari program ditampilkan opsional di sisi guru sebelum isi/tabel dokumen
-    - keterangan yang sama ikut dicetak sebelum tabel utama; baris pertama bisa menjadi judul blok seperti `CAPAIAN PEMBELAJARAN FASE F`
-    - subtitle halaman guru kembali memakai deskripsi route/generic agar keterangan dokumen panjang tidak memenuhi page header
+    - input/kolom `Keterangan Dokumen` di Wakakur dihapus lagi agar tidak memenuhi popup dan tidak menjadi sumber dokumen guru
+    - card preview `Yang Akan Dilihat Guru` di popup Wakakur dihapus
+    - aksi dokumen guru dibuat ikon satu baris dengan tooltip browser
+    - quick table guru memfilter `Konteks Dokumen`, sehingga langsung membuka section isi utama seperti `Analisis Capaian Kompetensi`
+    - multiline cell pada quick table dan print dipecah menjadi subbaris; cell lain otomatis memakai rowspan/merge vertical center
+    - blok keterangan program di atas tabel print dihapus
+    - field `Tempat, Tanggal Tanda Tangan` ditambahkan pada editor guru dan disimpan di `content.signaturePlaceDate`
 - Area/file disentuh:
   - `frontend/src/pages/teacher/learning-resources/LearningResourceGenerator.tsx`
   - `frontend/src/pages/teacher/wakasek/curriculum/TeachingResourceProgramManagementPage.tsx`
@@ -43,7 +45,7 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 - Remaining work:
   - Lanjut hanya jika user ingin QA/rapikan lebih jauh, misalnya membuka lebih dari satu tabel dokumen sekaligus atau parity mobile untuk pola rich title/print yang sama.
 - Residual risk:
-  - keterangan dokumen masih memakai field program `description` yang sudah ada agar tidak perlu migrasi backend; jika nanti butuh judul dan isi terpisah secara formal, perlu field schema khusus pada batch berikutnya.
+  - tanggal tanda tangan saat ini disimpan per dokumen guru agar minim risiko backend; jika nanti harus terpusat seperti tanggal terbit rapor, perlu batch konfigurasi Wakakur/backend tersendiri.
 
 ## Status Saat Ini
 
