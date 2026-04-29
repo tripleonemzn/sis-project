@@ -8,6 +8,7 @@ import {
   getTeachingResourcePrograms,
   getTeachingResourceSignatureDefaults,
   getTeachingResourceEntries,
+  getTeachingResourceReferenceEntries,
   getTeachingResourceEntriesSummary,
   reviewTeachingResourceEntry,
   submitTeachingResourceEntry,
@@ -25,6 +26,7 @@ router.put('/programs', roleMiddleware(['TEACHER', 'ADMIN']), upsertTeachingReso
 router.delete('/programs/:id', roleMiddleware(['TEACHER', 'ADMIN']), deleteTeachingResourceProgram);
 
 router.get('/entries', roleMiddleware(['TEACHER', 'ADMIN', 'PRINCIPAL']), getTeachingResourceEntries);
+router.get('/entries/references', roleMiddleware(['TEACHER', 'ADMIN', 'PRINCIPAL']), getTeachingResourceReferenceEntries);
 router.get('/entries-summary', roleMiddleware(['TEACHER', 'ADMIN', 'PRINCIPAL']), getTeachingResourceEntriesSummary);
 router.post('/entries', roleMiddleware(['TEACHER', 'ADMIN', 'PRINCIPAL']), createTeachingResourceEntry);
 router.patch('/entries/:id', roleMiddleware(['TEACHER', 'ADMIN', 'PRINCIPAL']), updateTeachingResourceEntry);

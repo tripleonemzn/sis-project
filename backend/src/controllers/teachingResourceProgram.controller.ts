@@ -2426,6 +2426,121 @@ export const getTeachingResourceEntries = asyncHandler(async (req: Request, res:
   );
 });
 
+export const getTeachingResourceReferenceEntries = asyncHandler(async (req: Request, res: Response) => {
+  const user = (req as Request & { user?: { id?: number; role?: string } }).user;
+  if (!user?.id || !user?.role) {
+    throw new ApiError(401, 'Tidak memiliki otorisasi.');
+  }
+
+  const academicYearId = await resolveAcademicYearId(req.query?.academicYearId);
+  const rawProgramCodes = Array.isArray(req.query?.programCodes)
+    ? req.query.programCodes.join(',')
+    : String(req.query?.programCodes || '');
+  const programCodes = Array.from(
+    new Set(
+      rawProgramCodes
+        .split(',')
+        .map((item) => normalizeProgramCode(item))
+        .filter(Boolean),
+    ),
+  ).slice(0, 10);
+  const limitPerProgram = Math.min(300, Math.max(1, toNumber(req.query?.limitPerProgram, 200)));
+  const search = String(req.query?.search || '').trim();
+  const selectedTeacherId = Number(req.query?.teacherId || 0);
+  const roleUpper = String(user.role).trim().toUpperCase();
+
+  if (programCodes.length === 0) {
+    throw new ApiError(400, 'Program sumber referensi wajib diisi.');
+  }
+
+  let canReview = false;
+  try {
+    await assertCanReviewTeachingResourceEntries({ id: Number(user.id), role: String(user.role) });
+    canReview = true;
+  } catch {
+    canReview = false;
+  }
+
+  const teacherId =
+    canReview && selectedTeacherId > 0
+      ? selectedTeacherId
+      : roleUpper === 'TEACHER'
+        ? Number(user.id)
+        : selectedTeacherId > 0
+          ? selectedTeacherId
+          : 0;
+
+  const buildWhere = (programCode: string): Prisma.TeachingResourceEntryWhereInput => {
+    const where: Prisma.TeachingResourceEntryWhereInput = {
+      academicYearId,
+      programCode,
+    };
+    if (teacherId > 0) where.teacherId = teacherId;
+    if (search) {
+      where.OR = [
+        { title: { contains: search, mode: 'insensitive' } },
+        { summary: { contains: search, mode: 'insensitive' } },
+        { className: { contains: search, mode: 'insensitive' } },
+      ];
+    }
+    return where;
+  };
+
+  const programs = await Promise.all(
+    programCodes.map(async (programCode) => {
+      const where = buildWhere(programCode);
+      const [total, rows] = await Promise.all([
+        prisma.teachingResourceEntry.count({ where }),
+        prisma.teachingResourceEntry.findMany({
+          where,
+          take: limitPerProgram,
+          orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+          select: {
+            id: true,
+            academicYearId: true,
+            teacherId: true,
+            reviewerId: true,
+            programCode: true,
+            subjectId: true,
+            classLevel: true,
+            className: true,
+            title: true,
+            summary: true,
+            content: true,
+            tags: true,
+            status: true,
+            submittedAt: true,
+            reviewedAt: true,
+            reviewNote: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        }),
+      ]);
+
+      return {
+        programCode,
+        total,
+        limit: limitPerProgram,
+        rows,
+      };
+    }),
+  );
+
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        academicYearId,
+        limitPerProgram,
+        teacherId: teacherId || null,
+        programs,
+      },
+      'Data referensi perangkat ajar berhasil dimuat.',
+    ),
+  );
+});
+
 export const createTeachingResourceEntry = asyncHandler(async (req: Request, res: Response) => {
   const user = (req as Request & { user?: { id?: number; role?: string } }).user;
   if (!user?.id || !user?.role) {

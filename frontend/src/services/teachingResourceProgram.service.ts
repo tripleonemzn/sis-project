@@ -330,6 +330,36 @@ export const teachingResourceProgramService = {
       };
     };
   },
+  getReferenceEntries: async (params?: {
+    academicYearId?: number;
+    programCodes?: string[];
+    search?: string;
+    teacherId?: number;
+    limitPerProgram?: number;
+  }) => {
+    const response = await api.get('/teaching-resources/entries/references', {
+      params: {
+        ...params,
+        programCodes: params?.programCodes?.join(','),
+      },
+    });
+    return response.data as {
+      statusCode: number;
+      success: boolean;
+      message: string;
+      data: {
+        academicYearId: number;
+        limitPerProgram: number;
+        teacherId: number | null;
+        programs: Array<{
+          programCode: string;
+          total: number;
+          limit: number;
+          rows: TeachingResourceEntry[];
+        }>;
+      };
+    };
+  },
   createEntry: async (payload: {
     academicYearId?: number;
     programCode: string;

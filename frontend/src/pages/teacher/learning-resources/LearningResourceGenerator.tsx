@@ -1655,20 +1655,17 @@ export const LearningResourceGenerator = ({
       referenceSourceProgramCodes.length > 0 &&
       (Boolean(isPageEditor) || Boolean(isEditorOpen) || Boolean(quickEditEntryId)),
     queryFn: async () => {
-      const results = await Promise.all(
-        referenceSourceProgramCodes.map(async (sourceProgramCode) => {
-          const response = await teachingResourceProgramService.getEntries({
-            academicYearId,
-            page: 1,
-            limit: 100,
-            programCode: sourceProgramCode,
-            status: 'ALL',
-            view: 'mine',
-          });
-          return [sourceProgramCode, ensureArray<TeachingResourceEntry>(response.data?.rows)] as const;
-        }),
+      const response = await teachingResourceProgramService.getReferenceEntries({
+        academicYearId,
+        programCodes: referenceSourceProgramCodes,
+        limitPerProgram: 250,
+      });
+      return new Map(
+        ensureArray<{ programCode?: string; rows?: TeachingResourceEntry[] }>(response.data?.programs).map((program) => [
+          normalizeTeachingResourceProgramCode(program.programCode),
+          ensureArray<TeachingResourceEntry>(program.rows),
+        ]),
       );
-      return new Map<string, TeachingResourceEntry[]>(results);
     },
     staleTime: 30 * 1000,
     refetchOnWindowFocus: false,
