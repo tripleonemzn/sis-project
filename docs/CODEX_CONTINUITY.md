@@ -19,7 +19,7 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
-  - Commit: `pending`
+  - Commit: `f501f04`
   - Title: `fix(curriculum): prevent stale teaching resource program config`
   - Summary:
     - backend `GET /api/teaching-resources/programs` tidak lagi memakai response cache in-memory yang bisa stale antar-worker PM2
@@ -45,7 +45,7 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - Route guru `https://siskgb2.id/teacher/learning-resources/cp` merespons `HTTP/1.1 200 OK`
   - Mobile source code tidak berubah; belum ada OTA baru
 - Remaining work:
-  - Commit, push ke `origin/main`, dan pastikan worktree clean.
+  - Push ke `origin/main` dan pastikan worktree clean.
 - Residual risk:
   - Perubahan ini menghapus cache kecil pada endpoint konfigurasi program. Payload program perangkat ajar kecil dan bounded, sehingga dampak beban server rendah; ini lebih aman daripada stale config pada workflow simpan operasional.
 
