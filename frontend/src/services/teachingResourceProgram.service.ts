@@ -317,7 +317,7 @@ export const teachingResourceProgramService = {
       };
     };
   },
-  deleteProgram: async (id: number, params?: { academicYearId?: number }) => {
+  deleteProgram: async (id: number, params?: { academicYearId?: number; cascadeEntries?: boolean }) => {
     const response = await api.delete(`/teaching-resources/programs/${id}`, { params });
     return response.data as {
       statusCode: number;
@@ -327,6 +327,7 @@ export const teachingResourceProgramService = {
         id: number;
         code: string;
         academicYearId: number;
+        deletedEntries?: number;
       };
     };
   },

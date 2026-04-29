@@ -2260,12 +2260,13 @@ export default function TeachingResourceProgramManagementPage() {
       setIsDeleting(true);
       await teachingResourceProgramService.deleteProgram(Number(pendingDeleteRow.id), {
         academicYearId: Number(selectedAcademicYearId),
+        cascadeEntries: true,
       });
       await programsQuery.refetch();
       await queryClient.invalidateQueries({ queryKey: ['teaching-resource-program-config'] });
       await queryClient.invalidateQueries({ queryKey: ['sidebar-teaching-resource-programs'] });
       setPendingDeleteRow(null);
-      toast.success('Program perangkat ajar berhasil dihapus.');
+      toast.success('Program perangkat ajar dan dokumen terkait berhasil dihapus.');
     } catch (error) {
       toast.error(toErrorMessage(error, 'Gagal menghapus program perangkat ajar.'));
     } finally {
@@ -3989,6 +3990,7 @@ export default function TeachingResourceProgramManagementPage() {
               <h3 className="text-lg font-semibold text-gray-900">Hapus Program?</h3>
               <p className="mt-1 text-sm text-gray-500">
                 Program <span className="font-medium text-gray-800">{pendingDeleteRow.label}</span> akan dihapus dari daftar.
+                Dokumen guru yang sudah dibuat pada program ini juga akan ikut dihapus pada tahun ajaran aktif.
                 Tindakan ini akan langsung tersimpan setelah Anda konfirmasi.
               </p>
             </div>

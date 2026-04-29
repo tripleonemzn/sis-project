@@ -5,12 +5,12 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-04-29 12:10 WIB
-- Current status: Root cause lanjutan bug simpan konfigurasi perangkat ajar sudah diperbaiki dan backend sudah live. Selain cache endpoint yang sudah dimatikan, auto-backfill schema default kini tidak lagi menimpa konfigurasi Wakakur yang sengaja mengubah bentuk dokumen default seperti `PROTA` dari schema bawaan ke `Distribusi Waktu`.
+- Last updated: 2026-04-29 13:37 WIB
+- Current status: Root cause simpan konfigurasi perangkat ajar dan delete program sudah diperbaiki dan sudah live. Auto-backfill schema default kini hanya berlaku untuk schema kosong/legacy, sehingga tidak menimpa konfigurasi Wakakur walaupun versi template custom lebih rendah dari default bawaan. Hapus program dari Wakakur juga sekarang menghapus dokumen terkait pada tahun ajaran aktif secara eksplisit setelah konfirmasi.
 - Objective/task aktif:
   - Menyelesaikan perapihan UX role guru pada halaman dokumen perangkat ajar agar lebih fleksibel saat menulis judul, lebih aman saat print, dan lebih operasional saat mengedit isi tabel.
 - Batch terakhir selesai:
-  - `Follow-up - Fix schema backfill menimpa konfigurasi Wakakur (backend)`
+  - `Follow-up - Fix schema backfill dan delete program perangkat ajar (web/backend)`
 - Progress batch ini:
   - `100%`
 - Progress roadmap perangkat ajar dinamis:
@@ -19,28 +19,35 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
-  - Commit: `34875f5`
-  - Title: `fix(curriculum): preserve customized teaching resource schemas`
+  - Commit: `pending`
+  - Title: `fix(curriculum): preserve customized schemas and cascade delete programs`
   - Summary:
-    - backend `shouldBackfillProgramSchema` tidak lagi membandingkan `sourceSheet`/section key default untuk schema yang sudah valid versinya
+    - backend `shouldBackfillProgramSchema` tidak lagi membandingkan versi default untuk schema yang sudah memiliki section valid
     - konfigurasi Wakakur untuk program default sekarang bisa memakai bentuk dokumen berbeda tanpa ditimpa balik oleh default schema saat `loadPrograms`
-    - ini menutup gejala `simpan berhasil` tetapi pilihan template seperti `Distribusi Waktu` kembali ke schema lama
+    - delete program menerima cascade eksplisit dari UI Wakakur dan menghapus dokumen terkait di tahun ajaran aktif
+    - modal hapus program menjelaskan bahwa dokumen guru terkait ikut dihapus
 - Area/file disentuh:
   - `backend/src/controllers/teachingResourceProgram.controller.ts`
+  - `frontend/src/pages/teacher/wakasek/curriculum/TeachingResourceProgramManagementPage.tsx`
+  - `frontend/src/services/teachingResourceProgram.service.ts`
   - `docs/CODEX_CONTINUITY.md`
 - Verifikasi batch ini:
   - `cd backend && npm run build`
+  - `cd frontend && npm run build`
   - `cd backend && npm run service:restart`
   - `cd backend && npm run service:health`
   - `git diff --check`
+  - `cd frontend && npm run deploy`
   - `curl -I https://siskgb2.id/teacher/wakasek/teaching-resource-programs`
+  - `curl -I https://siskgb2.id/teacher/learning-resources/prota`
 - Publish/live status:
   - Backend sudah restart via PM2 dan health `Backend:200`, `Backend API:200`
-  - Web bundle tidak berubah pada batch root-cause ini; deploy web terakhir tetap live dari batch sebelumnya
+  - Web sudah deploy live ke `/var/www/html/`
   - Route Wakakur `https://siskgb2.id/teacher/wakasek/teaching-resource-programs` merespons `HTTP/1.1 200 OK`
+  - Route guru `https://siskgb2.id/teacher/learning-resources/prota` merespons `HTTP/1.1 200 OK`
   - Mobile source code tidak berubah; belum ada OTA baru
 - Remaining work:
-  - Push ke `origin/main` dan pastikan worktree clean.
+  - Commit, push ke `origin/main`, dan pastikan worktree clean.
 - Residual risk:
   - Program yang sudah telanjur tersimpan kembali ke schema lama perlu disimpan ulang dari UI Wakakur setelah fix ini. Backend tidak mengubah data user secara otomatis agar tidak menebak konfigurasi yang diinginkan.
 

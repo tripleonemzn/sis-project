@@ -1646,11 +1646,6 @@ function shouldBackfillProgramSchema(raw: unknown, defaults?: TeachingResourcePr
   // Legacy generic schema from tahap awal (single "bagian_utama")
   if (keys.length === 1 && keys[0] === 'bagian_utama') return true;
 
-  const targetSchema = defaults.schema;
-  const targetVersion = Number(targetSchema?.version || 1);
-  const currentVersion = Number(input.version || 0);
-  if (!Number.isFinite(currentVersion) || currentVersion < targetVersion) return true;
-
   return false;
 }
 
@@ -2580,6 +2575,7 @@ export const deleteTeachingResourceProgram = asyncHandler(async (req: Request, r
   }
 
   const normalizedCode = normalizeProgramCode(program.code);
+  const cascadeEntries = toBoolean(req.query?.cascadeEntries ?? req.body?.cascadeEntries, false);
 
   const relatedEntriesCount = await prisma.teachingResourceEntry.count({
     where: {
@@ -2587,18 +2583,30 @@ export const deleteTeachingResourceProgram = asyncHandler(async (req: Request, r
       programCode: normalizedCode,
     },
   });
-  if (relatedEntriesCount > 0) {
+  if (relatedEntriesCount > 0 && !cascadeEntries) {
     throw new ApiError(
       400,
       `Program ${program.displayLabel} tidak dapat dihapus karena sudah memiliki ${relatedEntriesCount} dokumen.`,
     );
   }
 
-  await prisma.teachingResourceProgramConfig.delete({
-    where: {
-      id: program.id,
-    },
-  });
+  await prisma.$transaction([
+    ...(relatedEntriesCount > 0
+      ? [
+          prisma.teachingResourceEntry.deleteMany({
+            where: {
+              academicYearId,
+              programCode: normalizedCode,
+            },
+          }),
+        ]
+      : []),
+    prisma.teachingResourceProgramConfig.delete({
+      where: {
+        id: program.id,
+      },
+    }),
+  ]);
 
   invalidateProgramsCache(academicYearId);
 
@@ -2609,6 +2617,7 @@ export const deleteTeachingResourceProgram = asyncHandler(async (req: Request, r
         id: program.id,
         code: normalizedCode,
         academicYearId,
+        deletedEntries: relatedEntriesCount,
       },
       'Program perangkat ajar berhasil dihapus.',
     ),
