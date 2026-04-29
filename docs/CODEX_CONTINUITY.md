@@ -5,54 +5,45 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-04-29 09:35 WIB
-- Current status: Batch 31 endpoint referensi antar-dokumen sudah selesai dan sudah live. Halaman guru kini mengambil referensi CP/ATP lewat endpoint khusus yang scoped ke user/tahun ajaran/program sumber, dipanggil sekali untuk beberapa program, dan tetap bounded per program agar tidak query tanpa batas.
+- Last updated: 2026-04-29 10:33 WIB
+- Current status: Batch 32 pencarian referensi besar di sisi guru sudah selesai dan sudah live. Dropdown referensi kini menyimpan metadata total/limit dari endpoint, memberi info jika dokumen sumber yang dimuat baru sebagian, dan melakukan pencarian server-side ter-debounce saat guru mengetik minimal 2 karakter.
 - Objective/task aktif:
   - Menyelesaikan perapihan UX role guru pada halaman dokumen perangkat ajar agar lebih fleksibel saat menulis judul, lebih aman saat print, dan lebih operasional saat mengedit isi tabel.
 - Batch terakhir selesai:
-  - `Batch 31 - Endpoint referensi perangkat ajar yang scoped dan bounded (web/backend)`
+  - `Batch 32 - Pencarian referensi besar dengan debounce dan metadata batas (web)`
 - Progress batch ini:
   - `100%`
 - Progress roadmap perangkat ajar dinamis:
   - `100%` untuk rumusan arsitektur generik
   - `100%` untuk implementasi teknis scope aktif engine generik
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
-  - `80%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
+  - `86%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
-  - Commit: `786ff58`
-  - Title: `feat(teacher): add scoped learning resource references endpoint`
+  - Commit: `301e85e`
+  - Title: `feat(teacher): debounce learning resource reference search`
   - Summary:
-    - backend menambah endpoint `GET /api/teaching-resources/entries/references` untuk mengambil dokumen sumber referensi secara scoped
-    - endpoint membatasi maksimal 10 program sumber dan maksimal 300 dokumen per program, default frontend memakai 250 per program
-    - frontend guru mengganti fan-out beberapa request `entries` menjadi satu request `getReferenceEntries`
-    - endpoint tetap terlindungi auth dan membatasi data guru ke dokumen milik user kecuali role reviewer memakai filter eksplisit
+    - frontend menyimpan metadata `total`, `limit`, dan `loaded` dari endpoint referensi per program sumber
+    - kotak pencarian referensi kini mengirim pencarian server-side setelah debounce 350ms dan minimal 2 karakter, sehingga tidak spam request per ketikan
+    - dropdown menampilkan helper jika hanya sebagian dokumen sumber yang sedang dimuat
+    - state pencarian server-side ikut dibersihkan saat editor/quick edit ditutup atau referensi dipilih
 - Area/file disentuh:
-  - `backend/src/controllers/teachingResourceProgram.controller.ts`
-  - `backend/src/routes/teachingResourceProgram.routes.ts`
   - `frontend/src/pages/teacher/learning-resources/LearningResourceGenerator.tsx`
-  - `frontend/src/services/teachingResourceProgram.service.ts`
   - `docs/CODEX_CONTINUITY.md`
 - Verifikasi batch ini:
-  - `cd backend && npm run build`
-  - `cd backend && npm run service:restart`
-  - `cd backend && npm run service:health`
   - `cd frontend && npm run build`
   - `git diff --check`
   - `cd frontend && npm run deploy`
   - `curl -I https://siskgb2.id/teacher/learning-resources/cp`
   - `curl -I https://siskgb2.id/teacher/learning-resources/atp`
-  - `curl http://127.0.0.1:3000/api/teaching-resources/entries/references?programCodes=CP` tanpa token merespons `401`, menandakan route aktif dan tetap protected
 - Publish/live status:
-  - Backend sudah restart via `pm2 startOrReload ecosystem.config.cjs --only sis-backend --update-env`
-  - Backend health `Backend:200` dan `Backend API:200`
   - Web sudah deploy live ke `/var/www/html/` lewat `npm run deploy`
   - Web route `https://siskgb2.id/teacher/learning-resources/atp` merespons `HTTP/1.1 200 OK`
   - Web route `https://siskgb2.id/teacher/learning-resources/cp` merespons `HTTP/1.1 200 OK`
   - Mobile source code tidak berubah pada batch ini; belum ada OTA baru
 - Remaining work:
-  - Lanjut QA user pada ATP dan menu perangkat ajar lanjutan. Jika data sumber nanti jauh lebih besar dari 250 dokumen per program, batch berikutnya perlu pencarian server-side per kolom/value atau paging dropdown.
+  - Lanjut QA user pada ATP dan menu perangkat ajar lanjutan. Jika data sumber nanti jauh lebih besar dari 250 dokumen per program dan pencarian judul/konteks belum cukup, batch berikutnya perlu endpoint option/snapshot yang sudah diproyeksikan per kolom/value.
 - Residual risk:
-  - Endpoint referensi tetap mengirim `content` dokumen sumber karena snapshot kolom masih dibangun di frontend. Risiko sudah dibatasi dengan scope user/tahun ajaran/program dan limit per program, tetapi untuk volume sangat besar sebaiknya endpoint berikutnya mengembalikan option/snapshot yang sudah diproyeksikan.
+  - Endpoint referensi tetap mengirim `content` dokumen sumber karena snapshot kolom masih dibangun di frontend. Risiko sudah dibatasi dengan scope user/tahun ajaran/program, limit per program, metadata truncation, dan debounce pencarian, tetapi untuk volume sangat besar sebaiknya endpoint berikutnya mengembalikan option/snapshot yang sudah diproyeksikan.
 
 ## Status Saat Ini
 
