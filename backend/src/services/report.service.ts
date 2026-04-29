@@ -34,6 +34,35 @@ const calculateAverage = (values: number[]): number | null => {
   return values.reduce((sum, value) => sum + value, 0) / values.length;
 };
 
+type ParentSignatureSource = {
+  guardianName?: string | null;
+  motherName?: string | null;
+  fatherName?: string | null;
+};
+
+const normalizeSignatureText = (value: unknown): string =>
+  String(value ?? '').trim();
+
+const resolveParentSignature = (student: ParentSignatureSource) => {
+  const seen = new Set<string>();
+  const candidates = [
+    { key: 'guardian', label: 'Wali', name: normalizeSignatureText(student.guardianName) },
+    { key: 'mother', label: 'Ibu', name: normalizeSignatureText(student.motherName) },
+    { key: 'father', label: 'Ayah', name: normalizeSignatureText(student.fatherName) },
+  ].filter((candidate) => {
+    if (!candidate.name) return false;
+    const dedupeKey = candidate.name.toLowerCase();
+    if (seen.has(dedupeKey)) return false;
+    seen.add(dedupeKey);
+    return true;
+  });
+
+  return {
+    name: candidates[0]?.name || '.......................',
+    candidates,
+  };
+};
+
 const parseSlotScoreMap = (raw: unknown): Record<string, number | null> => {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
   const result: Record<string, number | null> = {};
@@ -963,7 +992,7 @@ export class ReportService {
 
     const classData = student.studentClass;
     const waliKelas = classData.teacher;
-    const parent = student.guardianName || (student.fatherName ?? student.motherName ?? '.......................');
+    const parentSignature = resolveParentSignature(student);
 
     // 2. Fetch Report Date/Config
     const reportDate = await prisma.reportDate.findUnique({
@@ -1658,7 +1687,8 @@ export class ReportService {
           },
           parent: {
             title: 'Orang Tua / Wali',
-            name: parent,
+            name: parentSignature.name,
+            candidates: parentSignature.candidates,
           },
           principal: {
             title: 'Kepala Sekolah',

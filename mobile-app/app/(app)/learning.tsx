@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Redirect, useRouter } from 'expo-router';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import * as DocumentPicker from 'expo-document-picker';
-import { Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
+import { Linking, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../src/components/AppLoadingScreen';
 import { QueryStateView } from '../../src/components/QueryStateView';
@@ -11,6 +11,8 @@ import { useAuth } from '../../src/features/auth/AuthProvider';
 import { learningApi } from '../../src/features/learning/learningApi';
 import { AssignmentWithSubmission, LearningMaterial } from '../../src/features/learning/types';
 import { useLearningQuery } from '../../src/features/learning/useLearningQuery';
+import { resolvePublicAssetUrl } from '../../src/lib/media/resolvePublicAssetUrl';
+import { notifyError, notifyInfo } from '../../src/lib/ui/feedback';
 import { getStandardPagePadding } from '../../src/lib/ui/pageLayout';
 import { useAppTextScale } from '../../src/theme/AppTextScaleProvider';
 
@@ -28,7 +30,40 @@ function formatDate(dateString: string) {
   });
 }
 
-function MaterialCard({ item }: { item: LearningMaterial }) {
+type OpenAttachmentHandler = (fileUrl?: string | null) => Promise<void>;
+
+function AttachmentAction({
+  title,
+  detail,
+  onPress,
+}: {
+  title: string;
+  detail: string;
+  onPress: () => void;
+}) {
+  const { scaleFont, scaleLineHeight } = useAppTextScale();
+  return (
+    <Pressable
+      onPress={onPress}
+      style={{
+        backgroundColor: '#eff6ff',
+        borderWidth: 1,
+        borderColor: '#bfdbfe',
+        borderRadius: 8,
+        padding: 8,
+      }}
+    >
+      <Text style={{ color: '#1d4ed8', fontSize: scaleFont(11), fontWeight: '700', marginBottom: 2 }}>
+        {title}
+      </Text>
+      <Text style={{ color: '#0f172a', fontWeight: '600', fontSize: scaleFont(11), lineHeight: scaleLineHeight(16) }} numberOfLines={2}>
+        {detail}
+      </Text>
+    </Pressable>
+  );
+}
+
+function MaterialCard({ item, onOpenAttachment }: { item: LearningMaterial; onOpenAttachment: OpenAttachmentHandler }) {
   const { scaleFont, scaleLineHeight } = useAppTextScale();
   return (
     <View
@@ -47,40 +82,22 @@ function MaterialCard({ item }: { item: LearningMaterial }) {
       </Text>
       <Text style={{ fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), color: '#334155', marginBottom: 8 }}>{item.description || 'Tanpa deskripsi.'}</Text>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -3 }}>
-        {item.fileName ? (
+        {item.fileUrl ? (
           <View style={{ width: '50%', paddingHorizontal: 3, marginBottom: 6 }}>
-            <View
-              style={{
-                backgroundColor: '#f8fafc',
-                borderWidth: 1,
-                borderColor: '#e2e8f0',
-                borderRadius: 8,
-                padding: 8,
-              }}
-            >
-              <Text style={{ color: '#64748b', fontSize: scaleFont(11), marginBottom: 2 }}>Lampiran</Text>
-              <Text style={{ color: '#0f172a', fontWeight: '600', fontSize: scaleFont(11), lineHeight: scaleLineHeight(16) }} numberOfLines={2}>
-                {item.fileName}
-              </Text>
-            </View>
+            <AttachmentAction
+              title="Unduh Lampiran"
+              detail={item.fileName || 'Lampiran materi'}
+              onPress={() => void onOpenAttachment(item.fileUrl)}
+            />
           </View>
         ) : null}
         {item.youtubeUrl ? (
           <View style={{ width: '50%', paddingHorizontal: 3, marginBottom: 6 }}>
-            <View
-              style={{
-                backgroundColor: '#f8fafc',
-                borderWidth: 1,
-                borderColor: '#e2e8f0',
-                borderRadius: 8,
-                padding: 8,
-              }}
-            >
-              <Text style={{ color: '#64748b', fontSize: scaleFont(11), marginBottom: 2 }}>Video</Text>
-              <Text style={{ color: '#1d4ed8', fontWeight: '600', fontSize: scaleFont(11), lineHeight: scaleLineHeight(16) }} numberOfLines={2}>
-                {item.youtubeUrl}
-              </Text>
-            </View>
+            <AttachmentAction
+              title="Buka Video"
+              detail={item.youtubeUrl}
+              onPress={() => void onOpenAttachment(item.youtubeUrl)}
+            />
           </View>
         ) : null}
       </View>
@@ -92,9 +109,11 @@ function MaterialCard({ item }: { item: LearningMaterial }) {
 function AssignmentCard({
   item,
   onSubmit,
+  onOpenAttachment,
 }: {
   item: AssignmentWithSubmission;
   onSubmit: (item: AssignmentWithSubmission) => void;
+  onOpenAttachment: OpenAttachmentHandler;
 }) {
   const { scaleFont, scaleLineHeight, fontSizes } = useAppTextScale();
   const now = new Date().getTime();
@@ -158,6 +177,15 @@ function AssignmentCard({
       ) : (
         <View style={{ marginBottom: 6 }} />
       )}
+      {item.fileUrl ? (
+        <View style={{ marginBottom: 8 }}>
+          <AttachmentAction
+            title="Unduh Lampiran Tugas"
+            detail={item.fileName || 'Lampiran tugas'}
+            onPress={() => void onOpenAttachment(item.fileUrl)}
+          />
+        </View>
+      ) : null}
       <Pressable
         onPress={() => onSubmit(item)}
         disabled={isOverdue && !item.allowResubmit}
@@ -223,6 +251,19 @@ export default function LearningScreen() {
       name: asset.name,
       mimeType: asset.mimeType || undefined,
     });
+  };
+
+  const openLearningAttachment = async (fileUrl?: string | null) => {
+    const targetUrl = resolvePublicAssetUrl(fileUrl);
+    if (!targetUrl) {
+      notifyInfo('Lampiran belum tersedia.');
+      return;
+    }
+    try {
+      await Linking.openURL(targetUrl);
+    } catch {
+      notifyError('Lampiran belum bisa dibuka dari aplikasi.');
+    }
   };
 
   const filteredMaterials = useMemo(() => {
@@ -335,7 +376,7 @@ export default function LearningScreen() {
           filteredMaterials.length > 0 ? (
             <View>
               {filteredMaterials.map((item) => (
-                <MaterialCard key={item.id} item={item} />
+                <MaterialCard key={item.id} item={item} onOpenAttachment={openLearningAttachment} />
               ))}
             </View>
           ) : (
@@ -359,6 +400,7 @@ export default function LearningScreen() {
               <AssignmentCard
                 key={item.id}
                 item={item}
+                onOpenAttachment={openLearningAttachment}
                 onSubmit={(assignment) => {
                   setSelectedAssignment(assignment);
                   setSubmissionContent(assignment.submission?.content || '');

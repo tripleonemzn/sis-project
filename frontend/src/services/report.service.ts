@@ -1,5 +1,11 @@
 import api from './api';
 
+export interface ParentSignatureCandidate {
+  key?: string;
+  label?: string;
+  name?: string;
+}
+
 export interface ReportSubject {
   id: number;
   name: string;
@@ -98,7 +104,7 @@ export interface SbtsReportData {
     place: string;
     date: string;
     signatures: {
-      parent: { title: string; name: string };
+      parent: { title: string; name: string; candidates?: ParentSignatureCandidate[] };
       homeroom: { title: string; name: string; nip: string };
       principal: { title: string; name: string };
     };

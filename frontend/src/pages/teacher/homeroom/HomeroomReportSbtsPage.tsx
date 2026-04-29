@@ -3,6 +3,11 @@ import { useQuery } from '@tanstack/react-query';
 import { Loader2, Printer, Save, Search } from 'lucide-react';
 import { classService } from '../../../services/class.service';
 import api from '../../../services/api';
+import {
+  ParentSignaturePrintDialog,
+  shouldChooseParentSignature,
+} from './ParentSignaturePrintDialog';
+import type { ParentSignatureCandidate } from './ParentSignaturePrintDialog';
 import { usePersistentSchoolPrintAddress } from './usePersistentSchoolPrintAddress';
 
 interface HomeroomReportSbtsPageProps {
@@ -85,7 +90,7 @@ type StudentReportPayload = {
       verificationQrDataUrl?: string;
     };
     signatures: {
-      parent: { title?: string; name?: string };
+      parent: { title?: string; name?: string; candidates?: ParentSignatureCandidate[] };
       homeroom: { title?: string; name?: string; nip?: string | null };
     };
   };
@@ -100,6 +105,7 @@ export const HomeroomReportSbtsPage = ({
   reportLabel,
 }: HomeroomReportSbtsPageProps) => {
   const [searchQuery, setSearchQuery] = useState('');
+  const [pendingPrintData, setPendingPrintData] = useState<StudentReportPayload | null>(null);
   const {
     printSchoolAddress,
     setPrintSchoolAddress,
@@ -138,6 +144,10 @@ export const HomeroomReportSbtsPage = ({
         }
       });
       const reportData = response.data.data as StudentReportPayload;
+      if (shouldChooseParentSignature(reportData)) {
+        setPendingPrintData(reportData);
+        return;
+      }
       printReport(reportData);
     } catch (error) {
       console.error('Failed to fetch report', error);
@@ -707,6 +717,15 @@ export const HomeroomReportSbtsPage = ({
         ref={printIframeRef} 
         style={{ position: 'absolute', width: '0px', height: '0px', border: 'none', visibility: 'hidden' }}
         title="print-frame"
+      />
+      <ParentSignaturePrintDialog
+        reportData={pendingPrintData}
+        reportLabel={resolvedReportLabel}
+        onCancel={() => setPendingPrintData(null)}
+        onConfirm={(nextReportData) => {
+          setPendingPrintData(null);
+          printReport(nextReportData);
+        }}
       />
     </div>
   );
