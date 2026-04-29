@@ -19,7 +19,7 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
-  - Commit: `pending`
+  - Commit: `1ab0e98`
   - Title: `fix(curriculum): preserve customized schemas and cascade delete programs`
   - Summary:
     - backend `shouldBackfillProgramSchema` tidak lagi membandingkan versi default untuk schema yang sudah memiliki section valid
@@ -47,7 +47,7 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - Route guru `https://siskgb2.id/teacher/learning-resources/prota` merespons `HTTP/1.1 200 OK`
   - Mobile source code tidak berubah; belum ada OTA baru
 - Remaining work:
-  - Commit, push ke `origin/main`, dan pastikan worktree clean.
+  - Push ke `origin/main` dan pastikan worktree clean.
 - Residual risk:
   - Program yang sudah telanjur tersimpan kembali ke schema lama perlu disimpan ulang dari UI Wakakur setelah fix ini. Backend tidak mengubah data user secara otomatis agar tidak menebak konfigurasi yang diinginkan.
 
