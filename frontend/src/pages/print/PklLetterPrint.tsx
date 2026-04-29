@@ -289,7 +289,7 @@ Kepala SMK Karya Guna Bhakti 2 Kota Bekasi mengajukan permohonan siswa/i kami un
 
       <PrintLayout title={`Surat PKL - ${companyName}`}>
         {/* THE ACTUAL LETTER */}
-        <div className="text-[#000] mx-4" style={{ fontFamily: "'Times New Roman', Times, serif", fontSize: '14px', lineHeight: '1.2' }}>
+        <div className="text-[#000] mx-4 flex min-h-[257mm] flex-col" style={{ fontFamily: "'Times New Roman', Times, serif", fontSize: '14px', lineHeight: '1.2' }}>
           {/* KOP SURAT */}
           <div className="flex items-center justify-between border-b-4 border-double border-black pb-1 mb-4">
             <div className="w-[85px] flex justify-center items-center">
@@ -310,18 +310,23 @@ Kepala SMK Karya Guna Bhakti 2 Kota Bekasi mengajukan permohonan siswa/i kami un
             </div>
           </div>
 
-          <div className="px-16">
+          <div className="flex flex-1 flex-col px-16">
             {/* Header Surat */}
             <div className="flex mb-8">
-            <div className="w-[95px] flex flex-col gap-1">
+            <div className="w-[68px] flex flex-col gap-1">
               <div>Nomor</div>
               <div>Lampiran</div>
               <div>Perihal</div>
             </div>
+            <div className="w-[8px] flex flex-col gap-1">
+              <div>:</div>
+              <div>:</div>
+              <div>:</div>
+            </div>
             <div className="flex flex-col gap-1">
-              <div>: {letterNumber}</div>
-              <div>: {attachment}</div>
-              <div className="font-bold underline">: {subject}</div>
+              <div>{letterNumber}</div>
+              <div>{attachment}</div>
+              <div className="font-bold underline">{subject}</div>
             </div>
             <div className="ml-auto">
               Bekasi, {new Date(letterDate).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}
@@ -425,32 +430,25 @@ Kepala SMK Karya Guna Bhakti 2 Kota Bekasi mengajukan permohonan siswa/i kami un
                   />
                 )}
               </div>
-              {useBarcode && verificationQr?.verificationUrl && (
-                <div className="mb-2 -mt-1 max-w-[220px] break-all text-[8px] italic leading-tight text-slate-600">
-                  Verifikasi: {verificationQr.verificationUrl}
-                </div>
-              )}
 
               <p className="font-bold underline mb-0">{principal?.name || 'H. IYAN RASTIYAN, S.Pd., M.Pd'}</p>
               <p className="mt-0 text-sm">NUPTK. {principal?.nuptk || '-'}</p>
             </div>
           </div>
 
-          {/* CP Section */}
-          <div className="mt-8">
-            <p className="font-bold underline mb-2">Contact Person:</p>
-            <div className="flex flex-wrap gap-x-12 gap-y-4 mt-2">
-              {contactPersons.map((cp, idx) => (
-                <div key={idx} className="flex flex-col">
-                  <div className="font-bold text-[13px]">{cp.name}</div>
-                  <div className="text-[12px]">{cp.phone}</div>
-                </div>
-              ))}
-              {contactPersons.length === 0 && (
-                <div className="text-gray-400 italic text-[12px]">Tidak ada contact person yang dicantumkan.</div>
-              )}
+          {contactPersons.length > 0 && (
+            <div className="mt-auto pt-4 text-[11px]">
+              <p className="font-bold underline mb-1">Contact Person:</p>
+              <div className="flex flex-wrap gap-x-10 gap-y-2">
+                {contactPersons.map((cp, idx) => (
+                  <div key={idx} className="flex flex-col">
+                    <div className="font-bold">{cp.name}</div>
+                    <div>{cp.phone}</div>
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
       </PrintLayout>

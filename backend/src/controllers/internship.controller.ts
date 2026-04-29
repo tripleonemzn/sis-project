@@ -855,7 +855,7 @@ const generateLetterHTML = async (
       body { font-family: 'Times New Roman', serif; margin: 0; }
       .page-wrapper {
         padding: 0;
-        min-height: 320mm;
+        min-height: 306mm;
         box-sizing: border-box;
         display: flex;
         flex-direction: column;
@@ -874,10 +874,10 @@ const generateLetterHTML = async (
         <div class="content-area" style="line-height: 1.2; margin-left: 0; margin-right: 0;">
         <div style="display: flex; justify-content: space-between; margin-bottom: 20px;">
           <div>
-            <table>
-              <tr><td style="width: 110px;">Nomor</td><td>: ${letterNumber}</td></tr>
-              <tr><td>Lampiran</td><td>: ${attachment}</td></tr>
-              <tr><td>Perihal</td><td>: <strong style="text-decoration: underline;">${subject}</strong></td></tr>
+            <table style="border-collapse: collapse;">
+              <tr><td style="width: 68px;">Nomor</td><td style="width: 8px;">:</td><td>${letterNumber}</td></tr>
+              <tr><td>Lampiran</td><td>:</td><td>${attachment}</td></tr>
+              <tr><td>Perihal</td><td>:</td><td><strong style="text-decoration: underline;">${subject}</strong></td></tr>
             </table>
           </div>
           <div style="text-align: right;">
@@ -935,7 +935,6 @@ const generateLetterHTML = async (
             <div style="${useBarcode ? 'margin: 10px 0;' : `height: ${signatureSpace * 20}px;`} display: flex; align-items: center; justify-content: flex-start;">
               ${useBarcode ? `<img src="${verificationQrDataUrl}" alt="QR Verifikasi Surat PKL" style="width: 100px; height: 100px;" />` : ''}
             </div>
-            ${useBarcode ? `<div style="max-width: 220px; margin: -6px 0 8px 0; color: #475569; font-size: 8px; font-style: italic; line-height: 1.2; word-break: break-all;">Verifikasi: ${escapeLetterHtml(verificationUrl)}</div>` : ''}
             <p style="font-weight: bold; text-decoration: underline; margin-bottom: 0;">${principalName}</p>
             <p style="margin-top: 0;">NUPTK. ${principalNuptk}</p>
           </div>
@@ -944,7 +943,7 @@ const generateLetterHTML = async (
     </div>
 
     ${contactPersons && contactPersons.length > 0 ? `
-    <div style="margin-top: auto; border-top: 1px solid #ccc; padding-top: 10px; font-size: 12px; page-break-inside: avoid; padding-left: 64px; padding-right: 64px;">
+    <div style="margin-top: auto; padding-top: 8px; font-size: 11px; page-break-inside: avoid; padding-left: 64px; padding-right: 64px;">
       <strong style="text-decoration: underline;">Contact Person:</strong>
       <div style="display: flex; flex-wrap: wrap; margin-top: 5px; gap: 40px;">
         ${contactPersons.map((cp: any) => `
