@@ -36,6 +36,8 @@ export type TeachingResourceColumnValueSource =
   | 'SYSTEM_SKILL_PROGRAM'
   | 'SYSTEM_TEACHER_NAME'
   | 'SYSTEM_PLACE_DATE'
+  | 'SYSTEM_WEEKLY_CLASS_HOURS'
+  | 'SYSTEM_WEEKLY_TOTAL_HOURS'
   | 'BOUND';
 
 export type TeachingResourceSchemaMode = 'LEGACY_SECTIONS' | 'BLOCKS_V1';

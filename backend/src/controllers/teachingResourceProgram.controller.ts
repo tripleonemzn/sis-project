@@ -64,6 +64,8 @@ type TeachingResourceColumnValueSource =
   | 'SYSTEM_SKILL_PROGRAM'
   | 'SYSTEM_TEACHER_NAME'
   | 'SYSTEM_PLACE_DATE'
+  | 'SYSTEM_WEEKLY_CLASS_HOURS'
+  | 'SYSTEM_WEEKLY_TOTAL_HOURS'
   | 'BOUND';
 type TeachingResourceSchemaMode = 'LEGACY_SECTIONS' | 'BLOCKS_V1';
 type TeachingResourceBlockType = 'HEADER' | 'CONTEXT' | 'TABLE' | 'RICH_TEXT' | 'SIGNATURE' | 'NOTE';
@@ -248,6 +250,8 @@ const TEACHING_RESOURCE_COLUMN_VALUE_SOURCES = [
   'SYSTEM_SKILL_PROGRAM',
   'SYSTEM_TEACHER_NAME',
   'SYSTEM_PLACE_DATE',
+  'SYSTEM_WEEKLY_CLASS_HOURS',
+  'SYSTEM_WEEKLY_TOTAL_HOURS',
   'BOUND',
 ] as const;
 const TEACHING_RESOURCE_SCHEMA_MODES = ['LEGACY_SECTIONS', 'BLOCKS_V1'] as const;
@@ -462,7 +466,18 @@ const PROGRAM_SCHEMA_ATP: TeachingResourceProgramSchema = {
         { key: 'tujuan_pembelajaran', label: 'Tujuan Pembelajaran', placeholder: 'TP', multiline: true },
         { key: 'materi_pokok', label: 'Materi Pokok', placeholder: 'Materi pokok', multiline: true },
         { key: 'dimensi_profil', label: 'Dimensi Profil Lulusan', placeholder: 'Dimensi profil', multiline: true },
-        { key: 'alokasi_jp', label: 'Alokasi Waktu (JP)', placeholder: 'JP' },
+        {
+          key: 'alokasi_jp',
+          label: 'Alokasi Waktu (JP)',
+          placeholder: 'JP',
+          dataType: 'NUMBER',
+          semanticKey: 'alokasi_jp',
+          valueSource: 'SYSTEM_WEEKLY_CLASS_HOURS',
+          sourceType: 'SYSTEM',
+          teacherEditMode: 'TEACHER_EDITABLE',
+          exposeAsReference: true,
+          binding: { systemKey: 'weekly_class_hours', syncMode: 'SYSTEM_DYNAMIC', allowManualOverride: true },
+        },
       ],
     },
     {
@@ -511,7 +526,18 @@ const PROGRAM_SCHEMA_PROTA: TeachingResourceProgramSchema = {
         { key: 'semester', label: 'Semester', placeholder: '1 / 2' },
         { key: 'no', label: 'No', placeholder: '1' },
         { key: 'tujuan_pembelajaran', label: 'Tujuan Pembelajaran', placeholder: 'TP', multiline: true },
-        { key: 'alokasi_jp', label: 'Alokasi Waktu (JP)', placeholder: 'JP' },
+        {
+          key: 'alokasi_jp',
+          label: 'Alokasi Waktu (JP)',
+          placeholder: 'JP',
+          dataType: 'NUMBER',
+          semanticKey: 'alokasi_jp',
+          valueSource: 'SYSTEM_WEEKLY_CLASS_HOURS',
+          sourceType: 'SYSTEM',
+          teacherEditMode: 'TEACHER_EDITABLE',
+          exposeAsReference: true,
+          binding: { systemKey: 'weekly_class_hours', syncMode: 'SYSTEM_DYNAMIC', allowManualOverride: true },
+        },
         { key: 'dimensi_profil', label: 'Dimensi Profil Lulusan', placeholder: 'Dimensi', multiline: true },
       ],
     },
@@ -571,7 +597,18 @@ const PROGRAM_SCHEMA_PROMES: TeachingResourceProgramSchema = {
       columns: [
         { key: 'no', label: 'No', placeholder: '1' },
         { key: 'tujuan_pembelajaran', label: 'Tujuan Pembelajaran', placeholder: 'TP', multiline: true },
-        { key: 'alokasi_jp', label: 'Alokasi Waktu (JP)', placeholder: 'JP' },
+        {
+          key: 'alokasi_jp',
+          label: 'Alokasi Waktu (JP)',
+          placeholder: 'JP',
+          dataType: 'NUMBER',
+          semanticKey: 'alokasi_jp',
+          valueSource: 'SYSTEM_WEEKLY_CLASS_HOURS',
+          sourceType: 'SYSTEM',
+          teacherEditMode: 'TEACHER_EDITABLE',
+          exposeAsReference: true,
+          binding: { systemKey: 'weekly_class_hours', syncMode: 'SYSTEM_DYNAMIC', allowManualOverride: true },
+        },
         ...(PROSEM_GANJIL_WEEK_COLUMNS || []),
         { key: 'keterangan', label: 'Ket.', placeholder: 'Keterangan', multiline: true },
       ],
@@ -587,7 +624,18 @@ const PROGRAM_SCHEMA_PROMES: TeachingResourceProgramSchema = {
       columns: [
         { key: 'no', label: 'No', placeholder: '1' },
         { key: 'tujuan_pembelajaran', label: 'Tujuan Pembelajaran', placeholder: 'TP', multiline: true },
-        { key: 'alokasi_jp', label: 'Alokasi Waktu (JP)', placeholder: 'JP' },
+        {
+          key: 'alokasi_jp',
+          label: 'Alokasi Waktu (JP)',
+          placeholder: 'JP',
+          dataType: 'NUMBER',
+          semanticKey: 'alokasi_jp',
+          valueSource: 'SYSTEM_WEEKLY_CLASS_HOURS',
+          sourceType: 'SYSTEM',
+          teacherEditMode: 'TEACHER_EDITABLE',
+          exposeAsReference: true,
+          binding: { systemKey: 'weekly_class_hours', syncMode: 'SYSTEM_DYNAMIC', allowManualOverride: true },
+        },
         ...(PROSEM_GENAP_WEEK_COLUMNS || []),
         { key: 'keterangan', label: 'Ket.', placeholder: 'Keterangan', multiline: true },
       ],
@@ -768,7 +816,18 @@ const PROGRAM_SCHEMA_MATRIKS: TeachingResourceProgramSchema = {
       columns: [
         { key: 'no', label: 'No', placeholder: '1' },
         { key: 'tujuan_pembelajaran', label: 'Tujuan Pembelajaran', placeholder: 'TP', multiline: true },
-        { key: 'waktu_jumlah_jam', label: 'Waktu/Jumlah Jam', placeholder: 'JP' },
+        {
+          key: 'waktu_jumlah_jam',
+          label: 'Waktu/Jumlah Jam',
+          placeholder: 'JP',
+          dataType: 'NUMBER',
+          semanticKey: 'alokasi_jp',
+          valueSource: 'SYSTEM_WEEKLY_CLASS_HOURS',
+          sourceType: 'SYSTEM',
+          teacherEditMode: 'TEACHER_EDITABLE',
+          exposeAsReference: true,
+          binding: { systemKey: 'weekly_class_hours', syncMode: 'SYSTEM_DYNAMIC', allowManualOverride: true },
+        },
         { key: 'semester', label: 'Semester', placeholder: '1 / 2' },
         ...(MATRIKS_WEEK_COLUMNS || []),
         { key: 'keterangan', label: 'KET', placeholder: 'Keterangan', multiline: true },

@@ -68,7 +68,9 @@ type ColumnQuickPreset =
   | 'SYSTEM_CLASS_LEVEL'
   | 'SYSTEM_SKILL_PROGRAM'
   | 'SYSTEM_TEACHER_NAME'
-  | 'SYSTEM_PLACE_DATE';
+  | 'SYSTEM_PLACE_DATE'
+  | 'SYSTEM_WEEKLY_CLASS_HOURS'
+  | 'SYSTEM_WEEKLY_TOTAL_HOURS';
 type SectionQuickPreset =
   | 'SYSTEM_CONTEXT'
   | 'REFERENCE_SOURCE_TABLE'
@@ -155,6 +157,8 @@ const COLUMN_VALUE_SOURCE_OPTIONS: Array<{ value: TeachingResourceColumnValueSou
   { value: 'SYSTEM_SKILL_PROGRAM', label: 'Program Keahlian dari Assignment' },
   { value: 'SYSTEM_TEACHER_NAME', label: 'Nama Guru Login' },
   { value: 'SYSTEM_PLACE_DATE', label: 'Tempat dan Tanggal Otomatis' },
+  { value: 'SYSTEM_WEEKLY_CLASS_HOURS', label: 'JP/Minggu per Rombel' },
+  { value: 'SYSTEM_WEEKLY_TOTAL_HOURS', label: 'Total JP/Minggu Semua Rombel' },
   { value: 'BOUND', label: 'Ambil dari Kolom Terikat' },
 ];
 const SCHEMA_MODE_OPTIONS: Array<{ value: TeachingResourceSchemaMode; label: string }> = [
@@ -298,6 +302,18 @@ const COLUMN_QUICK_PRESET_OPTIONS: Array<{
     value: 'SYSTEM_PLACE_DATE',
     label: 'Tempat dan Tanggal',
     description: 'Nilai sistem otomatis untuk tempat dan tanggal.',
+    group: 'SYSTEM',
+  },
+  {
+    value: 'SYSTEM_WEEKLY_CLASS_HOURS',
+    label: 'JP/Minggu per Rombel',
+    description: 'Nilai sistem dari jumlah jam mengajar per minggu untuk satu rombel pada konteks mapel yang dipilih.',
+    group: 'SYSTEM',
+  },
+  {
+    value: 'SYSTEM_WEEKLY_TOTAL_HOURS',
+    label: 'Total JP/Minggu',
+    description: 'Nilai sistem dari total jam mengajar per minggu untuk semua rombel pada konteks mapel yang dipilih.',
     group: 'SYSTEM',
   },
 ];
@@ -772,6 +788,46 @@ function applyColumnQuickPreset(
         valueSource: 'SYSTEM_PLACE_DATE',
         systemKey: 'place_date',
       });
+    case 'SYSTEM_WEEKLY_CLASS_HOURS':
+      return {
+        ...applySystemColumnPreset(column, {
+          key: 'alokasi_jp',
+          label: 'Alokasi JP',
+          fieldIdentity: 'alokasi_jp',
+          placeholder: 'JP/minggu per rombel',
+          dataType: 'NUMBER',
+          valueSource: 'SYSTEM_WEEKLY_CLASS_HOURS',
+          systemKey: 'weekly_class_hours',
+        }),
+        readOnly: false,
+        teacherEditMode: 'TEACHER_EDITABLE',
+        binding: {
+          ...(column.binding || {}),
+          systemKey: 'weekly_class_hours',
+          syncMode: 'SYSTEM_DYNAMIC',
+          allowManualOverride: true,
+        },
+      };
+    case 'SYSTEM_WEEKLY_TOTAL_HOURS':
+      return {
+        ...applySystemColumnPreset(column, {
+          key: 'total_jp_mingguan',
+          label: 'Total JP Mingguan',
+          fieldIdentity: 'total_jp_mingguan',
+          placeholder: 'Total JP/minggu semua rombel',
+          dataType: 'NUMBER',
+          valueSource: 'SYSTEM_WEEKLY_TOTAL_HOURS',
+          systemKey: 'weekly_total_hours',
+        }),
+        readOnly: false,
+        teacherEditMode: 'TEACHER_EDITABLE',
+        binding: {
+          ...(column.binding || {}),
+          systemKey: 'weekly_total_hours',
+          syncMode: 'SYSTEM_DYNAMIC',
+          allowManualOverride: true,
+        },
+      };
     default:
       return column;
   }
@@ -1356,7 +1412,20 @@ function createSchemaPreset(
             { key: 'bulan', label: 'Bulan', dataType: 'MONTH', semanticKey: 'bulan' },
             { key: 'minggu_ke', label: 'Minggu Ke-', dataType: 'WEEK', semanticKey: 'minggu_ke' },
             { key: 'tujuan_pembelajaran', label: 'Tujuan Pembelajaran', semanticKey: 'tujuan_pembelajaran', multiline: true },
-            { key: 'alokasi_jp', label: 'Alokasi JP', dataType: 'NUMBER', semanticKey: 'alokasi_jp' },
+            {
+              key: 'alokasi_jp',
+              label: 'Alokasi JP',
+              dataType: 'NUMBER',
+              semanticKey: 'alokasi_jp',
+              valueSource: 'SYSTEM_WEEKLY_CLASS_HOURS',
+              sourceType: 'SYSTEM',
+              teacherEditMode: 'TEACHER_EDITABLE',
+              binding: {
+                systemKey: 'weekly_class_hours',
+                syncMode: 'SYSTEM_DYNAMIC',
+                allowManualOverride: true,
+              },
+            },
             { key: 'keterangan', label: 'Keterangan', multiline: true },
           ],
         },
@@ -1385,7 +1454,20 @@ function createSchemaPreset(
           columns: [
             { key: 'no', label: 'No', placeholder: '1' },
             { key: 'tujuan_pembelajaran', label: 'Tujuan Pembelajaran', semanticKey: 'tujuan_pembelajaran', multiline: true },
-            { key: 'alokasi_jp', label: 'Alokasi JP', dataType: 'NUMBER', semanticKey: 'alokasi_jp' },
+            {
+              key: 'alokasi_jp',
+              label: 'Alokasi JP',
+              dataType: 'NUMBER',
+              semanticKey: 'alokasi_jp',
+              valueSource: 'SYSTEM_WEEKLY_CLASS_HOURS',
+              sourceType: 'SYSTEM',
+              teacherEditMode: 'TEACHER_EDITABLE',
+              binding: {
+                systemKey: 'weekly_class_hours',
+                syncMode: 'SYSTEM_DYNAMIC',
+                allowManualOverride: true,
+              },
+            },
             { key: 'grid_minggu', label: 'Grid Minggu', dataType: 'WEEK_GRID', semanticKey: 'grid_minggu' },
             { key: 'keterangan', label: 'Keterangan', multiline: true },
           ],

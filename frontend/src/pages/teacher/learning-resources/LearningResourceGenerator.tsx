@@ -30,6 +30,7 @@ import {
   teacherAssignmentService,
   type TeacherAssignment,
 } from '../../../services/teacherAssignment.service';
+import { scheduleService, type ScheduleEntry } from '../../../services/schedule.service';
 
 interface LearningResourceGeneratorProps {
   type: string;
@@ -128,6 +129,11 @@ type TeacherAssignmentContextOption = {
   label: string;
   coveredClasses: string[];
   assignmentIds: number[];
+};
+
+type TeachingLoadContext = {
+  weeklyTotalHours: number;
+  weeklyClassHours: number;
 };
 
 const DOCUMENT_TITLE_QUILL_MODULES = {
@@ -944,6 +950,12 @@ const getColumnDataType = (column?: Pick<EntrySectionColumnForm, 'dataType'> | n
 
 const isSystemManagedColumn = (column: EntrySectionColumnForm): boolean => {
   if (isDocumentReferencePickerColumn(column)) return false;
+  if (
+    String(column.teacherEditMode || '').trim().toUpperCase() === 'TEACHER_EDITABLE' &&
+    Boolean(column.binding?.allowManualOverride)
+  ) {
+    return false;
+  }
   const valueSource = String(column.valueSource || 'MANUAL').trim().toUpperCase();
   const dataType = getColumnDataType(column);
   return Boolean(column.readOnly) || dataType === 'READONLY_BOUND' || (!!valueSource && valueSource !== 'MANUAL');
@@ -982,6 +994,11 @@ const formatNumericValue = (value: number): string => {
   if (!Number.isFinite(value)) return '0';
   if (Number.isInteger(value)) return String(value);
   return Number(value.toFixed(2)).toString();
+};
+
+const formatOptionalNumericValue = (value: number): string => {
+  if (!Number.isFinite(value) || value <= 0) return '';
+  return formatNumericValue(value);
 };
 
 const getPrintColumnClassName = (column?: EntrySectionColumnForm): string => {
@@ -1171,6 +1188,8 @@ const resolveSystemValueForColumn = (
     semester: string;
     guruMapel: string;
     tempatTanggal: string;
+    jpMingguanRombel: string;
+    totalJpMingguan: string;
   },
 ): string => {
   switch (String(column.valueSource || 'MANUAL').trim().toUpperCase() as TeachingResourceColumnValueSource) {
@@ -1190,6 +1209,10 @@ const resolveSystemValueForColumn = (
       return context.guruMapel;
     case 'SYSTEM_PLACE_DATE':
       return context.tempatTanggal;
+    case 'SYSTEM_WEEKLY_CLASS_HOURS':
+      return context.jpMingguanRombel;
+    case 'SYSTEM_WEEKLY_TOTAL_HOURS':
+      return context.totalJpMingguan;
     default:
       return '';
   }
@@ -1230,6 +1253,7 @@ const hydrateSheetSections = (params: {
   context: TeacherAssignmentContextOption | null;
   academicYearName: string;
   semesterLabel: string;
+  teachingLoad?: TeachingLoadContext | null;
 }): EntrySectionForm[] => {
   const mapel = String(params.context?.subjectName || '').trim();
   const tingkat = String(params.context?.classLevel || '').trim();
@@ -1239,6 +1263,8 @@ const hydrateSheetSections = (params: {
   const semester = String(params.semesterLabel || '').trim();
   const guruMapel = String(params.context?.teacherName || '').trim();
   const tempatTanggal = `Bekasi, ${formatLongDate(new Date())}`;
+  const jpMingguanRombel = formatOptionalNumericValue(Number(params.teachingLoad?.weeklyClassHours || 0));
+  const totalJpMingguan = formatOptionalNumericValue(Number(params.teachingLoad?.weeklyTotalHours || 0));
 
   const setIfBlank = (target: Record<string, string>, key: string, value: string) => {
     if (!key || !value) return;
@@ -1278,6 +1304,8 @@ const hydrateSheetSections = (params: {
           semester,
           guruMapel,
           tempatTanggal,
+          jpMingguanRombel,
+          totalJpMingguan,
         });
         if (systemValue) {
           setIfBlank(values, key, systemValue);
@@ -1565,6 +1593,21 @@ export const LearningResourceGenerator = ({
     () => sortTeacherAssignmentsBySubjectClass(ensureArray<TeacherAssignment>(assignmentsQuery.data)),
     [assignmentsQuery.data],
   );
+
+  const scheduleQuery = useQuery({
+    queryKey: ['learning-resource-teaching-load-schedule', user?.id || 0, academicYearId],
+    enabled: Boolean(user?.id) && Boolean(academicYearId) && String(user?.role || '').toUpperCase() === 'TEACHER',
+    queryFn: async () => {
+      const response = await scheduleService.list({
+        academicYearId,
+        teacherId: Number(user?.id),
+      });
+      return ensureArray<ScheduleEntry>(response.data?.entries);
+    },
+    staleTime: 3 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
+
   const assignmentContextOptions = useMemo<TeacherAssignmentContextOption[]>(() => {
     const grouped = new Map<
       string,
@@ -1625,6 +1668,25 @@ export const LearningResourceGenerator = ({
   const selectedContext = useMemo(
     () => assignmentContextOptions.find((item) => item.key === selectedContextKey) || null,
     [assignmentContextOptions, selectedContextKey],
+  );
+  const teachingLoadByContext = useMemo(() => {
+    const map = new Map<string, TeachingLoadContext>();
+    const entries = ensureArray<ScheduleEntry>(scheduleQuery.data).filter((entry) => entry.teachingHour !== null);
+    assignmentContextOptions.forEach((context) => {
+      const assignmentIds = new Set(context.assignmentIds.map((id) => Number(id)).filter((id) => id > 0));
+      if (assignmentIds.size === 0) return;
+      const weeklyTotalHours = entries.filter((entry) => assignmentIds.has(Number(entry.teacherAssignmentId || 0))).length;
+      const classCount = Math.max(1, context.coveredClasses.length);
+      map.set(context.key, {
+        weeklyTotalHours,
+        weeklyClassHours: weeklyTotalHours > 0 ? weeklyTotalHours / classCount : 0,
+      });
+    });
+    return map;
+  }, [assignmentContextOptions, scheduleQuery.data]);
+  const selectedTeachingLoad = useMemo(
+    () => (selectedContext ? teachingLoadByContext.get(selectedContext.key) || null : null),
+    [selectedContext, teachingLoadByContext],
   );
   const academicYearName = useMemo(() => String(activeAcademicYear?.name || '').trim(), [activeAcademicYear?.name]);
   const activeSemesterLabel = useMemo(
@@ -2021,6 +2083,7 @@ export const LearningResourceGenerator = ({
           context: selectedContext,
           academicYearName,
           semesterLabel: activeSemesterLabel,
+          teachingLoad: selectedTeachingLoad,
         })
       : sourceSections;
     return ensureDerivedSections(hydratedSections);
@@ -2043,6 +2106,7 @@ export const LearningResourceGenerator = ({
       (usesSheetTemplate && (selectedContextKey || String(assignmentContextOptions[0]?.key || '').trim())) || '';
     const currentContext =
       assignmentContextOptions.find((item) => String(item.key) === String(defaultContextKey || '').trim()) || null;
+    const currentTeachingLoad = currentContext ? teachingLoadByContext.get(currentContext.key) || null : null;
     const generatedSections = buildDefaultSections(activeProgramMeta);
     const hydratedSections = usesSheetTemplate
       ? hydrateSheetSections({
@@ -2051,6 +2115,7 @@ export const LearningResourceGenerator = ({
           context: currentContext,
           academicYearName,
           semesterLabel: activeSemesterLabel,
+          teachingLoad: currentTeachingLoad,
         })
       : generatedSections;
 
@@ -2117,7 +2182,13 @@ export const LearningResourceGenerator = ({
       if (hasMeaningfulContent) return normalizeSectionsForEditor(prev);
       return normalizeSectionsForEditor(buildDefaultSections(activeProgramMeta));
     });
-  }, [activeProgramMeta, editingEntry, isEditorOpen]);
+  }, [
+    activeProgramMeta,
+    editingEntry,
+    isEditorOpen,
+    selectedTeachingLoad?.weeklyClassHours,
+    selectedTeachingLoad?.weeklyTotalHours,
+  ]);
 
   useEffect(() => {
     if (!isPageEditor) {
@@ -3681,6 +3752,7 @@ export const LearningResourceGenerator = ({
         context: nextContext,
         academicYearName,
         semesterLabel: activeSemesterLabel,
+        teachingLoad: nextContext ? teachingLoadByContext.get(nextContext.key) || null : null,
       }),
     );
   };
@@ -4431,6 +4503,14 @@ export const LearningResourceGenerator = ({
                     <p className="mt-1 text-xs text-gray-500">
                       Berlaku untuk seluruh rombel terkait ({selectedContext.coveredClasses.length} rombel):
                       <span className="font-medium text-gray-700"> {selectedContext.coveredClasses.join(', ')}</span>
+                      {selectedTeachingLoad?.weeklyClassHours ? (
+                        <span className="ml-1">
+                          - Alokasi sistem {formatNumericValue(selectedTeachingLoad.weeklyClassHours)} JP/minggu per rombel
+                          {selectedTeachingLoad.weeklyTotalHours !== selectedTeachingLoad.weeklyClassHours
+                            ? ` (${formatNumericValue(selectedTeachingLoad.weeklyTotalHours)} JP total)`
+                            : ''}
+                        </span>
+                      ) : null}
                     </p>
                   ) : null}
                 </div>
