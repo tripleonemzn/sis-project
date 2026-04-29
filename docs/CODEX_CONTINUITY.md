@@ -19,7 +19,7 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
-  - Commit: `pending`
+  - Commit: `d3a265c`
   - Title: `feat(curriculum): support document semester options`
   - Summary:
     - editor Wakakur menambahkan `Cara Isi: Pilihan dokumen` untuk kolom yang opsinya ditentukan oleh konfigurasi, bukan oleh semester aktif operasional
@@ -45,7 +45,7 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - Route guru `https://siskgb2.id/teacher/learning-resources/atp` merespons `HTTP/1.1 200 OK`
   - Mobile source code tidak berubah; belum ada OTA baru
 - Remaining work:
-  - Commit, push, dan pastikan worktree clean.
+  - Push commit ke `origin/main` dan pastikan worktree clean.
 - Residual risk:
   - Perubahan frontend-only, tidak menambah endpoint, polling, query, atau runtime backend baru. Existing program yang sudah telanjur memakai `Semester Aktif` tetap perlu diedit Wakakur ke `Pilihan Dokumen` bila memang dimaksudkan sebagai dokumen tahunan.
 
