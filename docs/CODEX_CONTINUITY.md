@@ -5,12 +5,12 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-04-29 14:11 WIB
-- Current status: Logic alokasi JP perangkat ajar sudah diperluas dan sudah live. Kolom alokasi kini bisa memakai sumber nilai sistem dari jadwal mengajar Wakakur: `JP/Minggu per Rombel` dan `Total JP/Minggu Semua Rombel`. Nilai sistem mengisi default dari konteks mapel/tingkat guru, tetap bisa diedit guru jika Wakakur mengaktifkan override, lalu bisa menjadi referensi lintas dokumen melalui field identity/semantic key yang sama.
+- Last updated: 2026-04-29 14:20 WIB
+- Current status: Bug quick table guru pada perangkat ajar sudah diperbaiki dan sudah live. Kolom yang memakai sumber nilai sistem seperti `JP/Minggu per Rombel` kini ikut di-hydrate pada tabel cepat/list dokumen guru, bukan hanya pada editor lengkap, sehingga ATP yang sudah dikonfigurasi Wakakur bisa menampilkan nilai JP dari jadwal mengajar tanpa input manual ulang.
 - Objective/task aktif:
   - Menjaga perangkat ajar dinamis tetap terintegrasi lintas menu, khususnya alokasi JP dari beban mengajar menuju ATP/Prota/Promes/Matriks.
 - Batch terakhir selesai:
-  - `Follow-up - Integrasi alokasi JP dari jadwal mengajar (web/backend)`
+  - `Follow-up - Hydrate alokasi JP pada quick table guru (web frontend)`
 - Progress batch ini:
   - `100%`
 - Progress roadmap perangkat ajar dinamis:
@@ -19,34 +19,27 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
-  - Commit: `27f8c76`
-  - Title: `feat(curriculum): derive teaching resource allocation hours`
+  - Commit: `a42fc07`
+  - Title: `fix(curriculum): hydrate quick table allocation hours`
   - Summary:
-    - schema perangkat ajar mengenal sumber nilai sistem `SYSTEM_WEEKLY_CLASS_HOURS` dan `SYSTEM_WEEKLY_TOTAL_HOURS`
-    - generator guru membaca jadwal pelajaran aktif secara scoped per guru+tahun ajaran, menghitung total JP mingguan dan JP/minggu per rombel dari assignment yang dipilih
-    - kolom alokasi JP pada preset distribusi waktu/matriks dan default ATP/Prota/Promes/Matriks memakai nilai sistem sebagai default yang tetap bisa diedit guru
-    - UI Wakakur menyediakan preset cepat `JP/Minggu per Rombel` dan `Total JP/Minggu`
+    - quick table/list dokumen guru sekarang memakai jalur hydrate yang sama dengan editor untuk nilai sistem
+    - konteks assignment entry di-resolve dari `contextScope.aggregatedClassName` atau `entry.className`, lalu disambungkan ke teaching load per konteks
+    - saat quick table disimpan, payload ikut memakai hasil hydrate agar nilai sistem yang sudah tampil dapat tersimpan ke dokumen
+    - perubahan tidak menambah endpoint, polling, atau query baru; hanya memakai data yang sudah dimuat halaman
 - Area/file disentuh:
-  - `backend/src/controllers/teachingResourceProgram.controller.ts`
-  - `frontend/src/pages/teacher/wakasek/curriculum/TeachingResourceProgramManagementPage.tsx`
-  - `frontend/src/services/teachingResourceProgram.service.ts`
+  - `frontend/src/pages/teacher/learning-resources/LearningResourceGenerator.tsx`
   - `docs/CODEX_CONTINUITY.md`
 - Verifikasi batch ini:
-  - `cd backend && npm run build`
   - `cd frontend && npm run build`
-  - `cd backend && npm run service:restart`
-  - `cd backend && npm run service:health`
   - `git diff --check`
   - `cd frontend && npm run deploy`
   - `curl -I https://siskgb2.id/teacher/wakasek/teaching-resource-programs`
   - `curl -I https://siskgb2.id/teacher/learning-resources/atp`
-  - `curl -I https://siskgb2.id/teacher/learning-resources/prota`
 - Publish/live status:
-  - Backend sudah restart via PM2 dan health `Backend:200`, `Backend API:200`
+  - Backend tidak berubah dan tidak direstart pada follow-up ini
   - Web sudah deploy live ke `/var/www/html/`
   - Route Wakakur `https://siskgb2.id/teacher/wakasek/teaching-resource-programs` merespons `HTTP/1.1 200 OK`
   - Route guru `https://siskgb2.id/teacher/learning-resources/atp` merespons `HTTP/1.1 200 OK`
-  - Route guru `https://siskgb2.id/teacher/learning-resources/prota` merespons `HTTP/1.1 200 OK`
   - Mobile source code tidak berubah; belum ada OTA baru
 - Remaining work:
   - Commit dokumentasi handoff, push ke `origin/main`, dan pastikan worktree clean.
