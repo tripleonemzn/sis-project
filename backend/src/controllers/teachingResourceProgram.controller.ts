@@ -1651,15 +1651,6 @@ function shouldBackfillProgramSchema(raw: unknown, defaults?: TeachingResourcePr
   const currentVersion = Number(input.version || 0);
   if (!Number.isFinite(currentVersion) || currentVersion < targetVersion) return true;
 
-  const sourceSheet = String(input.sourceSheet || '').trim().toLowerCase();
-  const targetSourceSheet = String(targetSchema?.sourceSheet || '').trim().toLowerCase();
-  if (targetSourceSheet && sourceSheet !== targetSourceSheet) return true;
-
-  const targetKeys = (targetSchema?.sections || [])
-    .map((section) => String(section?.key || '').trim().toLowerCase())
-    .filter(Boolean);
-  if (targetKeys.some((key) => !keys.includes(key))) return true;
-
   return false;
 }
 
