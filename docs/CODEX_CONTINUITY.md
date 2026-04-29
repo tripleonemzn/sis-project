@@ -5,28 +5,27 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-04-29 09:18 WIB
-- Current status: Batch 2 konsumsi integrasi antar-dokumen di sisi guru sudah selesai dan siap/live setelah deploy. Quick table guru kini membaca schema terbaru dari Wakakur, menampilkan dropdown referensi langsung untuk kolom `DOCUMENT_REFERENCE`, dan mengisi kolom snapshot otomatis dari pilihan referensi.
+- Last updated: 2026-04-29 09:25 WIB
+- Current status: Batch 30 perapihan UX integrasi referensi di sisi guru sudah selesai dan sudah live. Dropdown referensi antar-dokumen kini punya pencarian lokal per sel pada quick table dan editor lengkap, pilihan tersimpan tetap terlihat saat filter aktif, dan pesan kosong lebih jelas tanpa menambah request/backend load.
 - Objective/task aktif:
   - Menyelesaikan perapihan UX role guru pada halaman dokumen perangkat ajar agar lebih fleksibel saat menulis judul, lebih aman saat print, dan lebih operasional saat mengedit isi tabel.
 - Batch terakhir selesai:
-  - `Batch 29 - Aktifkan dropdown referensi di quick table guru (web)`
+  - `Batch 30 - Rapikan pencarian dropdown referensi perangkat ajar guru (web)`
 - Progress batch ini:
   - `100%`
 - Progress roadmap perangkat ajar dinamis:
   - `100%` untuk rumusan arsitektur generik
   - `100%` untuk implementasi teknis scope aktif engine generik
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
-  - `65%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
+  - `72%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
-  - Commit: `pending commit`
-  - Title: `pending commit`
+  - Commit: `03a9be3`
+  - Title: `feat(teacher): improve learning resource reference search`
   - Summary:
-    - dokumen existing kini merge dengan schema terbaru dari Wakakur, sehingga perubahan integrasi kolom bisa muncul tanpa membuat ulang dokumen
-    - quick table guru mengaktifkan query referensi saat tabel cepat terbuka
-    - kolom `DOCUMENT_REFERENCE` di quick table kini tampil sebagai dropdown dan bisa langsung dipilih guru
-    - kolom `DOCUMENT_SNAPSHOT` diperlakukan sebagai readonly/system-filled, lalu otomatis terisi dari snapshot baris sumber setelah referensi dipilih
-    - payload simpan tabel cepat menyimpan `referenceSelections` terbaru agar pilihan referensi tetap tersimpan
+    - dropdown referensi `DOCUMENT_REFERENCE` di quick table guru dan editor lengkap kini punya kotak pencarian lokal saat opsi mulai banyak
+    - pencarian memfilter label, value, judul dokumen sumber, dan field sumber tanpa request tambahan
+    - pilihan referensi yang sudah tersimpan tetap ditampilkan walaupun tidak cocok dengan filter aktif
+    - state pencarian dibersihkan saat editor/quick edit ditutup agar tidak terbawa ke dokumen lain
 - Area/file disentuh:
   - `frontend/src/pages/teacher/learning-resources/LearningResourceGenerator.tsx`
   - `docs/CODEX_CONTINUITY.md`
@@ -35,16 +34,16 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `git diff --check`
   - `cd frontend && npm run deploy`
   - `curl -I https://siskgb2.id/teacher/learning-resources/cp`
-  - `curl -I https://siskgb2.id/teacher/wakasek/teaching-resource-programs`
+  - `curl -I https://siskgb2.id/teacher/learning-resources/atp`
 - Publish/live status:
   - Web sudah deploy live ke `/var/www/html/` lewat `npm run deploy`
   - Web route `https://siskgb2.id/teacher/learning-resources/atp` merespons `HTTP/1.1 200 OK`
   - Web route `https://siskgb2.id/teacher/learning-resources/cp` merespons `HTTP/1.1 200 OK`
   - Mobile source code tidak berubah pada batch ini; belum ada OTA baru
 - Remaining work:
-  - Lanjut QA user pada ATP. Jika data CP besar, batch berikutnya perlu endpoint referensi khusus/searchable dropdown agar tidak mengambil terlalu banyak entry.
+  - Lanjut QA user pada ATP dan menu perangkat ajar lanjutan. Jika data CP/ATP membesar, batch berikutnya perlu endpoint referensi khusus/searchable server-side agar limit 100 per program sumber tidak menjadi batas operasional.
 - Residual risk:
-  - Reference entries saat ini masih memakai endpoint entry existing dengan limit 100 per program sumber; aman untuk scope kecil, tetapi perlu endpoint khusus jika volume dokumen sumber membesar.
+  - Reference entries saat ini masih memakai endpoint entry existing dengan limit 100 per program sumber; aman untuk scope kecil dan tidak menambah beban karena filter batch ini client-side, tetapi perlu endpoint khusus jika volume dokumen sumber membesar.
 
 ## Status Saat Ini
 
