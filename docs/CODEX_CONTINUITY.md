@@ -5,12 +5,12 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-04-29 14:20 WIB
-- Current status: Bug quick table guru pada perangkat ajar sudah diperbaiki dan sudah live. Kolom yang memakai sumber nilai sistem seperti `JP/Minggu per Rombel` kini ikut di-hydrate pada tabel cepat/list dokumen guru, bukan hanya pada editor lengkap, sehingga ATP yang sudah dikonfigurasi Wakakur bisa menampilkan nilai JP dari jadwal mengajar tanpa input manual ulang.
+- Last updated: 2026-04-29 14:56 WIB
+- Current status: Bug opsi referensi multiline CP -> ATP sudah diperbaiki dan sudah live. Cell sumber seperti `Tujuan Pembelajaran`, `Konten/Materi`, dan `Dimensi Profil` yang berisi beberapa subbaris kini diproyeksikan menjadi opsi referensi per subbaris, bukan satu opsi besar yang selalu terlihat sebagai baris pertama (`1.1`). Snapshot referensi juga mengikuti index subbaris yang sama agar pilihan `1.2`, `1.3`, dst. membawa materi/dimensi yang sejajar.
 - Objective/task aktif:
   - Menjaga perangkat ajar dinamis tetap terintegrasi lintas menu, khususnya alokasi JP dari beban mengajar menuju ATP/Prota/Promes/Matriks.
 - Batch terakhir selesai:
-  - `Follow-up - Hydrate alokasi JP pada quick table guru (web frontend)`
+  - `Follow-up - Opsi referensi multiline per subbaris (web/backend)`
 - Progress batch ini:
   - `100%`
 - Progress roadmap perangkat ajar dinamis:
@@ -19,32 +19,36 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
-  - Commit: `a42fc07`
-  - Title: `fix(curriculum): hydrate quick table allocation hours`
+  - Commit: pending
+  - Title: `fix(curriculum): split multiline reference options`
   - Summary:
-    - quick table/list dokumen guru sekarang memakai jalur hydrate yang sama dengan editor untuk nilai sistem
-    - konteks assignment entry di-resolve dari `contextScope.aggregatedClassName` atau `entry.className`, lalu disambungkan ke teaching load per konteks
-    - saat quick table disimpan, payload ikut memakai hasil hydrate agar nilai sistem yang sudah tampil dapat tersimpan ke dokumen
-    - perubahan tidak menambah endpoint, polling, atau query baru; hanya memakai data yang sudah dimuat halaman
+    - backend projection referensi sekarang memecah nilai multiline menjadi opsi per baris dengan snapshot per index
+    - fallback frontend untuk opsi referensi dari rows lokal mengikuti perilaku yang sama
+    - data entry ATP existing sudah benar menyimpan TP multiline `1.1` sampai `1.4`; bug yang terlihat adalah opsi dropdown referensi yang sebelumnya hanya punya 1 opsi multiline
+    - perubahan tetap scoped ke endpoint referensi perangkat ajar dan renderer guru, tanpa polling/query baru
 - Area/file disentuh:
+  - `backend/src/controllers/teachingResourceProgram.controller.ts`
   - `frontend/src/pages/teacher/learning-resources/LearningResourceGenerator.tsx`
   - `docs/CODEX_CONTINUITY.md`
 - Verifikasi batch ini:
+  - `cd backend && npm run build`
   - `cd frontend && npm run build`
   - `git diff --check`
+  - `cd backend && npm run service:restart`
+  - `cd backend && npm run service:health`
   - `cd frontend && npm run deploy`
   - `curl -I https://siskgb2.id/teacher/wakasek/teaching-resource-programs`
   - `curl -I https://siskgb2.id/teacher/learning-resources/atp`
 - Publish/live status:
-  - Backend tidak berubah dan tidak direstart pada follow-up ini
+  - Backend sudah restart via PM2 dan health `Backend:200`, `Backend API:200`
   - Web sudah deploy live ke `/var/www/html/`
   - Route Wakakur `https://siskgb2.id/teacher/wakasek/teaching-resource-programs` merespons `HTTP/1.1 200 OK`
   - Route guru `https://siskgb2.id/teacher/learning-resources/atp` merespons `HTTP/1.1 200 OK`
   - Mobile source code tidak berubah; belum ada OTA baru
 - Remaining work:
-  - Commit dokumentasi handoff, push ke `origin/main`, dan pastikan worktree clean.
+  - Commit perubahan backend/frontend + dokumentasi, push ke `origin/main`, dan pastikan worktree clean.
 - Residual risk:
-  - Program custom yang sudah dibuat sebelum perubahan ini tidak diubah otomatis agar konfigurasi Wakakur tidak ditimpa. Jika ingin kolom `Alokasi JP` existing memakai sumber jadwal, edit program di Wakakur lalu pilih sumber nilai `JP/Minggu per Rombel` atau gunakan preset cepatnya.
+  - Browser yang masih memegang cache/query lama mungkin perlu reload halaman ATP agar opsi referensi baru terbaca.
 
 ## Status Saat Ini
 

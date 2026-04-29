@@ -729,6 +729,19 @@ const buildReferenceSnapshot = (
   return snapshot;
 };
 
+const buildReferenceSnapshotForLine = (
+  columns: Array<Partial<EntrySectionColumnForm>>,
+  row: Record<string, string>,
+  lineIndex: number,
+): Record<string, string> => {
+  const projectedRow = Object.entries(row).reduce<Record<string, string>>((acc, [key, rawValue]) => {
+    const lines = splitCellLines(rawValue);
+    acc[key] = lines.length > 1 ? String(lines[lineIndex] || '').trim() : String(rawValue || '').trim();
+    return acc;
+  }, {});
+  return buildReferenceSnapshot(columns, projectedRow);
+};
+
 const resolveEntryContextLabel = (
   entry: TeachingResourceEntry,
   assignmentLabelMap: Map<string, string>,
@@ -1885,19 +1898,42 @@ export const LearningResourceGenerator = ({
           columns.forEach((column) => {
             const columnCandidates = extractReferenceCandidates(column);
             if (!columnCandidates.some((candidate) => candidates.includes(candidate))) return;
-            const value = String(row[String(column.key || '').trim()] || '').trim();
-            if (!value) return;
-            const label = entry.title && entry.title.trim() && entry.title.trim() !== value ? `${value} - ${entry.title}` : value;
-            options.push({
-              selectValue: `${entry.id}::${String(column.key || '').trim()}::${value}`,
-              value,
-              label,
-              sourceProgramCode: normalizeTeachingResourceProgramCode(entry.programCode),
-              sourceEntryId: Number(entry.id),
-              sourceEntryTitle: String(entry.title || '').trim() || undefined,
-              sourceFieldKey: String(column.key || '').trim() || undefined,
-              sourceFieldIdentity: String(column.fieldIdentity || '').trim() || undefined,
-              snapshot,
+            const columnKey = String(column.key || '').trim();
+            const rawValue = String(row[columnKey] || '').trim();
+            if (!rawValue) return;
+            const valueLines = splitCellLines(rawValue)
+              .map((line) => line.trim())
+              .filter(Boolean);
+            const lineOptions =
+              valueLines.length > 1
+                ? valueLines.map((lineValue, lineIndex) => ({
+                    value: lineValue,
+                    selectValue: `${entry.id}::${columnKey}::${lineIndex + 1}::${lineValue}`,
+                    snapshot: buildReferenceSnapshotForLine(columns, row, lineIndex),
+                  }))
+                : [
+                    {
+                      value: rawValue,
+                      selectValue: `${entry.id}::${columnKey}::${rawValue}`,
+                      snapshot,
+                    },
+                  ];
+            lineOptions.forEach((lineOption) => {
+              const label =
+                entry.title && entry.title.trim() && entry.title.trim() !== lineOption.value
+                  ? `${lineOption.value} - ${entry.title}`
+                  : lineOption.value;
+              options.push({
+                selectValue: lineOption.selectValue,
+                value: lineOption.value,
+                label,
+                sourceProgramCode: normalizeTeachingResourceProgramCode(entry.programCode),
+                sourceEntryId: Number(entry.id),
+                sourceEntryTitle: String(entry.title || '').trim() || undefined,
+                sourceFieldKey: columnKey || undefined,
+                sourceFieldIdentity: String(column.fieldIdentity || '').trim() || undefined,
+                snapshot: lineOption.snapshot,
+              });
             });
           });
           if (columns.length > 0) return;

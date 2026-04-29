@@ -1087,6 +1087,26 @@ function buildReferenceSnapshotFromRow(
   return snapshot;
 }
 
+function splitReferenceCellLines(raw: unknown): string[] {
+  const lines = String(raw ?? '')
+    .replace(/\r\n/g, '\n')
+    .split('\n');
+  return lines.length > 0 ? lines : [''];
+}
+
+function buildReferenceSnapshotFromRowLine(
+  columns: Array<Partial<TeachingResourceColumnSchema>>,
+  row: Record<string, string>,
+  lineIndex: number,
+): Record<string, string> {
+  const projectedRow = Object.entries(row).reduce<Record<string, string>>((acc, [key, rawValue]) => {
+    const lines = splitReferenceCellLines(rawValue);
+    acc[key] = lines.length > 1 ? String(lines[lineIndex] || '').trim() : String(rawValue || '').trim();
+    return acc;
+  }, {});
+  return buildReferenceSnapshotFromRow(columns, projectedRow);
+}
+
 function parseReferenceProjectionRequests(raw: unknown): TeachingResourceReferenceProjectionRequest[] {
   const source = String(raw || '').trim();
   if (!source) return [];
@@ -1857,24 +1877,45 @@ function buildProjectedReferenceOptions(
         if (!columnKey) return;
         const columnCandidates = extractReferenceCandidatesFromColumn(column);
         if (columnCandidates.length === 0) return;
-        const value = String(row[columnKey] || '').trim();
-        if (!value) return;
-        const label =
-          entry.title && entry.title.trim() && entry.title.trim() !== value ? `${value} - ${entry.title}` : value;
+        const rawValue = String(row[columnKey] || '').trim();
+        if (!rawValue) return;
+        const valueLines = splitReferenceCellLines(rawValue)
+          .map((line) => line.trim())
+          .filter(Boolean);
+        const lineOptions =
+          valueLines.length > 1
+            ? valueLines.map((value, lineIndex) => ({
+                value,
+                snapshot: buildReferenceSnapshotFromRowLine(section.columns, row, lineIndex),
+                selectValue: `${entry.id}::${columnKey}::${lineIndex + 1}::${value}`,
+              }))
+            : [
+                {
+                  value: rawValue,
+                  snapshot,
+                  selectValue: `${entry.id}::${columnKey}::${rawValue}`,
+                },
+              ];
 
         relevantRequests.forEach((request) => {
           if (!columnCandidates.some((candidate) => request.candidates.includes(candidate))) return;
-          options.push({
-            requestKey: request.requestKey,
-            selectValue: `${entry.id}::${columnKey}::${value}`,
-            value,
-            label,
-            sourceProgramCode,
-            sourceEntryId: Number(entry.id),
-            sourceEntryTitle: String(entry.title || '').trim() || undefined,
-            sourceFieldKey: columnKey,
-            sourceFieldIdentity: String(column.fieldIdentity || '').trim() || undefined,
-            snapshot,
+          lineOptions.forEach((lineOption) => {
+            const label =
+              entry.title && entry.title.trim() && entry.title.trim() !== lineOption.value
+                ? `${lineOption.value} - ${entry.title}`
+                : lineOption.value;
+            options.push({
+              requestKey: request.requestKey,
+              selectValue: lineOption.selectValue,
+              value: lineOption.value,
+              label,
+              sourceProgramCode,
+              sourceEntryId: Number(entry.id),
+              sourceEntryTitle: String(entry.title || '').trim() || undefined,
+              sourceFieldKey: columnKey,
+              sourceFieldIdentity: String(column.fieldIdentity || '').trim() || undefined,
+              snapshot: lineOption.snapshot,
+            });
           });
         });
       });
