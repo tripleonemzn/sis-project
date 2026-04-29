@@ -5,8 +5,8 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-04-29 21:03 WIB
-- Current status: Follow-up tampilan surat PKL sudah selesai dan live. Page setup surat PKL sekarang memakai margin atas `1cm` seperti BA agar kop surat tidak menempel ke tepi atas kertas.
+- Last updated: 2026-04-29 21:08 WIB
+- Current status: Follow-up lebar kop surat PKL sudah selesai dan live. Kop PKL sekarang menghapus margin kiri-kanan internal `40px` pada area kop dan garis bawah, sehingga lebar kop mengikuti area cetak seperti kop BA.
 - Objective/task aktif:
   - Menjaga fitur operasional lintas web/mobile tetap user-friendly dan aman untuk produksi.
 - Batch terakhir selesai:
@@ -20,9 +20,10 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
   - Commit: `pending`
-  - Title: `fix(internship): align pkl letter top margin`
+  - Title: `fix(internship): align pkl letter header width`
   - Summary:
-    - generator HTML surat PKL mengubah `@page margin` dari `0` menjadi `1cm`
+    - generator HTML surat PKL menyamakan margin wrapper kop dengan pola BA
+    - garis bawah kop surat PKL kini melebar mengikuti area cetak, bukan menyempit dengan margin internal
     - perubahan khusus layout cetak, tanpa perubahan API/query/data flow
 - Area/file disentuh:
   - `backend/src/controllers/internship.controller.ts`

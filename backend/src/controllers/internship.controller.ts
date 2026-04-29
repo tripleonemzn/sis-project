@@ -720,7 +720,7 @@ const buildStandardLetterHeaderHtml = (header: StandardSchoolDocumentHeaderSnaps
     .join('');
 
   return `
-      <div style="display: flex; align-items: center; justify-content: space-between; padding: 0 0 5px 0; margin-bottom: 10px; margin-left: 40px; margin-right: 40px;">
+      <div style="display: flex; align-items: center; justify-content: space-between; padding: 0 0 5px 0; margin: 0 0 4px 0;">
           <div style="width: 95px; display: flex; justify-content: center; align-items: center;">
             <img src="${escapeLetterHtml(header.foundationLogoPath)}" alt="Logo Yayasan" style="width: 88px; height: auto; object-fit: contain;" />
           </div>
@@ -737,8 +737,8 @@ const buildStandardLetterHeaderHtml = (header: StandardSchoolDocumentHeaderSnaps
             <img src="${escapeLetterHtml(header.schoolLogoPath)}" alt="Logo Sekolah" style="width: 88px; height: auto; object-fit: contain;" />
           </div>
         </div>
-        <div style="margin: 0 40px 2px; border-top: 1px solid #000;"></div>
-        <div style="margin: 0 40px 15px; border-top: 2px solid #000;"></div>
+        <div style="margin-top: 4px; border-top: 1px solid #000;"></div>
+        <div style="margin-top: 2px; margin-bottom: 15px; border-top: 2px solid #000;"></div>
   `;
 };
 
