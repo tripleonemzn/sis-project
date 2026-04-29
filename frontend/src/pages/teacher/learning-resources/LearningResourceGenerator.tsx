@@ -2965,6 +2965,7 @@ export const LearningResourceGenerator = ({
     }
 
     if (dataType === 'SEMESTER') {
+      const semesterOptions = Array.isArray(column.options) && column.options.length > 0 ? column.options : SEMESTER_OPTIONS;
       return (
         <select
           value={value}
@@ -2973,7 +2974,7 @@ export const LearningResourceGenerator = ({
           className={selectClassName}
         >
           <option value="">Pilih Semester</option>
-          {SEMESTER_OPTIONS.map((semester) => (
+          {semesterOptions.map((semester) => (
             <option key={semester} value={semester}>
               {semester}
             </option>
@@ -3478,6 +3479,7 @@ export const LearningResourceGenerator = ({
     }
 
     if (dataType === 'SEMESTER') {
+      const semesterOptions = Array.isArray(column.options) && column.options.length > 0 ? column.options : SEMESTER_OPTIONS;
       return (
         <select
           value={value}
@@ -3486,7 +3488,7 @@ export const LearningResourceGenerator = ({
           className={selectClassName}
         >
           <option value="">Pilih Semester</option>
-          {SEMESTER_OPTIONS.map((semester) => (
+          {semesterOptions.map((semester) => (
             <option key={semester} value={semester}>
               {semester}
             </option>

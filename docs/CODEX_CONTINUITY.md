@@ -5,12 +5,12 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-04-29 10:46 WIB
-- Current status: Batch 33 finalisasi integrasi berantai perangkat ajar sudah selesai dan sudah live. Endpoint referensi kini bisa mengembalikan option/snapshot yang sudah diproyeksikan per kebutuhan kolom, tetap scoped ke konteks mapel/tingkat/jurusan/semester, dan frontend memakai response ringan tanpa membawa `content` penuh dokumen sumber.
+- Last updated: 2026-04-29 11:24 WIB
+- Current status: Follow-up konfigurasi semester dokumen pada perangkat ajar web sudah selesai di source dan build frontend sudah lolos. Wakakur kini bisa membedakan `Semester Aktif` yang dikunci dari header dengan `Pilihan Dokumen` seperti `Ganjil, Genap` untuk dokumen tahunan/distribusi waktu.
 - Objective/task aktif:
   - Menyelesaikan perapihan UX role guru pada halaman dokumen perangkat ajar agar lebih fleksibel saat menulis judul, lebih aman saat print, dan lebih operasional saat mengedit isi tabel.
 - Batch terakhir selesai:
-  - `Batch 33 - Finalisasi projected reference options perangkat ajar (web/backend)`
+  - `Follow-up - Semester dokumen untuk distribusi waktu perangkat ajar (web)`
 - Progress batch ini:
   - `100%`
 - Progress roadmap perangkat ajar dinamis:
@@ -19,39 +19,35 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
-  - Commit: `d6a2d0e`
-  - Title: `feat(teacher): project learning resource reference options`
+  - Commit: `pending`
+  - Title: `feat(curriculum): support document semester options`
   - Summary:
-    - backend endpoint referensi menerima `referenceRequests` dari schema Wakakur dan memproyeksikan opsi/snapshot sesuai kandidat field yang dibutuhkan kolom tujuan
-    - backend tetap menerapkan scope tahun ajaran, user/teacher, program sumber, limit per program, dan filter konteks mapel/tingkat/jurusan/semester
-    - frontend mengirim `includeRows=false`, sehingga response normal tidak lagi membawa `content` penuh dokumen sumber
-    - frontend memakai `projectedOptionsByRequestKey` sebagai jalur utama dropdown referensi, dengan fallback lama hanya jika projection tidak tersedia
+    - editor Wakakur menambahkan `Cara Isi: Pilihan dokumen` untuk kolom yang opsinya ditentukan oleh konfigurasi, bukan oleh semester aktif operasional
+    - preset `Distribusi Waktu` sekarang membuat kolom `Semester` sebagai dropdown dokumen editable berisi `Ganjil, Genap`
+    - label tipe data `Semester Sistem` dirapikan menjadi `Semester` agar tidak memberi kesan selalu terkunci ke semester aktif
+    - editor guru memakai `column.options` untuk kolom semester bila tersedia, sehingga opsi tetap berasal dari schema Wakakur
 - Area/file disentuh:
-  - `backend/src/controllers/teachingResourceProgram.controller.ts`
   - `frontend/src/pages/teacher/learning-resources/LearningResourceGenerator.tsx`
-  - `frontend/src/services/teachingResourceProgram.service.ts`
+  - `frontend/src/pages/teacher/wakasek/curriculum/TeachingResourceProgramManagementPage.tsx`
   - `docs/CODEX_CONTINUITY.md`
 - Verifikasi batch ini:
-  - `cd backend && npm run build`
-  - `cd backend && npm run service:restart`
-  - `cd backend && npm run service:health`
   - `cd frontend && npm run build`
   - `git diff --check`
   - `cd frontend && npm run deploy`
+  - `curl -I https://siskgb2.id/teacher/wakasek/teaching-resource-programs`
   - `curl -I https://siskgb2.id/teacher/learning-resources/cp`
   - `curl -I https://siskgb2.id/teacher/learning-resources/atp`
-  - `curl http://127.0.0.1:3000/api/teaching-resources/entries/references?programCodes=CP&includeRows=false` tanpa token merespons `401`, menandakan route tetap protected
 - Publish/live status:
-  - Backend sudah restart via `pm2 startOrReload ecosystem.config.cjs --only sis-backend --update-env`
-  - Backend health `Backend:200` dan `Backend API:200`
+  - Backend tidak berubah; tidak perlu restart service
   - Web sudah deploy live ke `/var/www/html/` lewat `npm run deploy`
-  - Web route `https://siskgb2.id/teacher/learning-resources/atp` merespons `HTTP/1.1 200 OK`
-  - Web route `https://siskgb2.id/teacher/learning-resources/cp` merespons `HTTP/1.1 200 OK`
-  - Mobile source code tidak berubah pada batch ini; belum ada OTA baru
+  - Route Wakakur `https://siskgb2.id/teacher/wakasek/teaching-resource-programs` merespons `HTTP/1.1 200 OK`
+  - Route guru `https://siskgb2.id/teacher/learning-resources/cp` merespons `HTTP/1.1 200 OK`
+  - Route guru `https://siskgb2.id/teacher/learning-resources/atp` merespons `HTTP/1.1 200 OK`
+  - Mobile source code tidak berubah; belum ada OTA baru
 - Remaining work:
-  - Scope roadmap integrasi berantai CP -> ATP -> menu berikutnya sudah 100% untuk web pada engine perangkat ajar saat ini. Sisa berikutnya bersifat QA/user feedback, bukan blocker roadmap.
+  - Commit, push, dan pastikan worktree clean.
 - Residual risk:
-  - Projection options sudah menutup risiko payload `content` penuh untuk jalur normal. Jika nanti volume data ekstrem melampaui 250 dokumen per program per guru, peningkatan lanjutan yang mungkin dibutuhkan adalah paging virtual dropdown, tetapi bukan blocker untuk scope operasional sekarang.
+  - Perubahan frontend-only, tidak menambah endpoint, polling, query, atau runtime backend baru. Existing program yang sudah telanjur memakai `Semester Aktif` tetap perlu diedit Wakakur ke `Pilihan Dokumen` bila memang dimaksudkan sebagai dokumen tahunan.
 
 ## Status Saat Ini
 

@@ -56,7 +56,8 @@ type ColumnOperationalRole =
   | 'REFERENCE_SOURCE'
   | 'REFERENCE_PICKER'
   | 'SNAPSHOT_TARGET'
-  | 'SYSTEM_FIELD';
+  | 'SYSTEM_FIELD'
+  | 'STATIC_OPTION_FIELD';
 type ColumnQuickPreset =
   | 'REFERENCE_SOURCE_CORE'
   | 'REFERENCE_PICKER_CONTEXTUAL'
@@ -138,7 +139,7 @@ const COLUMN_DATA_TYPE_OPTIONS: Array<{ value: TeachingResourceColumnDataType; l
   { value: 'NUMBER', label: 'Angka' },
   { value: 'BOOLEAN', label: 'Ya / Tidak' },
   { value: 'SELECT', label: 'Pilihan' },
-  { value: 'SEMESTER', label: 'Semester Sistem' },
+  { value: 'SEMESTER', label: 'Semester' },
   { value: 'MONTH', label: 'Bulan' },
   { value: 'WEEK', label: 'Minggu Ke-' },
   { value: 'WEEK_GRID', label: 'Grid Minggu' },
@@ -196,6 +197,7 @@ const FIELD_TEACHER_EDIT_MODE_OPTIONS: Array<{ value: TeachingResourceTeacherEdi
   { value: 'TEACHER_EDITABLE', label: 'Guru Boleh Edit' },
   { value: 'TEACHER_APPEND_ONLY', label: 'Guru Tambah Saja' },
 ];
+const SEMESTER_DOCUMENT_OPTIONS = ['Ganjil', 'Genap'];
 const COLUMN_OPERATIONAL_ROLE_OPTIONS: Array<{
   value: ColumnOperationalRole;
   label: string;
@@ -225,6 +227,11 @@ const COLUMN_OPERATIONAL_ROLE_OPTIONS: Array<{
     value: 'SYSTEM_FIELD',
     label: 'Nilai Sistem',
     description: 'Kolom ini diisi oleh sistem aktif seperti mapel, semester, atau tahun ajaran.',
+  },
+  {
+    value: 'STATIC_OPTION_FIELD',
+    label: 'Pilihan Dokumen',
+    description: 'Guru memilih dari opsi yang ditentukan Wakakur, cocok untuk dokumen tahunan dua semester.',
   },
 ];
 const COLUMN_QUICK_PRESET_OPTIONS: Array<{
@@ -375,6 +382,7 @@ function inferFieldSyncMode(column: Partial<TeachingResourceProgramColumnSchema>
 function inferColumnOperationalRole(column: Partial<TeachingResourceProgramColumnSchema>): ColumnOperationalRole {
   const sourceType = inferFieldSourceType(column);
   const normalizedValueSource = String(column.valueSource || '').trim().toUpperCase();
+  if (sourceType === 'STATIC_OPTION') return 'STATIC_OPTION_FIELD';
   if (sourceType === 'DOCUMENT_REFERENCE') return 'REFERENCE_PICKER';
   if (sourceType === 'DOCUMENT_SNAPSHOT' || normalizedValueSource === 'BOUND') return 'SNAPSHOT_TARGET';
   if (sourceType === 'SYSTEM' || (!!normalizedValueSource && normalizedValueSource !== 'MANUAL' && normalizedValueSource !== 'BOUND')) {
@@ -508,6 +516,41 @@ function applyColumnOperationalRole(
           syncMode: 'SYSTEM_DYNAMIC',
         },
       };
+    case 'STATIC_OPTION_FIELD': {
+      const isSemesterColumn =
+        String(column.dataType || '').trim().toUpperCase() === 'SEMESTER' ||
+        normalizeSchemaKey(column.fieldIdentity || column.semanticKey || column.key || column.label, '').includes('semester');
+      return {
+        ...column,
+        dataType: isSemesterColumn ? 'SEMESTER' : column.dataType || 'SELECT',
+        sourceType: 'STATIC_OPTION',
+        valueSource: 'MANUAL',
+        readOnly: false,
+        exposeAsReference: column.exposeAsReference ?? true,
+        teacherEditMode: 'TEACHER_EDITABLE',
+        options:
+          Array.isArray(column.options) && column.options.length > 0
+            ? column.options
+            : isSemesterColumn
+              ? SEMESTER_DOCUMENT_OPTIONS
+              : column.options,
+        binding: {
+          ...baseBinding,
+          systemKey: undefined,
+          sourceProgramCode: undefined,
+          sourceFieldIdentity: undefined,
+          sourceDocumentFieldIdentity: undefined,
+          filterByContext: false,
+          matchBySubject: false,
+          matchByClassLevel: false,
+          matchByMajor: false,
+          matchByActiveSemester: false,
+          selectionMode: 'AUTO',
+          syncMode: undefined,
+          allowManualOverride: true,
+        },
+      };
+    }
     case 'MANUAL_FIELD':
     default:
       return {
@@ -1300,7 +1343,16 @@ function createSchemaPreset(
           editorType: 'TABLE',
           sectionTitleEditable: false,
           columns: [
-            { key: 'semester', label: 'Semester', dataType: 'SEMESTER', valueSource: 'SYSTEM_SEMESTER' },
+            {
+              key: 'semester',
+              label: 'Semester',
+              dataType: 'SEMESTER',
+              valueSource: 'MANUAL',
+              sourceType: 'STATIC_OPTION',
+              options: SEMESTER_DOCUMENT_OPTIONS,
+              exposeAsReference: true,
+              teacherEditMode: 'TEACHER_EDITABLE',
+            },
             { key: 'bulan', label: 'Bulan', dataType: 'MONTH', semanticKey: 'bulan' },
             { key: 'minggu_ke', label: 'Minggu Ke-', dataType: 'WEEK', semanticKey: 'minggu_ke' },
             { key: 'tujuan_pembelajaran', label: 'Tujuan Pembelajaran', semanticKey: 'tujuan_pembelajaran', multiline: true },
@@ -2726,7 +2778,7 @@ export default function TeachingResourceProgramManagementPage() {
 	                                            className="w-full rounded-lg border border-gray-200 px-3 py-1.5 text-xs focus:border-blue-500 focus:outline-none"
 	                                          >
 	                                            {COLUMN_DATA_TYPE_OPTIONS.filter((option) =>
-	                                              ['TEXT', 'TEXTAREA', 'NUMBER', 'BOOLEAN', 'SELECT', 'MONTH', 'WEEK', 'WEEK_GRID'].includes(
+	                                              ['TEXT', 'TEXTAREA', 'NUMBER', 'BOOLEAN', 'SELECT', 'SEMESTER', 'MONTH', 'WEEK', 'WEEK_GRID'].includes(
 	                                                option.value,
 	                                              ),
 	                                            ).map((option) => (
@@ -2765,6 +2817,7 @@ export default function TeachingResourceProgramManagementPage() {
 	                                          <option value="REFERENCE_PICKER">Dropdown dari dokumen lain</option>
 	                                          <option value="SNAPSHOT_TARGET">Otomatis dari pilihan referensi</option>
 	                                          <option value="SYSTEM_FIELD">Nilai sistem</option>
+	                                          <option value="STATIC_OPTION_FIELD">Pilihan dokumen</option>
 	                                        </select>
 	                                        <p className="mt-1 text-[11px] leading-5 text-gray-500">
 	                                          {needsSource
@@ -2794,6 +2847,29 @@ export default function TeachingResourceProgramManagementPage() {
 	                                              ),
 	                                            )}
 	                                          </select>
+	                                        ) : operationalRole === 'STATIC_OPTION_FIELD' ? (
+	                                          <div className="space-y-1">
+	                                            <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs leading-5 text-gray-600">
+	                                              Pilihan diatur di kolom opsi, bukan mengikuti semester aktif.
+	                                            </div>
+	                                            <input
+	                                              type="text"
+	                                              value={(column.options || []).join(', ')}
+	                                              onChange={(event) =>
+	                                                handleColumnChange(
+	                                                  sectionIndex,
+	                                                  columnIndex,
+	                                                  'options',
+	                                                  event.target.value
+	                                                    .split(',')
+	                                                    .map((item) => item.trim())
+	                                                    .filter(Boolean),
+	                                                )
+	                                              }
+	                                              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+	                                              placeholder="Contoh: Ganjil, Genap"
+	                                            />
+	                                          </div>
 	                                        ) : (
 	                                          <select
 	                                            value={normalizedSourceProgramCode}
@@ -2825,6 +2901,10 @@ export default function TeachingResourceProgramManagementPage() {
 	                                        {operationalRole === 'SYSTEM_FIELD' ? (
 	                                          <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs leading-5 text-gray-500">
 	                                            Nilai diisi otomatis oleh sistem, bukan dari dokumen lain.
+	                                          </div>
+	                                        ) : operationalRole === 'STATIC_OPTION_FIELD' ? (
+	                                          <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs leading-5 text-gray-500">
+	                                            Guru memilih opsi ini saat mengisi tabel dokumen.
 	                                          </div>
 	                                        ) : (
 	                                          <select
