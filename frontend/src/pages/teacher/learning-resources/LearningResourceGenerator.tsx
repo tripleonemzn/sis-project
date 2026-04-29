@@ -1334,6 +1334,7 @@ export const LearningResourceGenerator = ({
   const [sections, setSections] = useState<EntrySectionForm[]>(() => [createSection()]);
   const [quickEditEntryId, setQuickEditEntryId] = useState<number | null>(null);
   const [quickEditSections, setQuickEditSections] = useState<EntrySectionForm[]>([]);
+  const quickEditSectionsRef = useRef<EntrySectionForm[]>([]);
   const [quickEditActiveSectionId, setQuickEditActiveSectionId] = useState('');
   const printIframeRef = useRef<HTMLIFrameElement | null>(null);
   const programCode = useMemo(() => normalizeProgramCode(type), [type]);
@@ -2124,7 +2125,9 @@ export const LearningResourceGenerator = ({
   const isSaving = createMutation.isPending || updateMutation.isPending;
   const quickEditMutation = useMutation({
     mutationFn: async (entry: TeachingResourceEntry) => {
-      const normalizedSections = buildPayloadSections(quickEditSections);
+      const sourceSections = quickEditSectionsRef.current.length > 0 ? quickEditSectionsRef.current : quickEditSections;
+      const normalizedSections = buildPayloadSections(sourceSections);
+      const referencePayload = buildReferenceSelectionPayload(normalizeSectionsForEditor(sourceSections));
       return teachingResourceProgramService.updateEntry(entry.id, {
         title: String(entry.title || '').trim(),
         summary: String(entry.summary || '').trim() || undefined,
@@ -2137,10 +2140,18 @@ export const LearningResourceGenerator = ({
           titleHtml:
             sanitizeDocumentTitleHtml(entry.content?.titleHtml) || createDocumentTitleHtml(String(entry.title || '')),
           sections: normalizedSections,
-          references: Array.isArray(entry.content?.references) ? entry.content.references : undefined,
-          referenceSelections: Array.isArray(entry.content?.referenceSelections)
-            ? entry.content.referenceSelections
-            : undefined,
+          references:
+            referencePayload.references.length > 0
+              ? referencePayload.references
+              : Array.isArray(entry.content?.references)
+                ? entry.content.references
+                : undefined,
+          referenceSelections:
+            referencePayload.referenceSelections.length > 0
+              ? referencePayload.referenceSelections
+              : Array.isArray(entry.content?.referenceSelections)
+                ? entry.content.referenceSelections
+                : undefined,
           notes: String(entry.content?.notes || '').trim() || undefined,
           signaturePlaceDate: String(entry.content?.signaturePlaceDate || '').trim() || undefined,
           schemaVersion: Number(activeProgramMeta?.schema?.version || entry.content?.schemaVersion || 1),
@@ -2150,9 +2161,24 @@ export const LearningResourceGenerator = ({
         },
       });
     },
-    onSuccess: async () => {
+    onSuccess: async (response) => {
+      const updatedEntry = response.data;
+      queryClient.setQueryData(
+        ['teaching-resource-entries', programCode, academicYearId, page, statusFilter, search, viewMode],
+        (current: typeof entryQuery.data | undefined) => {
+          if (!current?.data?.rows || !updatedEntry?.id) return current;
+          return {
+            ...current,
+            data: {
+              ...current.data,
+              rows: current.data.rows.map((row) => (Number(row.id) === Number(updatedEntry.id) ? updatedEntry : row)),
+            },
+          };
+        },
+      );
       toast.success('Perubahan tabel cepat berhasil disimpan.');
       setQuickEditEntryId(null);
+      quickEditSectionsRef.current = [];
       setQuickEditSections([]);
       setQuickEditActiveSectionId('');
       await invalidateEntries();
@@ -2262,7 +2288,11 @@ export const LearningResourceGenerator = ({
   };
 
   const setQuickEditSectionsWithDerived = (updater: (prev: EntrySectionForm[]) => EntrySectionForm[]) => {
-    setQuickEditSections((prev) => ensureDerivedSections(updater(prev)));
+    setQuickEditSections((prev) => {
+      const nextSections = ensureDerivedSections(updater(prev));
+      quickEditSectionsRef.current = nextSections;
+      return nextSections;
+    });
   };
 
   const addQuickEditSectionRow = (sectionId: string) => {
@@ -2296,6 +2326,7 @@ export const LearningResourceGenerator = ({
 
   const closeQuickEdit = () => {
     setQuickEditEntryId(null);
+    quickEditSectionsRef.current = [];
     setQuickEditSections([]);
     setQuickEditActiveSectionId('');
   };
@@ -2319,6 +2350,7 @@ export const LearningResourceGenerator = ({
     const parsedSections = ensureDerivedSections(parseEntrySections(editableEntry, buildDefaultSections(activeProgramMeta)));
     const tableSections = parsedSections.filter((section) => isTeacherEditableTableSection(section));
     setQuickEditEntryId(editableEntry.id);
+    quickEditSectionsRef.current = parsedSections;
     setQuickEditSections(parsedSections);
     setQuickEditActiveSectionId(tableSections[0]?.id || '');
   }, [activeProgramMeta, entryQuery.isLoading, isEditorOpen, isPageEditor, quickEditEntryId, rows, user?.id]);

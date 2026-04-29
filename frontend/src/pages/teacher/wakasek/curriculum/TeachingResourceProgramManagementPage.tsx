@@ -74,6 +74,11 @@ type SectionQuickPreset =
   | 'REFERENCE_PICKER_TABLE'
   | 'SIGNATURE_BLOCK'
   | 'NARRATIVE_NOTE';
+type ReferenceFieldOption = {
+  value: string;
+  label: string;
+  sectionLabel: string;
+};
 type DraftSchemaIssueSeverity = 'error' | 'warning';
 type DraftSchemaIssue = {
   severity: DraftSchemaIssueSeverity;
@@ -739,6 +744,41 @@ function getColumnBindingGuardLabels(binding: TeachingResourceFieldBinding | und
   if (binding.matchByActiveSemester) labels.push('semester');
   if (binding.allowManualOverride) labels.push('override manual');
   return labels;
+}
+
+function getProgramReferenceFieldOptions(program?: Pick<TeachingResourceProgram, 'schema'> | null): ReferenceFieldOption[] {
+  const options: ReferenceFieldOption[] = [];
+  const seen = new Set<string>();
+  const sections = Array.isArray(program?.schema?.sections) ? program.schema.sections : [];
+  sections.forEach((section) => {
+    if ((section.editorType || 'TABLE') !== 'TABLE') return;
+    (section.columns || []).forEach((column) => {
+      const value = normalizeSchemaKey(
+        column.fieldIdentity || column.semanticKey || column.bindingKey || column.key,
+        '',
+      );
+      if (!value || seen.has(value)) return;
+      seen.add(value);
+      options.push({
+        value,
+        label: column.label || column.key || value,
+        sectionLabel: section.label || 'Tabel',
+      });
+    });
+  });
+  return options;
+}
+
+function getReferenceSourceLabel(
+  rows: ProgramFormRow[],
+  sourceProgramCode: string,
+  sourceFieldIdentity: string,
+): string {
+  const normalizedSourceProgramCode = normalizeTeachingResourceProgramCode(sourceProgramCode);
+  if (!normalizedSourceProgramCode || !sourceFieldIdentity) return '';
+  const sourceRow = rows.find((row) => normalizeTeachingResourceProgramCode(row.code) === normalizedSourceProgramCode);
+  const fieldOption = getProgramReferenceFieldOptions(sourceRow).find((option) => option.value === sourceFieldIdentity);
+  return `${sourceRow?.label || normalizedSourceProgramCode} -> ${fieldOption?.label || sourceFieldIdentity}`;
 }
 
 function createColumnFromQuickPreset(
@@ -1871,6 +1911,106 @@ export default function TeachingResourceProgramManagementPage() {
     }));
   };
 
+  const handleColumnBindingPatch = (
+    sectionIndex: number,
+    columnIndex: number,
+    patch: Partial<TeachingResourceFieldBinding>,
+  ) => {
+    updateDraftSchema((schema) => ({
+      ...schema,
+      sections: schema.sections.map((section, index) =>
+        index === sectionIndex
+          ? {
+              ...section,
+              columns: (section.columns || []).map((column, currentColumnIndex) =>
+                currentColumnIndex === columnIndex
+                  ? {
+                      ...column,
+                      binding: {
+                        ...(column.binding || {}),
+                        ...patch,
+                      },
+                    }
+                  : column,
+              ),
+            }
+          : section,
+      ),
+    }));
+  };
+
+  const handleColumnReferenceModeChange = (
+    sectionIndex: number,
+    columnIndex: number,
+    role: ColumnOperationalRole,
+  ) => {
+    updateDraftSchema((schema) => ({
+      ...schema,
+      sections: schema.sections.map((section, index) =>
+        index === sectionIndex
+          ? {
+              ...section,
+              columns: (section.columns || []).map((column, currentColumnIndex) => {
+                if (currentColumnIndex !== columnIndex) return column;
+                const nextColumn = applyColumnOperationalRole(column, role);
+                if (role === 'SYSTEM_FIELD') {
+                  return {
+                    ...nextColumn,
+                    valueSource:
+                      nextColumn.valueSource && nextColumn.valueSource !== 'MANUAL' && nextColumn.valueSource !== 'BOUND'
+                        ? nextColumn.valueSource
+                        : 'SYSTEM_SUBJECT',
+                  };
+                }
+                if (role !== 'REFERENCE_PICKER' && role !== 'SNAPSHOT_TARGET') return nextColumn;
+                return {
+                  ...nextColumn,
+                  binding: buildContextualReferenceBinding(
+                    nextColumn.binding,
+                    nextColumn.binding?.sourceFieldIdentity || nextColumn.fieldIdentity || nextColumn.key,
+                  ),
+                };
+              }),
+            }
+          : section,
+      ),
+    }));
+  };
+
+  const handleColumnSourceProgramChange = (
+    sectionIndex: number,
+    columnIndex: number,
+    sourceProgramCode: string,
+  ) => {
+    const normalizedSourceProgramCode = normalizeTeachingResourceProgramCode(sourceProgramCode);
+    const sourceRow = rows.find((row) => normalizeTeachingResourceProgramCode(row.code) === normalizedSourceProgramCode);
+    const firstSourceField = getProgramReferenceFieldOptions(sourceRow)[0]?.value || '';
+    handleColumnBindingPatch(sectionIndex, columnIndex, {
+      sourceProgramCode: normalizedSourceProgramCode || undefined,
+      sourceFieldIdentity: firstSourceField || undefined,
+      sourceDocumentFieldIdentity: firstSourceField || undefined,
+      filterByContext: true,
+      matchBySubject: true,
+      matchByClassLevel: true,
+      matchByMajor: true,
+      matchByActiveSemester: true,
+      selectionMode: 'PICK_SINGLE',
+      syncMode: 'SNAPSHOT_ON_SELECT',
+    });
+  };
+
+  const handleColumnSourceFieldChange = (
+    sectionIndex: number,
+    columnIndex: number,
+    sourceFieldIdentity: string,
+  ) => {
+    const normalizedSourceFieldIdentity = normalizeSchemaKey(sourceFieldIdentity, '');
+    handleColumnBindingPatch(sectionIndex, columnIndex, {
+      sourceFieldIdentity: normalizedSourceFieldIdentity || undefined,
+      sourceDocumentFieldIdentity: normalizedSourceFieldIdentity || undefined,
+    });
+  };
+
   const handleApplyColumnOperationalRole = (
     sectionIndex: number,
     columnIndex: number,
@@ -2453,10 +2593,304 @@ export default function TeachingResourceProgramManagementPage() {
                       </div>
                     );
                   })}
-                </div>
+	                </div>
 
-                {showAdvancedEditor ? (
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+	                <div className="rounded-xl border border-gray-200 bg-white p-4">
+	                  <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+	                    <div>
+	                      <h3 className="text-sm font-semibold text-gray-900">Kolom & Integrasi Dokumen</h3>
+	                      <p className="mt-1 text-xs leading-5 text-gray-500">
+	                        Atur kolom yang diisi guru. Jika kolom perlu mengambil data dari dokumen sebelumnya, pilih sumber program dan sumber kolomnya di sini.
+	                      </p>
+	                    </div>
+	                    {createDraft.schema.sections.some(
+	                      (section) => (section.editorType || 'TABLE') === 'TABLE' && inferBlockType(section) === 'TABLE',
+	                    ) ? (
+	                      <button
+	                        type="button"
+	                        onClick={() => handleAddSection('TABLE')}
+	                        className="inline-flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100"
+	                      >
+	                        <Plus size={14} />
+	                        Tambah Tabel
+	                      </button>
+	                    ) : null}
+	                  </div>
+
+	                  <div className="space-y-4">
+	                    {createDraft.schema.sections
+	                      .map((section, sectionIndex) => ({ section, sectionIndex }))
+	                      .filter(({ section }) => (section.editorType || 'TABLE') === 'TABLE' && inferBlockType(section) === 'TABLE')
+	                      .map(({ section, sectionIndex }) => (
+	                        <div key={`ready-section-${section.key}-${sectionIndex}`} className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+	                          <div className="grid grid-cols-1 gap-3 md:grid-cols-[1fr_160px_auto] md:items-end">
+	                            <div>
+	                              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Nama Tabel</label>
+	                              <input
+	                                type="text"
+	                                value={section.label}
+	                                onChange={(event) => handleSectionChange(sectionIndex, 'label', event.target.value)}
+	                                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+	                                placeholder="Contoh: Analisis Capaian Kompetensi"
+	                              />
+	                            </div>
+	                            <div>
+	                              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Baris Awal</label>
+	                              <input
+	                                type="number"
+	                                min={1}
+	                                value={section.defaultRows || 1}
+	                                onChange={(event) =>
+	                                  handleSectionChange(sectionIndex, 'defaultRows', Math.max(1, Number(event.target.value || 1)))
+	                                }
+	                                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+	                              />
+	                            </div>
+	                            <label className="inline-flex min-h-[40px] items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700">
+	                              <input
+	                                type="checkbox"
+	                                checked={section.teacherRules?.allowAddRow ?? true}
+	                                onChange={(event) => handleSectionTeacherRuleChange(sectionIndex, 'allowAddRow', event.target.checked)}
+	                                className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+	                              />
+	                              Guru boleh tambah baris
+	                            </label>
+	                          </div>
+
+	                          <div className="mt-4 overflow-x-auto rounded-xl border border-gray-200 bg-white">
+	                            <table className="w-full min-w-[960px] text-left text-sm">
+	                              <thead className="bg-gray-50 text-xs uppercase tracking-wide text-gray-500">
+	                                <tr>
+	                                  <th className="px-3 py-2">Kolom Guru</th>
+	                                  <th className="px-3 py-2">Cara Isi</th>
+	                                  <th className="px-3 py-2">Sumber Dokumen</th>
+	                                  <th className="px-3 py-2">Sumber Kolom</th>
+	                                  <th className="px-3 py-2">Aksi</th>
+	                                </tr>
+	                              </thead>
+	                              <tbody>
+	                                {(section.columns || []).map((column, columnIndex) => {
+	                                  const operationalRole = inferColumnOperationalRole(column);
+	                                  const normalizedSourceProgramCode = normalizeTeachingResourceProgramCode(
+	                                    column.binding?.sourceProgramCode || '',
+	                                  );
+	                                  const sourceRow = rows.find(
+	                                    (row) => normalizeTeachingResourceProgramCode(row.code) === normalizedSourceProgramCode,
+	                                  );
+	                                  const sourceFieldOptions = getProgramReferenceFieldOptions(sourceRow);
+	                                  const selectedSourceField = normalizeSchemaKey(
+	                                    column.binding?.sourceFieldIdentity || column.binding?.sourceDocumentFieldIdentity || '',
+	                                    '',
+	                                  );
+	                                  const sourceLabel = getReferenceSourceLabel(
+	                                    rows,
+	                                    normalizedSourceProgramCode,
+	                                    selectedSourceField,
+	                                  );
+	                                  const needsSource = operationalRole === 'REFERENCE_PICKER' || operationalRole === 'SNAPSHOT_TARGET';
+	                                  return (
+	                                    <tr key={`ready-column-${section.key}-${column.key}-${columnIndex}`} className="border-t border-gray-100 align-top">
+	                                      <td className="px-3 py-3">
+	                                        <input
+	                                          type="text"
+	                                          value={column.label}
+	                                          onChange={(event) => handleColumnChange(sectionIndex, columnIndex, 'label', event.target.value)}
+	                                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+	                                          placeholder={`Kolom ${columnIndex + 1}`}
+	                                        />
+	                                        <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-2">
+	                                          <input
+	                                            type="text"
+	                                            value={column.fieldIdentity || ''}
+	                                            onChange={(event) =>
+	                                              handleColumnChange(
+	                                                sectionIndex,
+	                                                columnIndex,
+	                                                'fieldIdentity',
+	                                                normalizeSchemaKey(event.target.value, ''),
+	                                              )
+	                                            }
+	                                            className="w-full rounded-lg border border-gray-200 px-3 py-1.5 text-xs focus:border-blue-500 focus:outline-none"
+	                                            placeholder="identity kolom"
+	                                          />
+	                                          <select
+	                                            value={column.dataType || 'TEXT'}
+	                                            onChange={(event) =>
+	                                              handleColumnChange(
+	                                                sectionIndex,
+	                                                columnIndex,
+	                                                'dataType',
+	                                                event.target.value as TeachingResourceColumnDataType,
+	                                              )
+	                                            }
+	                                            className="w-full rounded-lg border border-gray-200 px-3 py-1.5 text-xs focus:border-blue-500 focus:outline-none"
+	                                          >
+	                                            {COLUMN_DATA_TYPE_OPTIONS.filter((option) =>
+	                                              ['TEXT', 'TEXTAREA', 'NUMBER', 'BOOLEAN', 'SELECT', 'MONTH', 'WEEK', 'WEEK_GRID'].includes(
+	                                                option.value,
+	                                              ),
+	                                            ).map((option) => (
+	                                              <option key={`ready-${section.key}-${column.key}-${option.value}`} value={option.value}>
+	                                                {option.label}
+	                                              </option>
+	                                            ))}
+	                                          </select>
+	                                        </div>
+	                                        <label className="mt-2 inline-flex items-center gap-2 text-xs text-gray-600">
+	                                          <input
+	                                            type="checkbox"
+	                                            checked={column.exposeAsReference ?? false}
+	                                            onChange={(event) =>
+	                                              handleColumnChange(sectionIndex, columnIndex, 'exposeAsReference', event.target.checked)
+	                                            }
+	                                            className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+	                                          />
+	                                          Boleh dipakai dokumen berikutnya
+	                                        </label>
+	                                      </td>
+	                                      <td className="px-3 py-3">
+	                                        <select
+	                                          value={operationalRole}
+	                                          onChange={(event) =>
+	                                            handleColumnReferenceModeChange(
+	                                              sectionIndex,
+	                                              columnIndex,
+	                                              event.target.value as ColumnOperationalRole,
+	                                            )
+	                                          }
+	                                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+	                                        >
+	                                          <option value="MANUAL_FIELD">Input manual</option>
+	                                          <option value="REFERENCE_SOURCE">Sumber untuk dokumen lain</option>
+	                                          <option value="REFERENCE_PICKER">Dropdown dari dokumen lain</option>
+	                                          <option value="SNAPSHOT_TARGET">Otomatis dari pilihan referensi</option>
+	                                          <option value="SYSTEM_FIELD">Nilai sistem</option>
+	                                        </select>
+	                                        <p className="mt-1 text-[11px] leading-5 text-gray-500">
+	                                          {needsSource
+	                                            ? sourceLabel || 'Pilih sumber dokumen dan kolom sumber.'
+	                                            : getColumnOperationalRoleDescription(operationalRole)}
+	                                        </p>
+	                                      </td>
+	                                      <td className="px-3 py-3">
+	                                        {operationalRole === 'SYSTEM_FIELD' ? (
+	                                          <select
+	                                            value={column.valueSource || 'SYSTEM_SUBJECT'}
+	                                            onChange={(event) =>
+	                                              handleColumnChange(
+	                                                sectionIndex,
+	                                                columnIndex,
+	                                                'valueSource',
+	                                                event.target.value as TeachingResourceColumnValueSource,
+	                                              )
+	                                            }
+	                                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+	                                          >
+	                                            {COLUMN_VALUE_SOURCE_OPTIONS.filter((option) => option.value !== 'MANUAL' && option.value !== 'BOUND').map(
+	                                              (option) => (
+	                                                <option key={`ready-system-source-${option.value}`} value={option.value}>
+	                                                  {option.label}
+	                                                </option>
+	                                              ),
+	                                            )}
+	                                          </select>
+	                                        ) : (
+	                                          <select
+	                                            value={normalizedSourceProgramCode}
+	                                            disabled={!needsSource}
+	                                            onChange={(event) =>
+	                                              handleColumnSourceProgramChange(sectionIndex, columnIndex, event.target.value)
+	                                            }
+	                                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none disabled:bg-gray-50 disabled:text-gray-400"
+	                                          >
+	                                            <option value="">Pilih program</option>
+	                                            {rows
+	                                              .filter(
+	                                                (row) =>
+	                                                  normalizeTeachingResourceProgramCode(row.code) !==
+	                                                  normalizeTeachingResourceProgramCode(createDraft.code),
+	                                              )
+	                                              .map((row) => (
+	                                                <option
+	                                                  key={`ready-source-program-${row.rowId}`}
+	                                                  value={normalizeTeachingResourceProgramCode(row.code)}
+	                                                >
+	                                                  {row.label}
+	                                                </option>
+	                                              ))}
+	                                          </select>
+	                                        )}
+	                                      </td>
+	                                      <td className="px-3 py-3">
+	                                        {operationalRole === 'SYSTEM_FIELD' ? (
+	                                          <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs leading-5 text-gray-500">
+	                                            Nilai diisi otomatis oleh sistem, bukan dari dokumen lain.
+	                                          </div>
+	                                        ) : (
+	                                          <select
+	                                            value={selectedSourceField}
+	                                            disabled={!needsSource || !normalizedSourceProgramCode}
+	                                            onChange={(event) =>
+	                                              handleColumnSourceFieldChange(sectionIndex, columnIndex, event.target.value)
+	                                            }
+	                                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none disabled:bg-gray-50 disabled:text-gray-400"
+	                                          >
+	                                            <option value="">Pilih kolom sumber</option>
+	                                            {sourceFieldOptions.map((option) => (
+	                                              <option key={`ready-source-field-${option.value}`} value={option.value}>
+	                                                {option.label} ({option.sectionLabel})
+	                                              </option>
+	                                            ))}
+	                                          </select>
+	                                        )}
+	                                      </td>
+	                                      <td className="px-3 py-3">
+	                                        <div className="flex items-center gap-2">
+	                                          <button
+	                                            type="button"
+	                                            onClick={() => handleAddColumn(sectionIndex)}
+	                                            title="Tambah kolom"
+	                                            aria-label="Tambah kolom"
+	                                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
+	                                          >
+	                                            <Plus size={14} />
+	                                          </button>
+	                                          <button
+	                                            type="button"
+	                                            onClick={() => handleRemoveColumn(sectionIndex, columnIndex)}
+	                                            disabled={(section.columns || []).length === 1}
+	                                            title="Hapus kolom"
+	                                            aria-label="Hapus kolom"
+	                                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-40"
+	                                          >
+	                                            <Trash2 size={14} />
+	                                          </button>
+	                                        </div>
+	                                      </td>
+	                                    </tr>
+	                                  );
+	                                })}
+	                              </tbody>
+	                            </table>
+	                          </div>
+	                        </div>
+	                      ))}
+	                    {!createDraft.schema.sections.some(
+	                      (section) => (section.editorType || 'TABLE') === 'TABLE' && inferBlockType(section) === 'TABLE',
+	                    ) ? (
+	                      <button
+	                        type="button"
+	                        onClick={() => handleAddSection('TABLE')}
+	                        className="w-full rounded-xl border border-dashed border-blue-300 bg-blue-50 px-4 py-6 text-sm font-semibold text-blue-700 hover:bg-blue-100"
+	                      >
+	                        + Tambah tabel isian guru
+	                      </button>
+	                    ) : null}
+	                  </div>
+	                </div>
+
+	                {showAdvancedEditor ? (
+	                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <div>
                     <label className="mb-1 block text-sm font-medium text-gray-700">Mode Schema</label>
                     <select

@@ -5,30 +5,28 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-04-29 08:36 WIB
-- Current status: follow-up UX Wakakur/Guru untuk `Perangkat Ajar` sudah selesai dan siap/live setelah deploy. Keterangan dokumen dari program Wakakur dihapus, preview `Yang Akan Dilihat Guru` di popup Wakakur dihapus, quick table guru hanya menampilkan section isi utama, aksi dokumen dibuat ikon satu baris, multiline cell dibuat sebagai subbaris dengan merge/rowspan otomatis, dan tanggal tanda tangan kini bisa disimpan per dokumen.
+- Last updated: 2026-04-29 09:02 WIB
+- Current status: Batch 1 integrasi antar-dokumen perangkat ajar sudah selesai dan siap/live setelah deploy. Wakakur kini punya konfigurasi `Kolom & Integrasi Dokumen` di mode siap pakai untuk menentukan kolom manual, sumber referensi, dropdown dari dokumen lain, snapshot otomatis, atau nilai sistem. Bug `Simpan Tabel` guru yang kadang perlu klik dua kali juga sudah diperbaiki lewat cache update dan ref state terbaru.
 - Objective/task aktif:
   - Menyelesaikan perapihan UX role guru pada halaman dokumen perangkat ajar agar lebih fleksibel saat menulis judul, lebih aman saat print, dan lebih operasional saat mengedit isi tabel.
 - Batch terakhir selesai:
-  - `Batch 27 - Rapikan aksi, quick table, dan tanggal print perangkat ajar (web)`
+  - `Batch 28 - Fondasi integrasi kolom antar-dokumen dan fix simpan tabel cepat (web)`
 - Progress batch ini:
   - `100%`
 - Progress roadmap perangkat ajar dinamis:
   - `100%` untuk rumusan arsitektur generik
   - `100%` untuk implementasi teknis scope aktif engine generik
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
-  - `100%` untuk reference picker guru lintas dokumen pada scope roadmap saat ini
+  - `35%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
   - Commit: `pending commit`
   - Title: `pending commit`
   - Summary:
-    - input/kolom `Keterangan Dokumen` di Wakakur dihapus lagi agar tidak memenuhi popup dan tidak menjadi sumber dokumen guru
-    - card preview `Yang Akan Dilihat Guru` di popup Wakakur dihapus
-    - aksi dokumen guru dibuat ikon satu baris dengan tooltip browser
-    - quick table guru memfilter `Konteks Dokumen`, sehingga langsung membuka section isi utama seperti `Analisis Capaian Kompetensi`
-    - multiline cell pada quick table dan print dipecah menjadi subbaris; cell lain otomatis memakai rowspan/merge vertical center
-    - blok keterangan program di atas tabel print dihapus
-    - field `Tempat, Tanggal Tanda Tangan` ditambahkan pada editor guru dan disimpan di `content.signaturePlaceDate`
+    - popup Wakakur mendapat card siap pakai `Kolom & Integrasi Dokumen`
+    - Wakakur bisa menandai kolom sebagai `Input manual`, `Sumber untuk dokumen lain`, `Dropdown dari dokumen lain`, `Otomatis dari pilihan referensi`, atau `Nilai sistem`
+    - opsi sumber program dan sumber kolom diambil dinamis dari program perangkat ajar yang sudah ada pada tahun ajaran aktif
+    - field identity kolom bisa diatur dari UI siap pakai agar integrasi tidak bergantung label/hardcode
+    - quick save tabel guru memakai ref state terbaru, payload referensi terbaru, dan update cache row setelah API sukses agar hasil langsung terlihat setelah sekali klik
 - Area/file disentuh:
   - `frontend/src/pages/teacher/learning-resources/LearningResourceGenerator.tsx`
   - `frontend/src/pages/teacher/wakasek/curriculum/TeachingResourceProgramManagementPage.tsx`
@@ -38,14 +36,16 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `git diff --check`
   - `cd frontend && npm run deploy`
   - `curl -I https://siskgb2.id/teacher/learning-resources/cp`
+  - `curl -I https://siskgb2.id/teacher/wakasek/teaching-resource-programs`
 - Publish/live status:
   - Web sudah deploy live ke `/var/www/html/` lewat `npm run deploy`
   - Web route `https://siskgb2.id/teacher/learning-resources/cp` merespons `HTTP/1.1 200 OK`
+  - Web route `https://siskgb2.id/teacher/wakasek/teaching-resource-programs` merespons `HTTP/1.1 200 OK`
   - Mobile source code tidak berubah pada batch ini; belum ada OTA baru
 - Remaining work:
-  - Lanjut hanya jika user ingin QA/rapikan lebih jauh, misalnya membuka lebih dari satu tabel dokumen sekaligus atau parity mobile untuk pola rich title/print yang sama.
+  - Batch 2: konsumsi konfigurasi referensi di sisi guru, terutama agar quick table juga menampilkan dropdown referensi langsung, bukan hanya editor lengkap.
 - Residual risk:
-  - tanggal tanda tangan saat ini disimpan per dokumen guru agar minim risiko backend; jika nanti harus terpusat seperti tanggal terbit rapor, perlu batch konfigurasi Wakakur/backend tersendiri.
+  - Batch 1 masih frontend/schema-only dan memakai endpoint entry existing dengan limit aman; jika data referensi makin besar, perlu endpoint referensi khusus yang lebih terfilter untuk menjaga beban server.
 
 ## Status Saat Ini
 
