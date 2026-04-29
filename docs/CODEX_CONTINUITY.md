@@ -5,8 +5,8 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-04-29 20:58 WIB
-- Current status: Perbaikan duty Waka Humas pada menu `Persetujuan PKL` sudah selesai dan sudah live. Alur `Konfigurasi & Cetak Surat` tidak lagi membuka tab baru untuk cetak surat PKL; cetak kolektif dan individual sekarang memakai print iframe tersembunyi dari konteks halaman aktif. Kop surat PKL juga sudah memakai snapshot kop standar sekolah yang sama source-of-truth-nya dengan dokumen BA.
+- Last updated: 2026-04-29 21:03 WIB
+- Current status: Follow-up tampilan surat PKL sudah selesai dan live. Page setup surat PKL sekarang memakai margin atas `1cm` seperti BA agar kop surat tidak menempel ke tepi atas kertas.
 - Objective/task aktif:
   - Menjaga fitur operasional lintas web/mobile tetap user-friendly dan aman untuk produksi.
 - Batch terakhir selesai:
@@ -20,29 +20,21 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
   - Commit: `pending`
-  - Title: `fix(internship): standardize pkl letter printing`
+  - Title: `fix(internship): align pkl letter top margin`
   - Summary:
-    - tombol cetak surat PKL kolektif di konfigurasi Waka Humas tidak lagi menyimpan HTML ke localStorage lalu membuka `/print/pkl-group`
-    - tombol cetak surat PKL individual tidak lagi membuka `/print/pkl/:id` di tab baru
-    - kedua alur cetak memakai iframe tersembunyi dan langsung memanggil browser print dialog dari halaman aktif
-    - backend generator surat PKL memakai `resolveStandardSchoolDocumentHeaderSnapshot()` untuk kop surat standar sekolah, termasuk daftar kompetensi keahlian dinamis dari data jurusan
-    - perubahan tidak menambah polling/query agresif; hanya memakai endpoint cetak existing saat user menekan tombol cetak
+    - generator HTML surat PKL mengubah `@page margin` dari `0` menjadi `1cm`
+    - perubahan khusus layout cetak, tanpa perubahan API/query/data flow
 - Area/file disentuh:
   - `backend/src/controllers/internship.controller.ts`
-  - `frontend/src/pages/teacher/internship/InternshipApprovalPage.tsx`
   - `docs/CODEX_CONTINUITY.md`
 - Verifikasi batch ini:
   - `cd backend && npm run build`
-  - `cd frontend && npm run build`
   - `git diff --check`
   - `cd backend && npm run service:restart`
   - `cd backend && npm run service:health`
-  - `cd frontend && npm run deploy`
-  - `curl -I https://siskgb2.id/teacher/internship/approval`
 - Publish/live status:
   - Backend sudah restart via PM2 dan health `Backend:200`, `Backend API:200`
-  - Web sudah deploy live ke `/var/www/html/`
-  - Route Waka Humas `https://siskgb2.id/teacher/internship/approval` merespons `HTTP/1.1 200 OK`
+  - Web source tidak berubah; tidak perlu deploy frontend baru
   - Mobile source code tidak berubah; tidak ada OTA baru
 - Remaining work:
   - Commit perubahan task dan dokumentasi, push ke `origin/main`, lalu final clean check.

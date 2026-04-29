@@ -775,7 +775,7 @@ const generateLetterHTML = (
 
   return `
     <style>
-      @page { size: 215mm 330mm; margin: 0; }
+      @page { size: 215mm 330mm; margin: 1cm; }
       body { font-family: 'Times New Roman', serif; margin: 0; }
       .page-wrapper {
         padding: 0;
