@@ -2388,8 +2388,9 @@ export const LearningResourceGenerator = ({
   const quickEditMutation = useMutation({
     mutationFn: async (entry: TeachingResourceEntry) => {
       const sourceSections = quickEditSectionsRef.current.length > 0 ? quickEditSectionsRef.current : quickEditSections;
-      const normalizedSections = buildPayloadSections(sourceSections);
-      const referencePayload = buildReferenceSelectionPayload(normalizeSectionsForEditor(sourceSections));
+      const hydratedSourceSections = hydrateEntrySectionsForDisplay(entry, sourceSections);
+      const normalizedSections = buildPayloadSections(hydratedSourceSections);
+      const referencePayload = buildReferenceSelectionPayload(hydratedSourceSections);
       return teachingResourceProgramService.updateEntry(entry.id, {
         title: String(entry.title || '').trim(),
         summary: String(entry.summary || '').trim() || undefined,
@@ -2581,8 +2582,38 @@ export const LearningResourceGenerator = ({
     );
   };
 
+  const resolveEntryAssignmentContext = (entry: TeachingResourceEntry): TeacherAssignmentContextOption | null => {
+    const scopeClassName =
+      String(entry.content?.contextScope?.aggregatedClassName || '').trim() || String(entry.className || '').trim();
+    return (
+      assignmentContextOptions.find(
+        (item) =>
+          Number(item.subjectId) === Number(entry.subjectId || 0) &&
+          String(item.className || '').trim().toLowerCase() === scopeClassName.toLowerCase(),
+      ) || null
+    );
+  };
+
+  const hydrateEntrySectionsForDisplay = (
+    entry: TeachingResourceEntry,
+    sourceSections: EntrySectionForm[],
+  ): EntrySectionForm[] => {
+    if (!usesSheetTemplate) return ensureDerivedSections(sourceSections);
+    const entryContext = resolveEntryAssignmentContext(entry);
+    return ensureDerivedSections(
+      hydrateSheetSections({
+        sections: sourceSections,
+        schemaMap: activeProgramSchemaMap,
+        context: entryContext,
+        academicYearName,
+        semesterLabel: activeSemesterLabel,
+        teachingLoad: entryContext ? teachingLoadByContext.get(entryContext.key) || null : null,
+      }),
+    );
+  };
+
   const getEntryTableSections = (entry: TeachingResourceEntry): EntrySectionForm[] =>
-    ensureDerivedSections(parseEntrySections(entry, buildDefaultSections(activeProgramMeta))).filter((section) =>
+    hydrateEntrySectionsForDisplay(entry, parseEntrySections(entry, buildDefaultSections(activeProgramMeta))).filter((section) =>
       isTeacherEditableTableSection(section),
     );
 
@@ -2608,15 +2639,41 @@ export const LearningResourceGenerator = ({
       if (quickEditEntryId) closeQuickEdit();
       return;
     }
-    if (quickEditEntryId === editableEntry.id) return;
+    if (quickEditEntryId === editableEntry.id) {
+      const currentSections =
+        quickEditSectionsRef.current.length > 0
+          ? quickEditSectionsRef.current
+          : parseEntrySections(editableEntry, buildDefaultSections(activeProgramMeta));
+      const hydratedSections = hydrateEntrySectionsForDisplay(editableEntry, currentSections);
+      quickEditSectionsRef.current = hydratedSections;
+      setQuickEditSections(hydratedSections);
+      return;
+    }
 
-    const parsedSections = ensureDerivedSections(parseEntrySections(editableEntry, buildDefaultSections(activeProgramMeta)));
+    const parsedSections = hydrateEntrySectionsForDisplay(
+      editableEntry,
+      parseEntrySections(editableEntry, buildDefaultSections(activeProgramMeta)),
+    );
     const tableSections = parsedSections.filter((section) => isTeacherEditableTableSection(section));
     setQuickEditEntryId(editableEntry.id);
     quickEditSectionsRef.current = parsedSections;
     setQuickEditSections(parsedSections);
     setQuickEditActiveSectionId(tableSections[0]?.id || '');
-  }, [activeProgramMeta, entryQuery.isLoading, isEditorOpen, isPageEditor, quickEditEntryId, rows, user?.id]);
+  }, [
+    academicYearName,
+    activeProgramMeta,
+    activeProgramSchemaMap,
+    activeSemesterLabel,
+    assignmentContextOptions,
+    entryQuery.isLoading,
+    isEditorOpen,
+    isPageEditor,
+    quickEditEntryId,
+    rows,
+    teachingLoadByContext,
+    user?.id,
+    usesSheetTemplate,
+  ]);
 
   const updateQuickEditRowCell = (sectionId: string, rowId: string, columnKey: string, value: string) => {
     setQuickEditSectionsWithDerived((prev) =>
