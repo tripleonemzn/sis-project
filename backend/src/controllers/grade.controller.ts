@@ -2493,6 +2493,29 @@ type DynamicScoreEntryRow = {
   recordedAt?: Date | null
   sourceType?: string | null
   sourceKey?: string | null
+  remedials?: Array<{
+    attemptNumber?: number | null
+    status?: ScoreRemedialStatus | string | null
+    effectiveScore?: number | null
+    recordedAt?: Date | null
+  }>
+}
+
+function resolveDynamicScoreEntryScore(row: DynamicScoreEntryRow): number | null {
+  const originalScore = Number(row.score)
+  if (!Number.isFinite(originalScore)) return null
+
+  const countedRemedials = (row.remedials || [])
+    .filter((remedial) => REMEDIAL_COUNTED_STATUSES.has(remedial.status as ScoreRemedialStatus))
+    .sort((left, right) => Number(left.attemptNumber || 0) - Number(right.attemptNumber || 0))
+
+  if (countedRemedials.length === 0) return originalScore
+
+  return countedRemedials.reduce((bestScore, remedial) => {
+    const effectiveScore = Number(remedial.effectiveScore)
+    if (!Number.isFinite(effectiveScore)) return bestScore
+    return Math.max(bestScore, effectiveScore)
+  }, originalScore)
 }
 
 async function collectDynamicScoreEntryRows(params: {
@@ -2521,6 +2544,17 @@ async function collectDynamicScoreEntryRows(params: {
         recordedAt: true,
         sourceType: true,
         sourceKey: true,
+        remedials: {
+          select: {
+            attemptNumber: true,
+            status: true,
+            effectiveScore: true,
+            recordedAt: true,
+          },
+          orderBy: {
+            attemptNumber: 'asc',
+          },
+        },
       },
     })) as DynamicScoreEntryRow[]
 
@@ -2567,8 +2601,7 @@ function computeDynamicSlotScoresFromScoreEntries(rows: DynamicScoreEntryRow[]):
   rows.forEach((row) => {
     const slot = normalizeReportSlotCode(row.reportSlotCode || row.reportSlot)
     if (slot === DEFAULT_REPORT_SLOT_CODE) return
-    const score = Number(row.score)
-    if (!Number.isFinite(score)) return
+    if (resolveDynamicScoreEntryScore(row) === null) return
     const values = buckets.get(slot) || []
     values.push(row)
     buckets.set(slot, values)
@@ -2600,8 +2633,8 @@ function computeDynamicSlotScoresFromScoreEntries(rows: DynamicScoreEntryRow[]):
         })
         const averaged = calculateAverage(
           Array.from(latestBySourceKey.values())
-            .map((entry) => Number(entry.score))
-            .filter((score) => Number.isFinite(score)),
+            .map((entry) => resolveDynamicScoreEntryScore(entry))
+            .filter((score): score is number => score !== null && Number.isFinite(score)),
         )
         if (averaged !== null) {
           result[slot] = averaged
@@ -2615,8 +2648,8 @@ function computeDynamicSlotScoresFromScoreEntries(rows: DynamicScoreEntryRow[]):
         const nextTime = entry.recordedAt ? new Date(entry.recordedAt).getTime() : 0
         return nextTime >= latestTime ? entry : latest
       }, null)
-      const latestScore = Number(latestManualEntry?.score)
-      if (Number.isFinite(latestScore)) {
+      const latestScore = latestManualEntry ? resolveDynamicScoreEntryScore(latestManualEntry) : null
+      if (latestScore !== null && Number.isFinite(latestScore)) {
         result[slot] = latestScore
       }
       return
@@ -2624,8 +2657,8 @@ function computeDynamicSlotScoresFromScoreEntries(rows: DynamicScoreEntryRow[]):
 
     const average = calculateAverage(
       prioritizedEntries
-        .map((entry) => Number(entry.score))
-        .filter((score) => Number.isFinite(score)),
+        .map((entry) => resolveDynamicScoreEntryScore(entry))
+        .filter((score): score is number => score !== null && Number.isFinite(score)),
     )
     if (average !== null) {
       result[slot] = average
@@ -2646,11 +2679,15 @@ function computeFormativeReferenceScoresFromScoreEntries(params: {
 
   const formativeRows = params.rows
     .filter((row) => normalizeReportSlotCode(row.reportSlotCode || row.reportSlot) === formativeSlotCode)
-    .filter((row) => Number.isFinite(Number(row.score)))
-    .map((row) => ({
-      score: Number(row.score),
-      recordedAt: row.recordedAt ? new Date(row.recordedAt) : null,
-    }))
+    .map((row) => {
+      const score = resolveDynamicScoreEntryScore(row)
+      if (score === null || !Number.isFinite(score)) return null
+      return {
+        score,
+        recordedAt: row.recordedAt ? new Date(row.recordedAt) : null,
+      }
+    })
+    .filter((row): row is { score: number; recordedAt: Date | null } => row !== null)
 
   if (formativeRows.length === 0) {
     return { midterm: null, final: null }
@@ -3685,12 +3722,19 @@ export const createScoreRemedial = async (req: Request, res: Response) => {
       },
     })
 
+    const reportSync = await syncReportGradeSafely(
+      entry.studentId,
+      entry.subjectId,
+      entry.academicYearId,
+      entry.semester,
+    )
+
     emitGradeRealtimeRefresh({
       studentIds: [entry.studentId],
       subjectIds: [entry.subjectId],
       academicYearIds: [entry.academicYearId],
       semesters: [entry.semester],
-      includeReports: false,
+      includeReports: reportSync.success,
     })
 
     return ApiResponseHelper.success(
@@ -3700,8 +3744,11 @@ export const createScoreRemedial = async (req: Request, res: Response) => {
         effectiveScore,
         kkm: kkmInfo.kkm,
         status,
+        reportSync,
       },
-      'Nilai remedial berhasil disimpan.',
+      reportSync.success
+        ? 'Nilai remedial berhasil disimpan.'
+        : 'Nilai remedial tersimpan, tetapi sinkronisasi rapor gagal. Silakan cek ulang.',
     )
   } catch (error) {
     console.error('Create score remedial error:', error)
