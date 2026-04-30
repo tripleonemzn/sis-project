@@ -885,7 +885,7 @@ const generateLetterHTML = async (
           </div>
         </div>
 
-        <div style="margin-left: 110px;">
+        <div style="margin-left: 0;">
           <div style="margin-bottom: 20px;">
             Kepada Yth,<br/>
             <strong style="text-transform: uppercase;">Pimpinan / HRD ${effectiveCompanyName}</strong><br/>
@@ -929,10 +929,10 @@ const generateLetterHTML = async (
         </div>
 
         <div style="display: flex; justify-content: flex-end; page-break-inside: avoid;">
-          <div style="text-align: left; width: 250px;">
+          <div style="text-align: center; width: 250px;">
             <p style="margin-bottom: 0;">Hormat Kami,</p>
             <p style="margin-top: 0; margin-bottom: 0;">Kepala Sekolah,</p>
-            <div style="${useBarcode ? 'margin: 10px 0;' : `height: ${signatureSpace * 20}px;`} display: flex; align-items: center; justify-content: flex-start;">
+            <div style="${useBarcode ? 'margin: 10px 0;' : `height: ${signatureSpace * 20}px;`} display: flex; align-items: center; justify-content: center;">
               ${useBarcode ? `<img src="${verificationQrDataUrl}" alt="QR Verifikasi Surat PKL" style="width: 100px; height: 100px;" />` : ''}
             </div>
             <p style="font-weight: bold; text-decoration: underline; margin-bottom: 0;">${principalName}</p>

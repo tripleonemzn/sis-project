@@ -5,8 +5,8 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-04-30 05:26 WIB
-- Current status: Follow-up layout surat PKL sudah selesai dan live. Jarak `Nomor/Lampiran/Perihal` ke titik dua dibuat lebih rapat, teks URL di bawah QR kepala sekolah dihapus, dan footer contact person dibuat menempel di bawah halaman agar tidak mudah mendorong surat menjadi 2 halaman.
+- Last updated: 2026-04-30 08:01 WIB
+- Current status: Follow-up alignment surat PKL sudah selesai dan live. Isi surat mulai dari `Kepada Yth` sampai penutup kini sejajar dengan blok nomor surat, dan blok tanda tangan kepala sekolah tetap di posisi kanan tetapi teks/QR dibuat rata tengah.
 - Objective/task aktif:
   - Menjaga fitur operasional lintas web/mobile tetap user-friendly dan aman untuk produksi.
 - Batch terakhir selesai:
@@ -20,12 +20,11 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
   - Commit: `pending`
-  - Title: `fix(internship): refine pkl letter print layout`
+  - Title: `fix(internship): align pkl letter body and signature`
   - Summary:
-    - jarak label surat `Nomor`, `Lampiran`, `Perihal` ke titik dua diperkecil
-    - teks URL verifikasi di bawah QR tanda tangan kepala sekolah dihapus dari cetakan
-    - footer contact person diposisikan sebagai footer bawah halaman dan dibuat lebih ringkas agar tidak memicu halaman kedua pada surat pendek
-    - fallback print legacy `/print/pkl/:id` ikut dirapikan agar konsisten
+    - body surat PKL tidak lagi menjorok ke kanan setelah blok nomor surat
+    - tanda tangan kepala sekolah tetap di area kanan, tetapi teks `Hormat Kami`, jabatan, QR, nama, dan NUPTK dibuat rata tengah
+    - fallback print legacy `/print/pkl/:id` ikut disamakan
 - Area/file disentuh:
   - `backend/src/controllers/internship.controller.ts`
   - `frontend/src/pages/print/PklLetterPrint.tsx`
@@ -34,7 +33,6 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `cd backend && npm run build`
   - `cd frontend && npm run build`
   - `git diff --check`
-  - `rg -n "Verifikasi:|api.qrserver.com|Validasi\\+SMK\\+KGB2" backend/src/controllers/internship.controller.ts frontend/src/pages/print/PklLetterPrint.tsx -S` tidak menemukan teks URL/QR eksternal lama
   - `cd backend && npm run service:restart`
   - `cd backend && npm run service:health`
   - `cd frontend && npm run deploy`

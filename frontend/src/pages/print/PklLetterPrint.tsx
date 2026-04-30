@@ -334,7 +334,7 @@ Kepala SMK Karya Guna Bhakti 2 Kota Bekasi mengajukan permohonan siswa/i kami un
           </div>
 
           {/* Alamat Tujuan */}
-          <div className="ml-[95px] mb-8">
+          <div className="mb-8">
             <div>Kepada Yth,</div>
             <div className="font-bold uppercase">Pimpinan / HRD {companyName || internship?.companyName || '(Nama Perusahaan Belum Terisi)'}</div>
             {recipientName && (
@@ -344,7 +344,7 @@ Kepala SMK Karya Guna Bhakti 2 Kota Bekasi mengajukan permohonan siswa/i kami un
           </div>
 
           {/* Body Surat */}
-          <div className="space-y-4 text-justify ml-[95px]">
+          <div className="space-y-4 text-justify">
             <p>Dengan hormat,</p>
             <div className="whitespace-pre-wrap">
               {openingText}
@@ -352,7 +352,7 @@ Kepala SMK Karya Guna Bhakti 2 Kota Bekasi mengajukan permohonan siswa/i kami un
           </div>
 
           {/* Tabel Siswa */}
-          <div className="my-6 ml-[95px]">
+          <div className="my-6">
             <table className="w-full border-collapse border border-black text-center">
               <thead>
                 <tr className="bg-gray-50">
@@ -393,7 +393,7 @@ Kepala SMK Karya Guna Bhakti 2 Kota Bekasi mengajukan permohonan siswa/i kami un
           </div>
 
           {/* Rencana Pelaksanaan */}
-          <div className="ml-[95px] mb-6 font-bold">
+          <div className="mb-6 font-bold">
             <p>Rencana Pelaksanaan PKL: {
               startDate && startDate !== '' 
                 ? formatDateDisplay(startDate) 
@@ -406,13 +406,13 @@ Kepala SMK Karya Guna Bhakti 2 Kota Bekasi mengajukan permohonan siswa/i kami un
           </div>
 
           {/* Penutup */}
-          <div className="text-justify mb-12 ml-[95px]">
+          <div className="text-justify mb-12">
             <div className="whitespace-pre-wrap">{closingText}</div>
           </div>
 
           {/* Tanda Tangan */}
           <div className="flex justify-end text-right">
-            <div className="w-[250px] text-left">
+            <div className="w-[250px] text-center">
               <p className="mb-0">Hormat Kami,</p>
               <p className="mb-0">Kepala Sekolah</p>
               
@@ -420,7 +420,8 @@ Kepala SMK Karya Guna Bhakti 2 Kota Bekasi mengajukan permohonan siswa/i kami un
                 height: useBarcode ? 'auto' : `${signatureSpace * 20}px`, 
                 margin: useBarcode ? '10px 0' : '0',
                 display: 'flex',
-                alignItems: 'center'
+                alignItems: 'center',
+                justifyContent: 'center'
               }}>
                 {useBarcode && verificationQr?.qrDataUrl && (
                   <img 
