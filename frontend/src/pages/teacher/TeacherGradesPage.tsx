@@ -125,7 +125,7 @@ type BulkGradeSaveResult = {
 };
 
 type TeacherGradeTab = 'INPUT' | 'REMEDIAL';
-type RemedialModalMode = 'SCORE' | 'ACTIVITY' | 'HISTORY';
+type RemedialModalMode = 'SCORE' | 'HISTORY';
 
 type RemedialSourceOption = {
   code: string;
@@ -774,9 +774,7 @@ export const TeacherGradesPage = () => {
   const [remedialNoteInput, setRemedialNoteInput] = useState('');
   const [remedialMethodInput, setRemedialMethodInput] = useState<ScoreRemedialMethod>('MANUAL_SCORE');
   const [remedialActivityTitleInput, setRemedialActivityTitleInput] = useState('');
-  const [remedialActivityInstructionsInput, setRemedialActivityInstructionsInput] = useState('');
   const [remedialActivityDueAtInput, setRemedialActivityDueAtInput] = useState('');
-  const [remedialActivityReferenceUrlInput, setRemedialActivityReferenceUrlInput] = useState('');
   const [remedialActivityExamPacketIdInput, setRemedialActivityExamPacketIdInput] = useState('');
   const [remedialActivitySourceExamPacketIdInput, setRemedialActivitySourceExamPacketIdInput] = useState('');
   const [remedialExamPackets, setRemedialExamPackets] = useState<ExamPacket[]>([]);
@@ -883,14 +881,17 @@ export const TeacherGradesPage = () => {
     () => remedialRows.filter(isRemedialRowSelectable),
     [remedialRows],
   );
+  const remedialManagementRows = useMemo(
+    () => remedialRows.filter((row) => !row.isComplete),
+    [remedialRows],
+  );
   const selectedBulkRemedialRows = useMemo(
     () => remedialRows.filter((row) => selectedBulkRemedialIds.includes(row.scoreEntryId) && isRemedialRowSelectable(row)),
     [remedialRows, selectedBulkRemedialIds],
   );
-  const bulkReferenceRemedialRow = selectedBulkRemedialRows[0] || selectableRemedialRows[0] || null;
+  const bulkReferenceRemedialRow = selectedBulkRemedialRows[0] || selectableRemedialRows[0] || remedialManagementRows[0] || null;
   const activeRemedialDetail = remedialDetail || selectedRemedial;
   const isRemedialScoreMode = remedialModalMode === 'SCORE';
-  const isRemedialActivityMode = remedialModalMode === 'ACTIVITY';
   const isRemedialHistoryMode = remedialModalMode === 'HISTORY';
   const primaryFormativeComponentId =
     filteredComponents.find((item) => resolveComponentEntryMode(item) === 'NF_SERIES')?.id ?? null;
@@ -1179,7 +1180,7 @@ export const TeacherGradesPage = () => {
   ]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    const packetReferenceEntry = activeRemedialDetail || (showBulkRemedialModal ? bulkReferenceRemedialRow : null);
+    const packetReferenceEntry = showBulkRemedialModal ? bulkReferenceRemedialRow : null;
     if (remedialMethodInput !== 'QUESTION_SET' || !packetReferenceEntry) {
       setRemedialExamPackets([]);
       setRemedialActivityExamPacketIdInput('');
@@ -1187,7 +1188,7 @@ export const TeacherGradesPage = () => {
       return;
     }
     fetchRemedialExamPackets(packetReferenceEntry);
-  }, [remedialMethodInput, activeRemedialDetail?.scoreEntryId, showBulkRemedialModal, bulkReferenceRemedialRow?.scoreEntryId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [remedialMethodInput, showBulkRemedialModal, bulkReferenceRemedialRow?.scoreEntryId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchGradeComponents = async () => {
     const requestId = ++gradeComponentRequestRef.current;
@@ -1682,11 +1683,9 @@ export const TeacherGradesPage = () => {
     setRemedialModalMode(mode);
     setRemedialScoreInput('');
     setRemedialNoteInput('');
-    setRemedialMethodInput(mode === 'ACTIVITY' ? 'QUESTION_SET' : 'MANUAL_SCORE');
+    setRemedialMethodInput('MANUAL_SCORE');
     setRemedialActivityTitleInput('');
-    setRemedialActivityInstructionsInput('');
     setRemedialActivityDueAtInput('');
-    setRemedialActivityReferenceUrlInput('');
     setRemedialActivityExamPacketIdInput('');
     setRemedialActivitySourceExamPacketIdInput('');
     setRemedialExamPackets([]);
@@ -1701,9 +1700,7 @@ export const TeacherGradesPage = () => {
     setRemedialNoteInput('');
     setRemedialMethodInput('MANUAL_SCORE');
     setRemedialActivityTitleInput('');
-    setRemedialActivityInstructionsInput('');
     setRemedialActivityDueAtInput('');
-    setRemedialActivityReferenceUrlInput('');
     setRemedialActivityExamPacketIdInput('');
     setRemedialActivitySourceExamPacketIdInput('');
     setRemedialExamPackets([]);
@@ -1712,17 +1709,15 @@ export const TeacherGradesPage = () => {
 
   const resetRemedialActivityInputs = () => {
     setRemedialActivityTitleInput('');
-    setRemedialActivityInstructionsInput('');
     setRemedialActivityDueAtInput('');
-    setRemedialActivityReferenceUrlInput('');
     setRemedialActivityExamPacketIdInput('');
     setRemedialActivitySourceExamPacketIdInput('');
     setRemedialNoteInput('');
   };
 
   const openBulkRemedialModal = () => {
-    if (selectedBulkRemedialRows.length === 0) {
-      toast.error('Pilih minimal satu siswa yang bisa remedial.');
+    if (remedialManagementRows.length === 0) {
+      toast.error('Tidak ada siswa belum KKM pada filter ini.');
       return;
     }
     setSelectedRemedial(null);
@@ -1730,7 +1725,7 @@ export const TeacherGradesPage = () => {
     setRemedialScoreInput('');
     setRemedialMethodInput('QUESTION_SET');
     resetRemedialActivityInputs();
-    const sourceLabel = selectedBulkRemedialRows[0]?.sourceLabel || 'Remedial';
+    const sourceLabel = bulkReferenceRemedialRow?.sourceLabel || 'Remedial';
     setRemedialActivityTitleInput(`Remedial ${sourceLabel}`);
     setShowBulkRemedialModal(true);
   };
@@ -1749,33 +1744,13 @@ export const TeacherGradesPage = () => {
       toast.error('Nilai remedial harus berupa angka 0-100.');
       return;
     }
-    const activityTitle = remedialActivityTitleInput.trim();
-    const activityInstructions = remedialActivityInstructionsInput.trim();
-    const activityReferenceUrl = remedialActivityReferenceUrlInput.trim();
-    const activityExamPacketId = Number(remedialActivityExamPacketIdInput || 0);
-    const activitySourceExamPacketId = Number(remedialActivitySourceExamPacketIdInput || 0);
-    if (
-      remedialMethodInput !== 'MANUAL_SCORE' &&
-      !activityTitle &&
-      !activityExamPacketId &&
-      !activitySourceExamPacketId
-    ) {
-      toast.error('Isi judul remedial atau pilih paket soal untuk metode tugas/soal remedial.');
-      return;
-    }
 
     try {
       setRemedialSaving(true);
       await gradeService.createScoreRemedial({
         scoreEntryId: activeRemedial.scoreEntryId,
         remedialScore: parsedScore,
-        method: remedialMethodInput,
-        activityTitle: activityTitle || undefined,
-        activityInstructions: activityInstructions || undefined,
-        activityDueAt: remedialActivityDueAtInput || undefined,
-        activityReferenceUrl: activityReferenceUrl || undefined,
-        activityExamPacketId: activityExamPacketId || undefined,
-        activitySourceExamPacketId: activitySourceExamPacketId || undefined,
+        method: 'MANUAL_SCORE',
         note: remedialNoteInput.trim() || undefined,
       });
       toast.success('Nilai remedial berhasil disimpan.');
@@ -1783,9 +1758,7 @@ export const TeacherGradesPage = () => {
       setRemedialNoteInput('');
       setRemedialMethodInput('MANUAL_SCORE');
       setRemedialActivityTitleInput('');
-      setRemedialActivityInstructionsInput('');
       setRemedialActivityDueAtInput('');
-      setRemedialActivityReferenceUrlInput('');
       setRemedialActivityExamPacketIdInput('');
       setRemedialActivitySourceExamPacketIdInput('');
       await fetchRemedialDetail(activeRemedial.scoreEntryId);
@@ -1794,57 +1767,6 @@ export const TeacherGradesPage = () => {
     } catch (error) {
       console.error('Save remedial error:', error);
       toast.error(getApiErrorMessage(error, 'Gagal menyimpan nilai remedial'));
-    } finally {
-      setRemedialSaving(false);
-    }
-  };
-
-  const handleGiveRemedialActivity = async () => {
-    const activeRemedial = remedialDetail || selectedRemedial;
-    if (!activeRemedial) return;
-    if (remedialMethodInput === 'MANUAL_SCORE') {
-      toast.error('Pilih metode tugas remedial atau soal/quiz remedial untuk memberi aktivitas.');
-      return;
-    }
-
-    const activityTitle = remedialActivityTitleInput.trim();
-    const activityInstructions = remedialActivityInstructionsInput.trim();
-    const activityReferenceUrl = remedialActivityReferenceUrlInput.trim();
-    const activityExamPacketId = Number(remedialActivityExamPacketIdInput || 0);
-    const activitySourceExamPacketId = Number(remedialActivitySourceExamPacketIdInput || 0);
-
-    if (!activityTitle && !activityExamPacketId && !activitySourceExamPacketId) {
-      toast.error('Isi judul remedial atau pilih paket soal sebelum remedial diterbitkan.');
-      return;
-    }
-
-    try {
-      setRemedialSaving(true);
-      await gradeService.createScoreRemedial({
-        scoreEntryId: activeRemedial.scoreEntryId,
-        method: remedialMethodInput,
-        saveAsDraft: true,
-        activityTitle: activityTitle || undefined,
-        activityInstructions: activityInstructions || undefined,
-        activityDueAt: remedialActivityDueAtInput || undefined,
-        activityReferenceUrl: activityReferenceUrl || undefined,
-        activityExamPacketId: activityExamPacketId || undefined,
-        activitySourceExamPacketId: activitySourceExamPacketId || undefined,
-        note: remedialNoteInput.trim() || undefined,
-      });
-      toast.success('Remedial berhasil diterbitkan ke siswa.');
-      setRemedialActivityTitleInput('');
-      setRemedialActivityInstructionsInput('');
-      setRemedialActivityDueAtInput('');
-      setRemedialActivityReferenceUrlInput('');
-      setRemedialActivityExamPacketIdInput('');
-      setRemedialActivitySourceExamPacketIdInput('');
-      setRemedialNoteInput('');
-      await fetchRemedialDetail(activeRemedial.scoreEntryId);
-      await fetchRemedialRows(true);
-    } catch (error) {
-      console.error('Give remedial activity error:', error);
-      toast.error(getApiErrorMessage(error, 'Gagal memberi aktivitas remedial'));
     } finally {
       setRemedialSaving(false);
     }
@@ -2543,11 +2465,11 @@ export const TeacherGradesPage = () => {
                   <button
                     type="button"
                     onClick={openBulkRemedialModal}
-                    disabled={selectedBulkRemedialRows.length === 0 || remedialSaving}
+                    disabled={remedialManagementRows.length === 0 || remedialSaving}
                     className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     <ClipboardList className="h-4 w-4" />
-                    Terbitkan Remedial Terpilih ({selectedBulkRemedialRows.length})
+                    Kelola Remedial
                   </button>
                   <label className="inline-flex items-center gap-2 text-sm text-gray-700">
                     <input
@@ -2585,28 +2507,9 @@ export const TeacherGradesPage = () => {
               </div>
 
               <div className="mt-5 overflow-x-auto rounded-lg border border-gray-200">
-                <table className="w-full min-w-[980px] border-collapse">
+                <table className="w-full min-w-[920px] border-collapse">
                   <thead>
                     <tr className="bg-gray-50 border-b border-gray-200">
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        <input
-                          type="checkbox"
-                          aria-label="Pilih semua siswa yang bisa remedial"
-                          checked={
-                            selectableRemedialRows.length > 0 &&
-                            selectableRemedialRows.every((row) => selectedBulkRemedialIds.includes(row.scoreEntryId))
-                          }
-                          onChange={(event) => {
-                            if (event.target.checked) {
-                              setSelectedBulkRemedialIds(selectableRemedialRows.map((row) => row.scoreEntryId));
-                            } else {
-                              setSelectedBulkRemedialIds([]);
-                            }
-                          }}
-                          disabled={selectableRemedialRows.length === 0}
-                          className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
-                        />
-                      </th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">No</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">NIS / NISN</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nama Siswa</th>
@@ -2622,7 +2525,7 @@ export const TeacherGradesPage = () => {
                   <tbody className="bg-white divide-y divide-gray-200">
                     {remedialLoading ? (
                       <tr>
-                        <td colSpan={11} className="px-4 py-8 text-center text-sm text-gray-500">
+                        <td colSpan={10} className="px-4 py-8 text-center text-sm text-gray-500">
                           <Loader2 className="mx-auto mb-2 h-5 w-5 animate-spin text-blue-600" />
                           Memuat kandidat remedial...
                         </td>
@@ -2632,27 +2535,8 @@ export const TeacherGradesPage = () => {
                         const statusMeta = getRemedialStatusMeta(
                           row.isComplete ? 'PASSED' : row.latestAttempt?.status || 'STILL_BELOW_KKM',
                         );
-                        const selectable = isRemedialRowSelectable(row);
-                        const checked = selectedBulkRemedialIds.includes(row.scoreEntryId);
                         return (
                           <tr key={row.scoreEntryId} className="hover:bg-gray-50">
-                            <td className="px-4 py-3 text-sm text-gray-500">
-                              <input
-                                type="checkbox"
-                                aria-label={`Pilih ${row.student.name} untuk remedial`}
-                                checked={checked}
-                                disabled={!selectable}
-                                onChange={(event) => {
-                                  setSelectedBulkRemedialIds((current) => {
-                                    if (event.target.checked) {
-                                      return current.includes(row.scoreEntryId) ? current : [...current, row.scoreEntryId];
-                                    }
-                                    return current.filter((id) => id !== row.scoreEntryId);
-                                  });
-                                }}
-                                className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-40"
-                              />
-                            </td>
                             <td className="px-4 py-3 text-sm text-gray-500">{index + 1}</td>
                             <td className="px-4 py-3 text-sm text-gray-700">
                               <div>{row.student.nis || '-'}</div>
@@ -2694,16 +2578,6 @@ export const TeacherGradesPage = () => {
                             </td>
                             <td className="px-4 py-3 text-right">
                               <div className="flex flex-wrap justify-end gap-2">
-                                {!row.isComplete && !row.remedialEligibility?.hasActiveRemedialActivity ? (
-                                  <button
-                                    type="button"
-                                    onClick={() => openRemedialModal(row, 'ACTIVITY')}
-                                    disabled={row.remedialEligibility?.isBlockedByHomeroom || !isRemedialRowSelectable(row)}
-                                    className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-gray-200 disabled:text-gray-500"
-                                  >
-                                    {row.remedialEligibility?.isBlockedByHomeroom ? 'Diblokir' : 'Terbitkan'}
-                                  </button>
-                                ) : null}
                                 {!row.isComplete ? (
                                   <button
                                     type="button"
@@ -2730,7 +2604,7 @@ export const TeacherGradesPage = () => {
                       })
                     ) : (
                       <tr>
-                        <td colSpan={11} className="px-4 py-8 text-center text-sm text-gray-500">
+                        <td colSpan={10} className="px-4 py-8 text-center text-sm text-gray-500">
                           Tidak ada kandidat remedial pada filter ini.
                         </td>
                       </tr>
@@ -2748,14 +2622,16 @@ export const TeacherGradesPage = () => {
           <div className="flex max-h-[calc(100vh-7rem)] w-full max-w-3xl flex-col overflow-hidden rounded-xl bg-white shadow-xl">
             <div className="flex items-start justify-between gap-4 border-b border-gray-200 px-6 py-4">
               <div>
-                <h3 className="text-lg font-bold text-gray-900">Terbitkan Remedial Terpilih</h3>
-                <p className="text-sm text-gray-600">{selectedBulkRemedialRows.length} siswa akan menerima remedial yang sama.</p>
+                <h3 className="text-lg font-bold text-gray-900">Kelola Remedial</h3>
+                <p className="text-sm text-gray-600">
+                  Pilih siswa yang nilainya masih di bawah KKM, lalu terbitkan jadwal remedial sekaligus.
+                </p>
               </div>
               <button
                 type="button"
                 onClick={closeBulkRemedialModal}
                 className="text-gray-400 transition-colors hover:text-gray-600"
-                aria-label="Tutup popup terbitkan remedial"
+                aria-label="Tutup popup kelola remedial"
                 disabled={remedialSaving}
               >
                 <X className="h-6 w-6" />
@@ -2764,16 +2640,104 @@ export const TeacherGradesPage = () => {
 
             <div className="space-y-4 overflow-y-auto px-6 py-5">
               <div className="rounded-lg border border-blue-100 bg-blue-50 p-4">
-                <p className="text-sm font-semibold text-gray-900">Siswa Terpilih</p>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {selectedBulkRemedialRows.slice(0, 12).map((row) => (
-                    <span key={row.scoreEntryId} className="rounded-full bg-white px-3 py-1 text-xs font-medium text-gray-700 ring-1 ring-blue-100">
-                      {row.student.name}
-                    </span>
-                  ))}
-                  {selectedBulkRemedialRows.length > 12 ? (
-                    <span className="rounded-full bg-white px-3 py-1 text-xs font-medium text-gray-500 ring-1 ring-blue-100">
-                      +{selectedBulkRemedialRows.length - 12} siswa lain
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-gray-900">Pilih Siswa Remedial</p>
+                    <p className="text-xs text-blue-800">
+                      Siswa yang masih ditahan wali kelas atau sudah punya remedial aktif tidak bisa dicentang.
+                    </p>
+                  </div>
+                  <label className="inline-flex items-center gap-2 text-sm font-medium text-blue-800">
+                    <input
+                      type="checkbox"
+                      aria-label="Pilih semua siswa yang bisa diterbitkan remedial"
+                      checked={
+                        selectableRemedialRows.length > 0 &&
+                        selectableRemedialRows.every((row) => selectedBulkRemedialIds.includes(row.scoreEntryId))
+                      }
+                      onChange={(event) => {
+                        if (event.target.checked) {
+                          setSelectedBulkRemedialIds(selectableRemedialRows.map((row) => row.scoreEntryId));
+                        } else {
+                          setSelectedBulkRemedialIds([]);
+                        }
+                      }}
+                      disabled={selectableRemedialRows.length === 0 || remedialSaving}
+                      className="h-4 w-4 rounded border-blue-300 text-blue-600 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+                    />
+                    Pilih semua yang bisa
+                  </label>
+                </div>
+
+                <div className="mt-3 max-h-64 overflow-y-auto rounded-lg border border-blue-100 bg-white">
+                  {remedialManagementRows.length > 0 ? (
+                    <div className="divide-y divide-gray-100">
+                      {remedialManagementRows.map((row) => {
+                        const selectable = isRemedialRowSelectable(row);
+                        const checked = selectedBulkRemedialIds.includes(row.scoreEntryId);
+                        const statusMeta = getRemedialStatusMeta(row.latestAttempt?.status || 'STILL_BELOW_KKM');
+                        return (
+                          <label
+                            key={row.scoreEntryId}
+                            className={`flex gap-3 px-3 py-3 text-sm ${selectable ? 'cursor-pointer hover:bg-blue-50' : 'cursor-not-allowed bg-gray-50 text-gray-500'}`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              disabled={!selectable || remedialSaving}
+                              onChange={(event) => {
+                                setSelectedBulkRemedialIds((current) => {
+                                  if (event.target.checked) {
+                                    return current.includes(row.scoreEntryId) ? current : [...current, row.scoreEntryId];
+                                  }
+                                  return current.filter((id) => id !== row.scoreEntryId);
+                                });
+                              }}
+                              className="mt-1 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-40"
+                            />
+                            <span className="min-w-0 flex-1">
+                              <span className="block font-semibold text-gray-900">{row.student.name}</span>
+                              <span className="mt-0.5 block text-xs text-gray-500">
+                                {row.student.nis || '-'} • {row.sourceLabel || '-'} • Nilai {formatScoreDisplay(row.currentEffectiveScore)} / KKM {formatScoreDisplay(row.kkm)}
+                              </span>
+                              {row.remedialEligibility?.label ? (
+                                <span
+                                  className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                                    row.remedialEligibility.isBlockedByHomeroom
+                                      ? 'bg-red-50 text-red-700'
+                                      : row.remedialEligibility.hasActiveRemedialActivity
+                                        ? 'bg-indigo-50 text-indigo-700'
+                                        : 'bg-blue-50 text-blue-700'
+                                  }`}
+                                >
+                                  {row.remedialEligibility.label}
+                                </span>
+                              ) : null}
+                            </span>
+                            <span className={`mt-1 h-fit rounded-full px-2.5 py-1 text-xs font-medium ${statusMeta.className}`}>
+                              {statusMeta.label}
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="px-4 py-6 text-center text-sm text-gray-500">
+                      Tidak ada siswa belum KKM pada filter ini.
+                    </div>
+                  )}
+                </div>
+
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <span className="rounded-full bg-white px-3 py-1 text-xs font-medium text-gray-700 ring-1 ring-blue-100">
+                    Dipilih: {selectedBulkRemedialRows.length}
+                  </span>
+                  <span className="rounded-full bg-white px-3 py-1 text-xs font-medium text-gray-700 ring-1 ring-blue-100">
+                    Bisa dipilih: {remedialSummary.selectable}
+                  </span>
+                  {remedialSummary.blocked > 0 ? (
+                    <span className="rounded-full bg-white px-3 py-1 text-xs font-medium text-red-700 ring-1 ring-red-100">
+                      Ditahan wali: {remedialSummary.blocked}
                     </span>
                   ) : null}
                 </div>
@@ -2909,11 +2873,7 @@ export const TeacherGradesPage = () => {
             <div className="flex items-start justify-between gap-4 border-b border-gray-200 px-6 py-4">
               <div>
                 <h3 className="text-lg font-bold text-gray-900">
-                  {isRemedialActivityMode
-                    ? 'Terbitkan Remedial'
-                    : isRemedialHistoryMode
-                      ? 'Riwayat Remedial'
-                      : 'Input Nilai Remedial'}
+                  {isRemedialHistoryMode ? 'Riwayat Remedial' : 'Input Nilai Remedial'}
                 </h3>
                 <p className="text-sm text-gray-600">
                   {activeRemedialDetail.student.name} • {activeRemedialDetail.sourceLabel}
@@ -3037,15 +2997,11 @@ export const TeacherGradesPage = () => {
                 </div>
               ) : (
                 <div className="mt-5 rounded-lg border border-blue-100 bg-blue-50 p-4">
-                  <h4 className="text-sm font-semibold text-gray-900">
-                    {isRemedialActivityMode ? 'Terbitkan Aktivitas Remedial' : 'Input Nilai Hasil Remedial'}
-                  </h4>
+                  <h4 className="text-sm font-semibold text-gray-900">Input Nilai Hasil Remedial</h4>
                   <p className="mt-1 text-xs text-blue-800">
-                    {isRemedialActivityMode
-                      ? 'Siswa akan menerima aktivitas remedial ini. Nilai belum dicatat sampai siswa mengerjakan atau guru menginput hasilnya.'
-                      : 'Nilai efektif remedial otomatis memakai nilai terbaik, tetapi maksimal hanya sampai KKM.'}
+                    Nilai efektif remedial otomatis memakai nilai terbaik, tetapi maksimal hanya sampai KKM.
                   </p>
-                  <div className={`mt-4 grid grid-cols-1 gap-4 ${isRemedialScoreMode ? '' : 'md:grid-cols-2'}`}>
+                  <div className="mt-4">
                     {isRemedialScoreMode ? (
                       <div>
                         <label htmlFor="remedial-score" className="block text-sm font-medium text-gray-700 mb-2">
@@ -3064,94 +3020,7 @@ export const TeacherGradesPage = () => {
                         />
                       </div>
                     ) : null}
-                    <div>
-                      <label htmlFor="remedial-method" className="block text-sm font-medium text-gray-700 mb-2">
-                        Metode Remedial
-                      </label>
-                      <select
-                        id="remedial-method"
-                        value={remedialMethodInput}
-                        onChange={(event) => setRemedialMethodInput(event.target.value as ScoreRemedialMethod)}
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
-                      >
-                        {isRemedialScoreMode ? <option value="MANUAL_SCORE">Input nilai manual</option> : null}
-                        {isRemedialActivityMode ? <option value="ASSIGNMENT">Tugas remedial</option> : null}
-                        {isRemedialActivityMode ? <option value="QUESTION_SET">Soal/quiz remedial</option> : null}
-                      </select>
-                    </div>
                   </div>
-
-                  {isRemedialActivityMode ? (
-                    <div className="mt-4 rounded-lg border border-blue-200 bg-white p-4">
-                      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                        <div>
-                          <label htmlFor="remedial-activity-title" className="block text-sm font-medium text-gray-700 mb-2">
-                            Judul Tugas/Soal
-                          </label>
-                          <input
-                            id="remedial-activity-title"
-                            type="text"
-                            value={remedialActivityTitleInput}
-                            onChange={(event) => setRemedialActivityTitleInput(event.target.value)}
-                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
-                            placeholder="Contoh: Remedial TP 1.1"
-                          />
-                        </div>
-                        <div>
-                          <label htmlFor="remedial-activity-due" className="block text-sm font-medium text-gray-700 mb-2">
-                            Tenggat
-                          </label>
-                          <input
-                            id="remedial-activity-due"
-                            type="datetime-local"
-                            value={remedialActivityDueAtInput}
-                            onChange={(event) => setRemedialActivityDueAtInput(event.target.value)}
-                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
-                          />
-                        </div>
-                      </div>
-                      {remedialMethodInput === 'QUESTION_SET' ? (
-                        <div className="mt-4 rounded-lg border border-indigo-100 bg-indigo-50 p-3">
-                          <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
-                            <div className="flex-1">
-                              <label htmlFor="remedial-exam-packet" className="block text-sm font-medium text-gray-700 mb-2">
-                                Paket Soal Remedial
-                              </label>
-                              <select
-                                id="remedial-exam-packet"
-                                value={remedialActivityExamPacketIdInput}
-                                onChange={(event) => {
-                                  const nextValue = event.target.value;
-                                  setRemedialActivityExamPacketIdInput(nextValue);
-                                  const packet = remedialExamPackets.find((item) => item.id.toString() === nextValue);
-                                  if (packet && !remedialActivityTitleInput.trim()) {
-                                    setRemedialActivityTitleInput(`Remedial ${packet.title}`);
-                                  }
-                                }}
-                                className="w-full px-4 py-2 border border-indigo-200 rounded-lg bg-white focus:ring-blue-500 focus:border-blue-500"
-                                disabled={remedialExamPacketsLoading}
-                              >
-                                <option value="">
-                                  {remedialExamPacketsLoading ? 'Memuat paket soal...' : 'Pilih paket soal existing'}
-                                </option>
-                                {remedialExamPackets.map((packet) => (
-                                  <option key={packet.id} value={packet.id}>
-                                    {packet.title} {packet.publishedQuestionCount ? `(${packet.publishedQuestionCount} soal)` : ''}
-                                  </option>
-                                ))}
-                              </select>
-                            </div>
-                            <a
-                              href="/teacher/exams/create"
-                              className="inline-flex h-[42px] items-center justify-center rounded-lg border border-indigo-200 bg-white px-4 text-sm font-medium text-indigo-700 hover:bg-indigo-100"
-                            >
-                              Buat Paket Baru
-                            </a>
-                          </div>
-                        </div>
-                      ) : null}
-                    </div>
-                  ) : null}
 
                   <div className="mt-4">
                     <label htmlFor="remedial-note" className="block text-sm font-medium text-gray-700 mb-2">
@@ -3181,17 +3050,6 @@ export const TeacherGradesPage = () => {
               </button>
               {!activeRemedialDetail.isComplete && !isRemedialHistoryMode ? (
                 <>
-                  {isRemedialActivityMode ? (
-                    <button
-                      type="button"
-                      onClick={handleGiveRemedialActivity}
-                      disabled={remedialSaving}
-                      className="inline-flex items-center gap-2 px-4 py-2 border border-blue-200 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-70"
-                    >
-                      {remedialSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <ClipboardList className="w-4 h-4" />}
-                      Terbitkan Remedial ke Siswa
-                    </button>
-                  ) : null}
                   {isRemedialScoreMode ? (
                     <button
                       type="button"
