@@ -25,7 +25,7 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
-  - Commit: `pending`
+  - Commit: `16d7082`
   - Title: `feat(attendance): add recap audit and web monitoring`
   - Summary:
     - subject attendance mendapat audit fields (`createdAt`, `updatedAt`, `createdById`, `updatedById`, optional assignment/schedule link)
