@@ -201,7 +201,7 @@ Adapun nama siswa/i kami adalah:`,
       return [] as { name: string; phone: string }[];
     })(),
     signatureSpace: 5,
-    useBarcode: false
+    useBarcode: true
   });
 
   const queryClient = useQueryClient();

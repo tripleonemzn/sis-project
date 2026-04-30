@@ -85,7 +85,7 @@ const PklLetterPrint: React.FC = () => {
   const [startDate, setStartDate] = useState(formatDate(savedConfig?.startDate));
   const [endDate, setEndDate] = useState(formatDate(savedConfig?.endDate));
   const [signatureSpace] = useState(savedConfig?.signatureSpace || 5);
-  const [useBarcode] = useState(savedConfig?.useBarcode || false);
+  const [useBarcode] = useState(savedConfig?.useBarcode ?? true);
 
   const { data: internshipData, isLoading: isLoadingInternship, error: internshipError } = useQuery({
     queryKey: ['internship-detail-print', normalizedInternshipId],
@@ -312,7 +312,7 @@ Kepala SMK Karya Guna Bhakti 2 Kota Bekasi mengajukan permohonan siswa/i kami un
 
           <div className="flex flex-1 flex-col px-16">
             {/* Header Surat */}
-            <div className="flex mb-8">
+            <div className="flex mb-10">
             <div className="w-[68px] flex flex-col gap-1">
               <div>Nomor</div>
               <div>Lampiran</div>

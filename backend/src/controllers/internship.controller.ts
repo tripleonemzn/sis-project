@@ -820,7 +820,8 @@ const generateLetterHTML = async (
   documentHeader: StandardSchoolDocumentHeaderSnapshot,
   req: Request,
 ) => {
-  const { letterNumber, attachment, subject, date, openingText, closingText, signatureSpace, useBarcode, contactPersons } = config;
+  const { letterNumber, attachment, subject, date, openingText, closingText, signatureSpace, contactPersons } = config;
+  const useBarcode = config.useBarcode ?? true;
   
   // Use first internship for company details
   const internship = internships[0];
@@ -872,7 +873,7 @@ const generateLetterHTML = async (
       
       <div class="content-wrapper" style="padding-left: 64px; padding-right: 64px;">
         <div class="content-area" style="line-height: 1.2; margin-left: 0; margin-right: 0;">
-        <div style="display: flex; justify-content: space-between; margin-bottom: 20px;">
+        <div style="display: flex; justify-content: space-between; margin-bottom: 36px;">
           <div>
             <table style="border-collapse: collapse;">
               <tr><td style="width: 68px;">Nomor</td><td style="width: 8px;">:</td><td>${letterNumber}</td></tr>

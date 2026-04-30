@@ -5,8 +5,8 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-04-30 08:49 WIB
-- Current status: Follow-up alignment isi surat PKL sudah selesai dan live. Isi surat mulai dari `Kepada Yth` sampai penutup kini disejajarkan dengan awal isi nomor surat `B.108/...`, bukan dengan label `Nomor`.
+- Last updated: 2026-04-30 08:58 WIB
+- Current status: Follow-up spacing dan default QR surat PKL sudah selesai dan live. Ada jarak satu baris antara `Perihal` dan `Kepada Yth`, serta checkbox barcode/QR pada konfigurasi surat kini default aktif.
 - Objective/task aktif:
   - Menjaga fitur operasional lintas web/mobile tetap user-friendly dan aman untuk produksi.
 - Batch terakhir selesai:
@@ -20,13 +20,15 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
   - Commit: `pending`
-  - Title: `fix(internship): align pkl body with letter number`
+  - Title: `fix(internship): default pkl qr and adjust spacing`
   - Summary:
-    - body surat PKL digeser ke titik awal isi nomor surat, yaitu setelah label dan titik dua
-    - fallback print legacy `/print/pkl/:id` ikut disamakan
+    - jarak setelah `Perihal` sebelum `Kepada Yth` ditambah setara satu baris kosong
+    - default `useBarcode` pada konfigurasi surat PKL diubah menjadi aktif
+    - generator backend dan fallback print legacy juga memakai default QR aktif jika payload lama tidak mengirim nilai eksplisit
 - Area/file disentuh:
   - `backend/src/controllers/internship.controller.ts`
   - `frontend/src/pages/print/PklLetterPrint.tsx`
+  - `frontend/src/pages/teacher/internship/InternshipApprovalPage.tsx`
   - `docs/CODEX_CONTINUITY.md`
 - Verifikasi batch ini:
   - `cd backend && npm run build`
