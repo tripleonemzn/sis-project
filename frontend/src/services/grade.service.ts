@@ -285,8 +285,17 @@ export interface HomeroomResultPublicationsData {
   };
 }
 
-export type ScoreRemedialStatus = 'RECORDED' | 'PASSED' | 'STILL_BELOW_KKM' | 'CANCELLED' | string;
+export type ScoreRemedialStatus = 'DRAFT' | 'RECORDED' | 'PASSED' | 'STILL_BELOW_KKM' | 'CANCELLED' | string;
 export type ScoreRemedialMethod = 'MANUAL_SCORE' | 'ASSIGNMENT' | 'QUESTION_SET' | string;
+
+export interface ScoreRemedialExamPacketRef {
+  id: number;
+  title: string;
+  type?: string | null;
+  programCode?: string | null;
+  duration?: number | null;
+  publishedQuestionCount?: number | null;
+}
 
 export interface ScoreRemedialAttempt {
   id: number;
@@ -303,6 +312,10 @@ export interface ScoreRemedialAttempt {
   activityInstructions?: string | null;
   activityDueAt?: string | null;
   activityReferenceUrl?: string | null;
+  activityExamPacketId?: number | null;
+  activitySourceExamPacketId?: number | null;
+  activityExamPacket?: ScoreRemedialExamPacketRef | null;
+  activitySourceExamPacket?: ScoreRemedialExamPacketRef | null;
   note?: string | null;
   recordedAt: string;
   recordedById?: number | null;
@@ -318,6 +331,10 @@ export interface StudentRemedialActivity {
   activityInstructions?: string | null;
   activityDueAt?: string | null;
   activityReferenceUrl?: string | null;
+  activityExamPacketId?: number | null;
+  activitySourceExamPacketId?: number | null;
+  activityExamPacket?: ScoreRemedialExamPacketRef | null;
+  activitySourceExamPacket?: ScoreRemedialExamPacketRef | null;
   sourceLabel: string;
   originalScore: number;
   remedialScore: number;
@@ -575,22 +592,28 @@ export const gradeService = {
 
   createScoreRemedial: async (payload: {
     scoreEntryId: number;
-    remedialScore: number;
+    remedialScore?: number;
     method?: ScoreRemedialMethod;
+    saveAsDraft?: boolean;
     activityTitle?: string;
     activityInstructions?: string;
     activityDueAt?: string;
     activityReferenceUrl?: string;
+    activityExamPacketId?: number;
+    activitySourceExamPacketId?: number;
     note?: string;
   }) => {
     const response = await api.post('/grades/remedials', {
       score_entry_id: payload.scoreEntryId,
       remedial_score: payload.remedialScore,
       method: payload.method,
+      save_as_draft: payload.saveAsDraft,
       activity_title: payload.activityTitle,
       activity_instructions: payload.activityInstructions,
       activity_due_at: payload.activityDueAt,
       activity_reference_url: payload.activityReferenceUrl,
+      activity_exam_packet_id: payload.activityExamPacketId,
+      activity_source_exam_packet_id: payload.activitySourceExamPacketId,
       note: payload.note,
     });
     return response.data;

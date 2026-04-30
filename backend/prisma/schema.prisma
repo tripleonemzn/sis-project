@@ -1377,30 +1377,34 @@ model StudentScoreEntry {
 }
 
 model StudentScoreRemedial {
-  id                     Int                 @id @default(autoincrement())
-  scoreEntryId           Int
-  attemptNumber          Int
-  originalScore          Float
-  previousEffectiveScore Float?
-  remedialScore          Float
-  effectiveScore         Float
-  kkm                    Int
-  status                 ScoreRemedialStatus @default(RECORDED)
-  method                 ScoreRemedialMethod @default(MANUAL_SCORE)
-  activityTitle          String?
-  activityInstructions   String?
-  activityDueAt          DateTime?
-  activityReferenceUrl   String?
-  note                   String?
-  recordedById           Int?
-  recordedAt             DateTime            @default(now())
-  createdAt              DateTime            @default(now())
-  updatedAt              DateTime            @updatedAt
-  scoreEntry             StudentScoreEntry   @relation(fields: [scoreEntryId], references: [id], onDelete: Cascade)
+  id                         Int                 @id @default(autoincrement())
+  scoreEntryId               Int
+  attemptNumber              Int
+  originalScore              Float
+  previousEffectiveScore     Float?
+  remedialScore              Float
+  effectiveScore             Float
+  kkm                        Int
+  status                     ScoreRemedialStatus @default(RECORDED)
+  method                     ScoreRemedialMethod @default(MANUAL_SCORE)
+  activityTitle              String?
+  activityInstructions       String?
+  activityDueAt              DateTime?
+  activityReferenceUrl       String?
+  activityExamPacketId       Int?
+  activitySourceExamPacketId Int?
+  note                       String?
+  recordedById               Int?
+  recordedAt                 DateTime            @default(now())
+  createdAt                  DateTime            @default(now())
+  updatedAt                  DateTime            @updatedAt
+  scoreEntry                 StudentScoreEntry   @relation(fields: [scoreEntryId], references: [id], onDelete: Cascade)
 
   @@unique([scoreEntryId, attemptNumber])
   @@index([scoreEntryId, status])
   @@index([recordedById, recordedAt])
+  @@index([activityExamPacketId])
+  @@index([activitySourceExamPacketId])
   @@map("student_score_remedials")
 }
 

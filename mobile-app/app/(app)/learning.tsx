@@ -279,6 +279,11 @@ function RemedialCard({
       <Text style={{ fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), color: '#334155', marginBottom: 8 }}>
         {item.activityInstructions || 'Instruksi remedial belum ditambahkan guru.'}
       </Text>
+      {item.activityExamPacket ? (
+        <Text style={{ fontSize: scaleFont(11), lineHeight: scaleLineHeight(16), color: '#4338ca', marginBottom: 6, fontWeight: '700' }}>
+          Paket soal: {item.activityExamPacket.title}
+        </Text>
+      ) : null}
       <Text style={{ fontSize: scaleFont(11), lineHeight: scaleLineHeight(16), color: '#64748b', marginBottom: 2 }}>
         Tenggat: {formatOptionalDate(item.activityDueAt)}
       </Text>

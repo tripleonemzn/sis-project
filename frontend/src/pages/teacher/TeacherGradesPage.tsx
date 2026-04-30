@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useRef, type WheelEvent } from 'react';
 import { ClipboardList, Loader2, RotateCcw, Save, X } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { gradeService } from '../../services/grade.service';
+import { examService, type ExamPacket } from '../../services/exam.service';
 import type {
   GradeComponent,
   RemedialScoreEntry,
@@ -310,6 +311,12 @@ const getRemedialStatusMeta = (status?: string | null) => {
     return {
       label: 'Dibatalkan',
       className: 'bg-slate-50 text-slate-600 border border-slate-200',
+    };
+  }
+  if (normalized === 'DRAFT') {
+    return {
+      label: 'Diberikan',
+      className: 'bg-indigo-50 text-indigo-700 border border-indigo-200',
     };
   }
   return {
@@ -763,6 +770,10 @@ export const TeacherGradesPage = () => {
   const [remedialActivityInstructionsInput, setRemedialActivityInstructionsInput] = useState('');
   const [remedialActivityDueAtInput, setRemedialActivityDueAtInput] = useState('');
   const [remedialActivityReferenceUrlInput, setRemedialActivityReferenceUrlInput] = useState('');
+  const [remedialActivityExamPacketIdInput, setRemedialActivityExamPacketIdInput] = useState('');
+  const [remedialActivitySourceExamPacketIdInput, setRemedialActivitySourceExamPacketIdInput] = useState('');
+  const [remedialExamPackets, setRemedialExamPackets] = useState<ExamPacket[]>([]);
+  const [remedialExamPacketsLoading, setRemedialExamPacketsLoading] = useState(false);
   const [remedialSaving, setRemedialSaving] = useState(false);
   const [isFilterRestoreDone, setIsFilterRestoreDone] = useState(false);
   const restoredAssignmentRef = useRef<string | undefined>(undefined);
@@ -772,6 +783,7 @@ export const TeacherGradesPage = () => {
   const assignmentsRequestRef = useRef(0);
   const remedialRequestRef = useRef(0);
   const remedialDetailRequestRef = useRef(0);
+  const remedialPacketRequestRef = useRef(0);
   
   const selectedAcademicYearNum = Number(selectedAcademicYear);
   const assignmentOptions = useMemo(() => {
@@ -854,6 +866,7 @@ export const TeacherGradesPage = () => {
       complete,
     };
   }, [remedialRows]);
+  const activeRemedialDetail = remedialDetail || selectedRemedial;
   const primaryFormativeComponentId =
     filteredComponents.find((item) => resolveComponentEntryMode(item) === 'NF_SERIES')?.id ?? null;
   const religionOptions = useMemo<ReligionOption[]>(() => {
@@ -1105,6 +1118,9 @@ export const TeacherGradesPage = () => {
     setRemedialComponentCode('');
     setSelectedRemedial(null);
     setRemedialDetail(null);
+    setRemedialExamPackets([]);
+    setRemedialActivityExamPacketIdInput('');
+    setRemedialActivitySourceExamPacketIdInput('');
   }, [selectedAssignment, selectedSemester]);
 
   useEffect(() => {
@@ -1126,6 +1142,16 @@ export const TeacherGradesPage = () => {
     selectedAssignment,
     selectedSemester,
   ]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (remedialMethodInput !== 'QUESTION_SET' || !activeRemedialDetail) {
+      setRemedialExamPackets([]);
+      setRemedialActivityExamPacketIdInput('');
+      setRemedialActivitySourceExamPacketIdInput('');
+      return;
+    }
+    fetchRemedialExamPackets(activeRemedialDetail);
+  }, [remedialMethodInput, activeRemedialDetail?.scoreEntryId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchGradeComponents = async () => {
     const requestId = ++gradeComponentRequestRef.current;
@@ -1581,6 +1607,39 @@ export const TeacherGradesPage = () => {
     }
   };
 
+  const fetchRemedialExamPackets = async (entry: RemedialScoreEntry) => {
+    const requestId = ++remedialPacketRequestRef.current;
+    try {
+      setRemedialExamPacketsLoading(true);
+      const response = await examService.getPackets({
+        subjectId: entry.subjectId,
+        academicYearId: entry.academicYearId,
+        semester: entry.semester,
+        scope: 'teacher',
+        limit: 100,
+      });
+      if (requestId !== remedialPacketRequestRef.current) return;
+      const payload = response as { data?: ExamPacket[] | { packets?: ExamPacket[] } } | ExamPacket[];
+      const packets = Array.isArray(payload)
+        ? payload
+        : Array.isArray(payload.data)
+          ? payload.data
+          : Array.isArray(payload.data?.packets)
+            ? payload.data.packets
+            : [];
+      setRemedialExamPackets(packets);
+    } catch (error) {
+      if (requestId !== remedialPacketRequestRef.current) return;
+      console.error('Fetch remedial exam packets error:', error);
+      toast.error(getApiErrorMessage(error, 'Gagal memuat paket soal remedial'));
+      setRemedialExamPackets([]);
+    } finally {
+      if (requestId === remedialPacketRequestRef.current) {
+        setRemedialExamPacketsLoading(false);
+      }
+    }
+  };
+
   const openRemedialModal = (row: RemedialScoreEntry) => {
     setSelectedRemedial(row);
     setRemedialDetail(row);
@@ -1591,6 +1650,9 @@ export const TeacherGradesPage = () => {
     setRemedialActivityInstructionsInput('');
     setRemedialActivityDueAtInput('');
     setRemedialActivityReferenceUrlInput('');
+    setRemedialActivityExamPacketIdInput('');
+    setRemedialActivitySourceExamPacketIdInput('');
+    setRemedialExamPackets([]);
     fetchRemedialDetail(row.scoreEntryId);
   };
 
@@ -1604,6 +1666,9 @@ export const TeacherGradesPage = () => {
     setRemedialActivityInstructionsInput('');
     setRemedialActivityDueAtInput('');
     setRemedialActivityReferenceUrlInput('');
+    setRemedialActivityExamPacketIdInput('');
+    setRemedialActivitySourceExamPacketIdInput('');
+    setRemedialExamPackets([]);
     setRemedialDetailLoading(false);
   };
 
@@ -1618,13 +1683,17 @@ export const TeacherGradesPage = () => {
     const activityTitle = remedialActivityTitleInput.trim();
     const activityInstructions = remedialActivityInstructionsInput.trim();
     const activityReferenceUrl = remedialActivityReferenceUrlInput.trim();
+    const activityExamPacketId = Number(remedialActivityExamPacketIdInput || 0);
+    const activitySourceExamPacketId = Number(remedialActivitySourceExamPacketIdInput || 0);
     if (
       remedialMethodInput !== 'MANUAL_SCORE' &&
       !activityTitle &&
       !activityInstructions &&
-      !activityReferenceUrl
+      !activityReferenceUrl &&
+      !activityExamPacketId &&
+      !activitySourceExamPacketId
     ) {
-      toast.error('Isi judul, instruksi, atau tautan untuk metode tugas/soal remedial.');
+      toast.error('Isi judul, instruksi, tautan, atau pilih paket soal untuk metode tugas/soal remedial.');
       return;
     }
 
@@ -1638,6 +1707,8 @@ export const TeacherGradesPage = () => {
         activityInstructions: activityInstructions || undefined,
         activityDueAt: remedialActivityDueAtInput || undefined,
         activityReferenceUrl: activityReferenceUrl || undefined,
+        activityExamPacketId: activityExamPacketId || undefined,
+        activitySourceExamPacketId: activitySourceExamPacketId || undefined,
         note: remedialNoteInput.trim() || undefined,
       });
       toast.success('Nilai remedial berhasil disimpan.');
@@ -1648,12 +1719,65 @@ export const TeacherGradesPage = () => {
       setRemedialActivityInstructionsInput('');
       setRemedialActivityDueAtInput('');
       setRemedialActivityReferenceUrlInput('');
+      setRemedialActivityExamPacketIdInput('');
+      setRemedialActivitySourceExamPacketIdInput('');
       await fetchRemedialDetail(activeRemedial.scoreEntryId);
       await fetchRemedialRows(true);
       await refreshReportGradeSnapshot();
     } catch (error) {
       console.error('Save remedial error:', error);
       toast.error(getApiErrorMessage(error, 'Gagal menyimpan nilai remedial'));
+    } finally {
+      setRemedialSaving(false);
+    }
+  };
+
+  const handleGiveRemedialActivity = async () => {
+    const activeRemedial = remedialDetail || selectedRemedial;
+    if (!activeRemedial) return;
+    if (remedialMethodInput === 'MANUAL_SCORE') {
+      toast.error('Pilih metode tugas remedial atau soal/quiz remedial untuk memberi aktivitas.');
+      return;
+    }
+
+    const activityTitle = remedialActivityTitleInput.trim();
+    const activityInstructions = remedialActivityInstructionsInput.trim();
+    const activityReferenceUrl = remedialActivityReferenceUrlInput.trim();
+    const activityExamPacketId = Number(remedialActivityExamPacketIdInput || 0);
+    const activitySourceExamPacketId = Number(remedialActivitySourceExamPacketIdInput || 0);
+
+    if (!activityTitle && !activityInstructions && !activityReferenceUrl && !activityExamPacketId && !activitySourceExamPacketId) {
+      toast.error('Isi instruksi, tautan, atau pilih paket soal sebelum aktivitas diberikan.');
+      return;
+    }
+
+    try {
+      setRemedialSaving(true);
+      await gradeService.createScoreRemedial({
+        scoreEntryId: activeRemedial.scoreEntryId,
+        method: remedialMethodInput,
+        saveAsDraft: true,
+        activityTitle: activityTitle || undefined,
+        activityInstructions: activityInstructions || undefined,
+        activityDueAt: remedialActivityDueAtInput || undefined,
+        activityReferenceUrl: activityReferenceUrl || undefined,
+        activityExamPacketId: activityExamPacketId || undefined,
+        activitySourceExamPacketId: activitySourceExamPacketId || undefined,
+        note: remedialNoteInput.trim() || undefined,
+      });
+      toast.success('Aktivitas remedial berhasil diberikan ke siswa.');
+      setRemedialActivityTitleInput('');
+      setRemedialActivityInstructionsInput('');
+      setRemedialActivityDueAtInput('');
+      setRemedialActivityReferenceUrlInput('');
+      setRemedialActivityExamPacketIdInput('');
+      setRemedialActivitySourceExamPacketIdInput('');
+      setRemedialNoteInput('');
+      await fetchRemedialDetail(activeRemedial.scoreEntryId);
+      await fetchRemedialRows(true);
+    } catch (error) {
+      console.error('Give remedial activity error:', error);
+      toast.error(getApiErrorMessage(error, 'Gagal memberi aktivitas remedial'));
     } finally {
       setRemedialSaving(false);
     }
@@ -1860,7 +1984,6 @@ export const TeacherGradesPage = () => {
     return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">Belum Tuntas</span>;
   };
 
-  const activeRemedialDetail = remedialDetail || selectedRemedial;
   const remedialAttempts = activeRemedialDetail?.remedials
     ? [...activeRemedialDetail.remedials].sort(
         (a: ScoreRemedialAttempt, b: ScoreRemedialAttempt) => b.attemptNumber - a.attemptNumber,
@@ -2500,6 +2623,9 @@ export const TeacherGradesPage = () => {
                                 {attempt.activityTitle ? (
                                   <div className="text-xs text-gray-500">{attempt.activityTitle}</div>
                                 ) : null}
+                                {attempt.activityExamPacket ? (
+                                  <div className="text-xs text-gray-500">Paket soal: {attempt.activityExamPacket.title}</div>
+                                ) : null}
                                 {attempt.activityDueAt ? (
                                   <div className="text-xs text-gray-500">Tenggat: {formatDateTimeDisplay(attempt.activityDueAt)}</div>
                                 ) : null}
@@ -2606,6 +2732,49 @@ export const TeacherGradesPage = () => {
                           />
                         </div>
                       </div>
+                      {remedialMethodInput === 'QUESTION_SET' ? (
+                        <div className="mt-4 rounded-lg border border-indigo-100 bg-indigo-50 p-3">
+                          <div className="flex flex-col gap-3 md:flex-row md:items-end">
+                            <div className="flex-1">
+                              <label htmlFor="remedial-exam-packet" className="block text-sm font-medium text-gray-700 mb-2">
+                                Paket Soal Remedial
+                              </label>
+                              <select
+                                id="remedial-exam-packet"
+                                value={remedialActivityExamPacketIdInput}
+                                onChange={(event) => {
+                                  const nextValue = event.target.value;
+                                  setRemedialActivityExamPacketIdInput(nextValue);
+                                  const packet = remedialExamPackets.find((item) => item.id.toString() === nextValue);
+                                  if (packet && !remedialActivityTitleInput.trim()) {
+                                    setRemedialActivityTitleInput(`Remedial ${packet.title}`);
+                                  }
+                                }}
+                                className="w-full px-4 py-2 border border-indigo-200 rounded-lg bg-white focus:ring-blue-500 focus:border-blue-500"
+                                disabled={remedialExamPacketsLoading}
+                              >
+                                <option value="">
+                                  {remedialExamPacketsLoading ? 'Memuat paket soal...' : 'Pilih paket soal existing'}
+                                </option>
+                                {remedialExamPackets.map((packet) => (
+                                  <option key={packet.id} value={packet.id}>
+                                    {packet.title} {packet.publishedQuestionCount ? `(${packet.publishedQuestionCount} soal)` : ''}
+                                  </option>
+                                ))}
+                              </select>
+                              <p className="mt-1 text-xs text-indigo-800">
+                                Bisa memakai paket ujian yang sudah pernah diujikan, atau paket baru yang dibuat dari bank soal.
+                              </p>
+                            </div>
+                            <a
+                              href="/teacher/exams/create"
+                              className="inline-flex items-center justify-center rounded-lg border border-indigo-200 bg-white px-4 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-100"
+                            >
+                              Buat Paket Baru
+                            </a>
+                          </div>
+                        </div>
+                      ) : null}
                       <div className="mt-4">
                         <label htmlFor="remedial-activity-instructions" className="block text-sm font-medium text-gray-700 mb-2">
                           Instruksi untuk Siswa
@@ -2662,15 +2831,28 @@ export const TeacherGradesPage = () => {
                 Tutup
               </button>
               {!activeRemedialDetail.isComplete ? (
-                <button
-                  type="button"
-                  onClick={handleSaveRemedial}
-                  disabled={remedialSaving}
-                  className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-70"
-                >
-                  {remedialSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                  Simpan Remedial
-                </button>
+                <>
+                  {remedialMethodInput !== 'MANUAL_SCORE' ? (
+                    <button
+                      type="button"
+                      onClick={handleGiveRemedialActivity}
+                      disabled={remedialSaving}
+                      className="inline-flex items-center gap-2 px-4 py-2 border border-blue-200 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-70"
+                    >
+                      {remedialSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <ClipboardList className="w-4 h-4" />}
+                      Berikan Aktivitas
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={handleSaveRemedial}
+                    disabled={remedialSaving}
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-70"
+                  >
+                    {remedialSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                    Simpan Nilai
+                  </button>
+                </>
               ) : null}
             </div>
           </div>

@@ -3299,6 +3299,78 @@ function normalizeOptionalRemedialDate(value: unknown): Date | null {
   return Number.isFinite(parsed.getTime()) ? parsed : null
 }
 
+function normalizeRemedialDraftFlag(value: unknown): boolean {
+  const normalized = String(value ?? '').trim().toLowerCase()
+  return normalized === 'true' || normalized === '1' || normalized === 'yes'
+}
+
+async function resolveRemedialExamPacketReference(
+  packetId: number | null,
+  entry: {
+    studentId: number
+    subjectId: number
+    academicYearId: number
+    semester: Semester
+  },
+  user: AuthUserLike,
+) {
+  if (!packetId) return null
+
+  const packet = await prisma.examPacket.findFirst({
+    where: {
+      id: packetId,
+      subjectId: entry.subjectId,
+      academicYearId: entry.academicYearId,
+      semester: entry.semester,
+    },
+    select: {
+      id: true,
+      title: true,
+      authorId: true,
+      subjectId: true,
+      academicYearId: true,
+      semester: true,
+      type: true,
+      programCode: true,
+    },
+  })
+
+  if (!packet) {
+    throw new ApiError(400, 'Paket soal remedial tidak valid untuk mapel, semester, atau tahun ajaran ini.')
+  }
+
+  if (!isTeacherUser(user)) return packet
+
+  const userId = toPositiveInt(user?.id)
+  if (packet.authorId === userId) return packet
+
+  const profile = userId
+    ? await prisma.user.findUnique({
+        where: { id: userId },
+        select: { additionalDuties: true },
+      })
+    : null
+  const duties = (profile?.additionalDuties || []).map((item) => String(item || '').trim().toUpperCase())
+  if (duties.includes('WAKASEK_KURIKULUM') || duties.includes('SEKRETARIS_KURIKULUM')) return packet
+
+  const classId = await resolveStudentClassId(entry.studentId, entry.academicYearId)
+  const scheduledForClass = classId
+    ? await prisma.examSchedule.findFirst({
+        where: {
+          packetId: packet.id,
+          classId,
+        },
+        select: { id: true },
+      })
+    : null
+
+  if (!scheduledForClass) {
+    throw new ApiError(403, 'Guru tidak memiliki akses untuk memakai paket soal ini sebagai remedial.')
+  }
+
+  return packet
+}
+
 function resolveRemedialEffectiveScore(params: {
   originalScore: number
   previousEffectiveScore?: number | null
@@ -3742,6 +3814,7 @@ export const createScoreRemedial = async (req: Request, res: Response) => {
   try {
     const user = (req as any).user as AuthUserLike
     const scoreEntryId = toPositiveInt(req.body?.score_entry_id || req.body?.scoreEntryId)
+    const saveAsDraft = normalizeRemedialDraftFlag(req.body?.save_as_draft ?? req.body?.saveAsDraft)
     const remedialScore = parseOptionalScoreValue(
       req.body?.remedial_score ?? req.body?.remedialScore,
       'Nilai remedial',
@@ -3762,15 +3835,31 @@ export const createScoreRemedial = async (req: Request, res: Response) => {
       req.body?.activity_reference_url ?? req.body?.activityReferenceUrl,
       500,
     )
+    const activityExamPacketId = toPositiveInt(
+      req.body?.activity_exam_packet_id ?? req.body?.activityExamPacketId,
+    )
+    const activitySourceExamPacketId = toPositiveInt(
+      req.body?.activity_source_exam_packet_id ?? req.body?.activitySourceExamPacketId,
+    )
     const note = String(req.body?.note || '').trim() || null
 
     if (!scoreEntryId) {
       throw new ApiError(400, 'score_entry_id wajib diisi.')
     }
-    if (remedialScore === undefined || remedialScore === null) {
+    if (!saveAsDraft && (remedialScore === undefined || remedialScore === null)) {
       throw new ApiError(400, 'Nilai remedial wajib diisi.')
     }
-    if (method !== ScoreRemedialMethod.MANUAL_SCORE && !activityTitle && !activityInstructions && !activityReferenceUrl) {
+    if (saveAsDraft && method === ScoreRemedialMethod.MANUAL_SCORE) {
+      throw new ApiError(400, 'Aktivitas remedial harus memakai metode tugas atau soal.')
+    }
+    if (
+      method !== ScoreRemedialMethod.MANUAL_SCORE &&
+      !activityTitle &&
+      !activityInstructions &&
+      !activityReferenceUrl &&
+      !activityExamPacketId &&
+      !activitySourceExamPacketId
+    ) {
       throw new ApiError(400, 'Isi judul, instruksi, atau tautan remedial untuk metode tugas/soal.')
     }
 
@@ -3780,6 +3869,11 @@ export const createScoreRemedial = async (req: Request, res: Response) => {
     }
 
     await assertCanAccessRemedialScoreEntry(user, entry)
+
+    const [activityExamPacket, activitySourceExamPacket] = await Promise.all([
+      resolveRemedialExamPacketReference(activityExamPacketId, entry, user),
+      resolveRemedialExamPacketReference(activitySourceExamPacketId, entry, user),
+    ])
 
     const kkmInfo = await resolveKkmForRemedialScoreEntry({
       studentId: entry.studentId,
@@ -3796,16 +3890,23 @@ export const createScoreRemedial = async (req: Request, res: Response) => {
       (latest, row) => Math.max(latest, Number(row.attemptNumber || 0)),
       0,
     )
-    const effectiveScore = resolveRemedialEffectiveScore({
-      originalScore: summary.originalScore,
-      previousEffectiveScore: summary.currentEffectiveScore,
-      remedialScore,
-      kkm: kkmInfo.kkm,
-    })
+    const normalizedRemedialScore = saveAsDraft
+      ? summary.currentEffectiveScore
+      : roundRemedialScore(Number(remedialScore))
+    const effectiveScore = saveAsDraft
+      ? summary.currentEffectiveScore
+      : resolveRemedialEffectiveScore({
+          originalScore: summary.originalScore,
+          previousEffectiveScore: summary.currentEffectiveScore,
+          remedialScore: normalizedRemedialScore,
+          kkm: kkmInfo.kkm,
+        })
     const status =
-      effectiveScore >= kkmInfo.kkm
-        ? ScoreRemedialStatus.PASSED
-        : ScoreRemedialStatus.STILL_BELOW_KKM
+      saveAsDraft
+        ? ScoreRemedialStatus.DRAFT
+        : effectiveScore >= kkmInfo.kkm
+          ? ScoreRemedialStatus.PASSED
+          : ScoreRemedialStatus.STILL_BELOW_KKM
 
     const remedial = await prisma.studentScoreRemedial.create({
       data: {
@@ -3813,19 +3914,36 @@ export const createScoreRemedial = async (req: Request, res: Response) => {
         attemptNumber: maxAttempt + 1,
         originalScore: summary.originalScore,
         previousEffectiveScore: summary.currentEffectiveScore,
-        remedialScore: roundRemedialScore(remedialScore),
+        remedialScore: normalizedRemedialScore,
         effectiveScore,
         kkm: kkmInfo.kkm,
         status,
         method,
-        activityTitle,
+        activityTitle: activityTitle || activityExamPacket?.title || activitySourceExamPacket?.title || null,
         activityInstructions,
         activityDueAt,
         activityReferenceUrl,
+        activityExamPacketId: activityExamPacket?.id || null,
+        activitySourceExamPacketId: activitySourceExamPacket?.id || null,
         note,
         recordedById: toPositiveInt(user?.id) || null,
       },
     })
+
+    if (saveAsDraft) {
+      return ApiResponseHelper.success(
+        res,
+        {
+          remedial,
+          effectiveScore,
+          kkm: kkmInfo.kkm,
+          status,
+          activityExamPacket,
+          activitySourceExamPacket,
+        },
+        'Aktivitas remedial berhasil diberikan.',
+      )
+    }
 
     const reportSync = await syncReportGradeSafely(
       entry.studentId,
@@ -3871,7 +3989,7 @@ function formatRemedialMethodLabel(method: ScoreRemedialMethod) {
 function formatRemedialStatusLabel(status: ScoreRemedialStatus) {
   if (status === ScoreRemedialStatus.PASSED) return 'Tuntas'
   if (status === ScoreRemedialStatus.STILL_BELOW_KKM) return 'Masih remedial'
-  if (status === ScoreRemedialStatus.DRAFT) return 'Draft'
+  if (status === ScoreRemedialStatus.DRAFT) return 'Diberikan'
   if (status === ScoreRemedialStatus.CANCELLED) return 'Dibatalkan'
   return 'Tercatat'
 }
@@ -3910,6 +4028,8 @@ export const getStudentRemedialActivities = async (req: Request, res: Response) 
           { activityTitle: { not: null } },
           { activityInstructions: { not: null } },
           { activityReferenceUrl: { not: null } },
+          { activityExamPacketId: { not: null } },
+          { activitySourceExamPacketId: { not: null } },
         ],
         scoreEntry: {
           studentId,
@@ -3950,9 +4070,12 @@ export const getStudentRemedialActivities = async (req: Request, res: Response) 
 
     const subjectIds = uniqPositiveNumbers(rows.map((row) => row.scoreEntry.subjectId))
     const recordedByIds = uniqPositiveNumbers(rows.map((row) => row.recordedById))
+    const packetIds = uniqPositiveNumbers(
+      rows.flatMap((row) => [row.activityExamPacketId, row.activitySourceExamPacketId]),
+    )
     const classId = Number(student?.studentClass?.id || 0)
 
-    const [assignments, recordedByUsers] = await Promise.all([
+    const [assignments, recordedByUsers, packets] = await Promise.all([
       subjectIds.length > 0 && classId > 0
         ? prisma.teacherAssignment.findMany({
             where: {
@@ -3977,6 +4100,19 @@ export const getStudentRemedialActivities = async (req: Request, res: Response) 
             select: { id: true, name: true },
           })
         : Promise.resolve([]),
+      packetIds.length > 0
+        ? prisma.examPacket.findMany({
+            where: { id: { in: packetIds } },
+            select: {
+              id: true,
+              title: true,
+              type: true,
+              programCode: true,
+              duration: true,
+              publishedQuestionCount: true,
+            },
+          })
+        : Promise.resolve([]),
     ])
 
     const teacherBySubject = new Map<number, { id: number; name: string }>()
@@ -3984,6 +4120,7 @@ export const getStudentRemedialActivities = async (req: Request, res: Response) 
       if (!teacherBySubject.has(row.subjectId)) teacherBySubject.set(row.subjectId, row.teacher)
     })
     const recordedByName = new Map(recordedByUsers.map((row) => [row.id, row.name]))
+    const packetById = new Map(packets.map((packet) => [packet.id, packet]))
 
     const formatted = rows.map((row) => {
       const scoreEntry = row.scoreEntry
@@ -4003,6 +4140,10 @@ export const getStudentRemedialActivities = async (req: Request, res: Response) 
         activityInstructions: row.activityInstructions,
         activityDueAt: row.activityDueAt,
         activityReferenceUrl: row.activityReferenceUrl,
+        activityExamPacketId: row.activityExamPacketId,
+        activitySourceExamPacketId: row.activitySourceExamPacketId,
+        activityExamPacket: row.activityExamPacketId ? packetById.get(row.activityExamPacketId) || null : null,
+        activitySourceExamPacket: row.activitySourceExamPacketId ? packetById.get(row.activitySourceExamPacketId) || null : null,
         sourceLabel: formatRemedialSourceLabel(scoreEntry),
         originalScore: roundRemedialScore(Number(row.originalScore)),
         remedialScore: roundRemedialScore(Number(row.remedialScore)),

@@ -67,6 +67,24 @@ export type LearningRemedialActivity = {
   activityInstructions?: string | null;
   activityDueAt?: string | null;
   activityReferenceUrl?: string | null;
+  activityExamPacketId?: number | null;
+  activitySourceExamPacketId?: number | null;
+  activityExamPacket?: {
+    id: number;
+    title: string;
+    type?: string | null;
+    programCode?: string | null;
+    duration?: number | null;
+    publishedQuestionCount?: number | null;
+  } | null;
+  activitySourceExamPacket?: {
+    id: number;
+    title: string;
+    type?: string | null;
+    programCode?: string | null;
+    duration?: number | null;
+    publishedQuestionCount?: number | null;
+  } | null;
   sourceLabel: string;
   originalScore: number;
   remedialScore: number;

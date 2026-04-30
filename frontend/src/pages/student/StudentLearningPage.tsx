@@ -668,6 +668,11 @@ export default function StudentLearningPage() {
                         <p className="mt-1 whitespace-pre-line text-sm text-gray-500">
                           {activity.activityInstructions || 'Instruksi remedial belum ditambahkan guru.'}
                         </p>
+                        {activity.activityExamPacket ? (
+                          <p className="mt-2 text-xs font-medium text-indigo-700">
+                            Paket soal: {activity.activityExamPacket.title}
+                          </p>
+                        ) : null}
                         <p className="mt-2 text-xs text-gray-400">
                           Guru: {activity.teacher?.name || '-'} • Dibuat {formatLearningDate(activity.recordedAt)}
                         </p>
