@@ -5,12 +5,12 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-04-30 13:36 WIB
-- Current status: Polish UI `Input Nilai Siswa` dan tab `Remedial` selesai. Tab/filter web guru mapel sudah dirapikan menjadi satu surface standar, info teknis input nilai yang memenuhi halaman dihapus, tombol `Muat Ulang` remedial dihapus, dropdown `Sumber Nilai` dipindahkan ke header remedial, dan endpoint kandidat remedial sekarang melakukan dedupe per siswa-komponen-slot agar hasil filter kelas tidak membengkak karena entry sumber nilai ganda.
+- Last updated: 2026-04-30 13:48 WIB
+- Current status: Follow-up policy/UI remedial selesai. Tab `Input Nilai Siswa` sekarang memakai komponen shared `UnderlineTabBar` dengan icon seperti acuan `Kelola Ujian`, dan `AGENTS.md` sudah diperjelas agar tab horizontal web ke depan mengutamakan pola/komponen `Kelola Ujian` beserta icon.
 - Objective/task aktif:
   - Mengembangkan fitur remedial nilai untuk guru mapel dengan sumber nilai spesifik, riwayat percobaan lebih dari 1x, nilai asli tetap utuh, dan nilai efektif remedial dibatasi sampai KKM.
 - Batch terakhir selesai:
-  - `Remedial batch 5 - UI polish and scoped eligible rows`
+  - `Remedial batch 6 - tab standardization policy`
 - Progress batch remedial saat ini:
   - `100%` untuk fondasi database remedial
   - `100%` untuk API kandidat nilai belum tuntas dan pencatatan remedial
@@ -31,33 +31,29 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
-  - Commit: `44f015b`
-  - Title: `fix(grades): polish remedial tab and scope candidates`
+  - Commit: `pending`
+  - Title: `style(grades): align remedial tabs with exam standard`
   - Summary:
-    - tab `Input Nilai` dan `Remedial` dipertahankan memakai indikator `border-b-2` standar, dengan filter semester serta kelas-mapel berada di card tab atas
-    - card informasi teknis penilaian pada tab input nilai dihapus agar halaman tidak padat
-    - tombol `Muat Ulang` di tab remedial dihapus; dropdown `Sumber Nilai` dipindah ke sisi kanan header `Remedial Nilai`
-    - endpoint `GET /api/grades/remedials/eligible` kini menormalisasi kandidat per siswa-komponen-slot dan memprioritaskan entry manual/input guru sebelum sumber otomatis, sehingga filter kelas seperti `X AK 1` tidak lagi menampilkan baris duplikat dari sumber nilai ganda
+    - halaman guru mapel `Input Nilai Siswa` memakai `UnderlineTabBar` shared dengan icon `Input Nilai` dan `Remedial`
+    - policy `AGENTS.md` diperbarui: tab horizontal web harus merujuk ke pola `Kelola Ujian`, mengutamakan `UnderlineTabBar`/pola identik, dan memakai icon relevan agar mudah discan
+    - konsep policy remedial dikonfirmasi: nilai remedial tetap mengikuti gate publikasi wali kelas karena yang terbaca siswa adalah nilai publik/rapor yang dirilis, sedangkan guru mapel hanya mencatat hasil remedial sampai efektif maksimal KKM
 - Area/file disentuh:
-  - `backend/src/controllers/grade.controller.ts`
+  - `AGENTS.md`
   - `frontend/src/pages/teacher/TeacherGradesPage.tsx`
   - `docs/CODEX_CONTINUITY.md`
 - Verifikasi batch ini:
   - `git diff --check`
-  - `cd backend && npm run build`
   - `cd frontend && npm run build`
-  - `cd backend && npm run service:restart`
-  - `cd backend && npm run service:health`
   - `cd frontend && npm run deploy`
   - `curl -I https://siskgb2.id/teacher/grades`
 - Publish/live status:
   - Web sudah deploy live dan `/teacher/grades` merespons `200`
-  - Backend sudah direload via PM2 dan health tetap `Backend:200`, `Backend API:200`
+  - Backend tidak disentuh pada batch ini
   - Mobile OTA tidak dijalankan karena tidak ada perubahan source mobile
 - Remaining work:
-  - Tidak ada sisa pada scope polish UI/filter remedial ini.
+  - Jika user setuju, batch berikutnya dapat menambah workflow `Paket Remedial` agar guru bisa membuat/memberikan soal remedial dari sumber nilai tertentu, bukan hanya mencatat hasil remedial manual.
 - Residual risk:
-  - Tidak ada risiko runtime baru yang menambah polling/refetch. Perubahan backend hanya mengurangi baris kandidat yang dikirim setelah query scoped yang sudah ada.
+  - Tidak ada risiko runtime baru; perubahan batch ini frontend/docs only.
 
 ## Status Saat Ini
 

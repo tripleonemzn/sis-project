@@ -175,6 +175,8 @@ Dokumen ini adalah policy kerja default untuk setiap sesi baru yang mengerjakan 
      - `Tambah Assignment Guru` sebagai acuan searchable dropdown untuk data besar
      - `Buat Jadwal Ujian` dan `Lihat Detail Mengajar` sebagai acuan modal/popup operasional
    - Untuk menu tab horizontal di web, gunakan gaya standar seperti tab pada `Kelola Ujian` Wakakur:
+     - utamakan komponen shared `UnderlineTabBar` atau pola setara yang identik dengan `Kelola Ujian`
+     - gunakan icon tab yang relevan seperti pola `Kelola Ujian`; jangan membuat tab teks polos jika konteks tab operasional membutuhkan scan cepat
      - garis bawah/`border-b-2` sebagai indikator aktif
      - tanpa model kartu/pill tebal kecuali user meminta eksplisit
      - tab harus tetap mudah discan secara horizontal dan konsisten antar role
