@@ -5,12 +5,12 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-04-30 17:50 WIB
-- Current status: Integrasi remedial dengan blokir publikasi nilai wali kelas sudah live untuk web/backend. Kandidat remedial guru mapel sekarang membawa status `Masih ditahan Wali Kelas`, siswa yang ditahan tidak bisa dipilih/diterbitkan remedial, dan guru bisa menerbitkan remedial massal lewat tombol `Terbitkan Remedial Terpilih` dalam satu popup. Backend juga punya guard server-side agar bulk maupun single remedial tidak bisa diterbitkan untuk siswa yang masih diblokir wali kelas.
+- Last updated: 2026-04-30 18:04 WIB
+- Current status: UI remedial guru mapel sudah dipisah agar tidak ambigu. Aksi baris sekarang membedakan `Terbitkan` untuk menjadwalkan/memberikan remedial ke siswa, `Input Nilai` untuk mencatat hasil remedial, dan `Riwayat` untuk melihat percobaan/aktivitas yang sudah ada. Popup remedial juga mengikuti mode aksi tersebut sehingga guru tidak lagi melihat form terbitkan dan input nilai dalam satu alur yang bercampur.
 - Objective/task aktif:
   - Mengembangkan fitur remedial nilai untuk guru mapel dengan sumber nilai spesifik, riwayat percobaan lebih dari 1x, nilai asli tetap utuh, dan nilai efektif remedial dibatasi sampai KKM.
 - Batch terakhir selesai:
-  - `Remedial batch 12 - homeroom block aware bulk remedial scheduling`
+  - `Remedial batch 13 - separated action modes for publish, score input, and history`
 - Progress batch remedial saat ini:
   - `100%` untuk fondasi database remedial
   - `100%` untuk API kandidat nilai belum tuntas dan pencatatan remedial
@@ -31,31 +31,24 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
-  - Commit: `391802a`
-  - Title: `feat(grades): add bulk remedial scheduling with homeroom block guard`
+  - Commit: `b2ce3f5`
+  - Title: `fix(grades): split remedial action modes`
   - Summary:
-    - daftar kandidat remedial kini menampilkan metadata blokir publikasi nilai dari wali kelas
-    - siswa yang masih ditahan wali kelas tetap tampil dengan badge, tetapi checkbox dan penerbitan remedialnya dikunci
-    - endpoint bulk `POST /api/grades/remedials/bulk-activities` menerbitkan aktivitas remedial ke banyak siswa sekaligus
-    - UI guru mapel punya checkbox, ringkasan status, dan popup `Terbitkan Remedial Terpilih`
-    - backend tetap memvalidasi blokir wali kelas saat single/bulk create agar UI tidak menjadi satu-satunya guard
+    - tombol aksi remedial per siswa dipisah menjadi `Terbitkan`, `Input Nilai`, dan `Riwayat`
+    - popup `Terbitkan Remedial` hanya menampilkan pilihan metode tugas/soal dan paket soal
+    - popup `Input Nilai Remedial` hanya menampilkan input nilai manual hasil remedial
+    - popup `Riwayat Remedial` hanya menampilkan data riwayat tanpa tombol simpan/terbitkan
+    - guard blokir wali kelas tetap dihormati pada aksi `Terbitkan` dan `Input Nilai`
 - Area/file disentuh:
-  - `backend/src/controllers/grade.controller.ts`
-  - `backend/src/routes/grade.routes.ts`
   - `frontend/src/pages/teacher/TeacherGradesPage.tsx`
-  - `frontend/src/services/grade.service.ts`
   - `docs/CODEX_CONTINUITY.md`
 - Verifikasi batch ini:
   - `git diff --check`
-  - `cd backend && npm run build`
   - `cd frontend && npm run build`
-  - `cd backend && npm run service:restart`
-  - `cd backend && npm run service:health`
   - `cd frontend && npm run deploy`
 - Publish/live status:
   - Web sudah deploy live
-  - Backend sudah reload via PM2 dan health tetap `Backend:200`, `Backend API:200`
-  - Tidak ada perubahan mobile pada batch ini
+  - Tidak ada perubahan backend atau mobile pada batch ini
 - Remaining work:
   - Tidak ada sisa wajib pada batch remedial ini. Jika user ingin pengalaman native penuh di mobile, batch berikutnya bisa membuat layar CBT remedial native, tetapi saat ini mobile sudah punya aksi aman untuk membuka pengerjaan remedial dari aplikasi.
 - Residual risk:
