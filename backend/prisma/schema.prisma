@@ -1156,16 +1156,25 @@ model ExamScore {
 }
 
 model Attendance {
-  id             Int                @id @default(autoincrement())
-  date           DateTime
-  classId        Int
-  subjectId      Int
-  academicYearId Int
-  records        AttendanceRecord[]
-  academicYear   AcademicYear       @relation(fields: [academicYearId], references: [id])
-  class          Class              @relation(fields: [classId], references: [id])
-  subject        Subject            @relation(fields: [subjectId], references: [id])
+  id                  Int                @id @default(autoincrement())
+  date                DateTime
+  classId             Int
+  subjectId           Int
+  academicYearId      Int
+  teacherAssignmentId Int?
+  scheduleEntryId     Int?
+  createdById         Int?
+  updatedById         Int?
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+  records             AttendanceRecord[]
+  academicYear        AcademicYear       @relation(fields: [academicYearId], references: [id])
+  class               Class              @relation(fields: [classId], references: [id])
+  subject             Subject            @relation(fields: [subjectId], references: [id])
 
+  @@index([academicYearId, classId, subjectId, date])
+  @@index([academicYearId, teacherAssignmentId, date])
+  @@index([academicYearId, scheduleEntryId, date])
   @@map("attendances")
 }
 

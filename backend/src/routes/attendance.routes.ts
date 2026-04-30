@@ -1,8 +1,11 @@
 import { Router } from 'express';
 import {
   getDailyAttendanceRecap,
+  getDailyAttendanceRecapDetail,
   getLateSummaryByClass,
   getSubjectAttendanceByDate,
+  getSubjectAttendanceRecap,
+  getTeacherClassAttendanceRecap,
   saveSubjectAttendance,
   saveDailyAttendance,
   getDailyAttendance,
@@ -78,8 +81,11 @@ router.post('/daily-presence/self-scan/confirm', roleMiddleware(['ADMIN', 'STAFF
 router.use(roleMiddleware(['ADMIN', 'TEACHER', 'PRINCIPAL']));
 
 router.get('/daily/recap', getDailyAttendanceRecap);
+router.get('/daily/recap-detail', getDailyAttendanceRecapDetail);
 router.get('/daily/late-summary', getLateSummaryByClass);
 
+router.get('/teacher-class-recap', getTeacherClassAttendanceRecap);
+router.get('/subject/recap', getSubjectAttendanceRecap);
 router.get('/subject', getSubjectAttendanceByDate);
 router.post('/subject', saveSubjectAttendance);
 

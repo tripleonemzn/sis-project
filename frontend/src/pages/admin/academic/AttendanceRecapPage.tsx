@@ -5,9 +5,12 @@ import { classService, type Class } from '../../../services/class.service';
 import { academicYearService, type AcademicYear } from '../../../services/academicYear.service';
 import {
   attendanceService,
+  type AttendanceRecapPeriod,
   type DailyAttendanceRecapStudent,
   type LateSummaryStudent,
   type SemesterFilter,
+  type TeacherAttendanceMonitorStatus,
+  type TeacherClassAttendanceSession,
 } from '../../../services/attendance.service';
 import {
   Loader2,
@@ -40,12 +43,41 @@ const SEMESTERS: SemesterOption[] = [
   { value: 'EVEN', label: 'Semester Genap' },
 ];
 
+const MONITOR_STATUS_OPTIONS: Array<{ value: '' | TeacherAttendanceMonitorStatus; label: string }> = [
+  { value: '', label: 'Semua Status' },
+  { value: 'SUBMITTED', label: 'Sudah Diisi' },
+  { value: 'MISSING', label: 'Belum Diisi' },
+  { value: 'LATE_INPUT', label: 'Input Susulan' },
+  { value: 'EDITED', label: 'Pernah Diedit' },
+];
+
+const DAY_LABELS: Record<string, string> = {
+  MONDAY: 'Senin',
+  TUESDAY: 'Selasa',
+  WEDNESDAY: 'Rabu',
+  THURSDAY: 'Kamis',
+  FRIDAY: 'Jumat',
+  SATURDAY: 'Sabtu',
+  SUNDAY: 'Minggu',
+};
+
+const formatDate = (value?: string | null) => (value ? new Date(value).toLocaleDateString('id-ID') : '-');
+const formatDateTime = (value?: string | null) =>
+  value ? new Date(value).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' }) : '-';
+
 export const AttendanceRecapPage = () => {
   const location = useLocation();
   const isPrincipalRoute = location.pathname.startsWith('/principal');
   const [selectedAcademicYearId, setSelectedAcademicYearId] = useState<number | ''>('');
   const [selectedClassId, setSelectedClassId] = useState<number | ''>('');
   const [semester, setSemester] = useState<SemesterFilter>('ALL');
+  const [monitorPeriod, setMonitorPeriod] = useState<AttendanceRecapPeriod>('WEEK');
+  const [monitorWeekStart, setMonitorWeekStart] = useState(new Date().toISOString().split('T')[0]);
+  const [monitorMonth, setMonitorMonth] = useState(new Date().getMonth() + 1);
+  const [monitorYear, setMonitorYear] = useState(new Date().getFullYear());
+  const [monitorSemester, setMonitorSemester] = useState<'ODD' | 'EVEN'>('ODD');
+  const [monitorStatus, setMonitorStatus] = useState<'' | TeacherAttendanceMonitorStatus>('');
+  const [monitorPage, setMonitorPage] = useState(1);
 
   const { data: academicYearData, isLoading: isLoadingYears } = useQuery({
     queryKey: ['academic-years', 'all'],
@@ -145,6 +177,39 @@ export const AttendanceRecapPage = () => {
     enabled: canLoadRecap,
   });
 
+  const {
+    data: teacherMonitorResponse,
+    isLoading: isLoadingTeacherMonitor,
+    isFetching: isFetchingTeacherMonitor,
+  } = useQuery({
+    queryKey: [
+      'teacher-class-attendance-monitor',
+      effectiveAcademicYearId,
+      effectiveClassId || 'all',
+      monitorPeriod,
+      monitorWeekStart,
+      monitorMonth,
+      monitorYear,
+      monitorSemester,
+      monitorStatus,
+      monitorPage,
+    ],
+    queryFn: () =>
+      attendanceService.getTeacherClassRecap({
+        academicYearId: effectiveAcademicYearId as number,
+        classId: effectiveClassId ? (effectiveClassId as number) : undefined,
+        period: monitorPeriod,
+        weekStart: monitorPeriod === 'WEEK' ? monitorWeekStart : undefined,
+        month: monitorPeriod === 'MONTH' ? monitorMonth : undefined,
+        year: monitorPeriod === 'MONTH' ? monitorYear : undefined,
+        semester: monitorPeriod === 'SEMESTER' ? monitorSemester : undefined,
+        monitorStatus: monitorStatus || undefined,
+        page: monitorPage,
+        pageSize: 100,
+      }),
+    enabled: !!effectiveAcademicYearId,
+  });
+
   const recap: DailyAttendanceRecapStudent[] = useMemo(
     () => recapResponse?.data?.recap || [],
     [recapResponse],
@@ -154,6 +219,9 @@ export const AttendanceRecapPage = () => {
     () => lateSummaryResponse?.data?.recap || [],
     [lateSummaryResponse],
   );
+
+  const teacherMonitor = teacherMonitorResponse?.data || null;
+  const teacherSessions: TeacherClassAttendanceSession[] = teacherMonitor?.sessions || [];
 
   const loading =
     isLoadingYears ||
@@ -251,6 +319,182 @@ export const AttendanceRecapPage = () => {
           <Search className="w-4 h-4" />
           <span>Terapkan Filter</span>
         </button>
+      </div>
+
+      <div className="bg-white rounded-xl shadow-md border-0 overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-100 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900">Monitoring Presensi Guru Mapel</h2>
+            <p className="text-sm text-gray-500">
+              Membandingkan jadwal mengajar dengan presensi mapel yang sudah diisi guru.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              value={monitorPeriod}
+              onChange={(event) => {
+                setMonitorPeriod(event.target.value as AttendanceRecapPeriod);
+                setMonitorPage(1);
+              }}
+              className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+            >
+              <option value="WEEK">Mingguan</option>
+              <option value="MONTH">Bulanan</option>
+              <option value="SEMESTER">Semester</option>
+              <option value="YEAR">1 Tahun Ajaran</option>
+            </select>
+            {monitorPeriod === 'WEEK' && (
+              <input
+                type="date"
+                value={monitorWeekStart}
+                onChange={(event) => {
+                  setMonitorWeekStart(event.target.value);
+                  setMonitorPage(1);
+                }}
+                className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+              />
+            )}
+            {monitorPeriod === 'MONTH' && (
+              <>
+                <select
+                  value={monitorMonth}
+                  onChange={(event) => {
+                    setMonitorMonth(Number(event.target.value));
+                    setMonitorPage(1);
+                  }}
+                  className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                >
+                  {Array.from({ length: 12 }, (_, index) => index + 1).map((month) => (
+                    <option key={month} value={month}>
+                      {new Date(2026, month - 1, 1).toLocaleString('id-ID', { month: 'long' })}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  type="number"
+                  value={monitorYear}
+                  onChange={(event) => {
+                    setMonitorYear(Number(event.target.value));
+                    setMonitorPage(1);
+                  }}
+                  className="w-28 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                />
+              </>
+            )}
+            {monitorPeriod === 'SEMESTER' && (
+              <select
+                value={monitorSemester}
+                onChange={(event) => {
+                  setMonitorSemester(event.target.value as 'ODD' | 'EVEN');
+                  setMonitorPage(1);
+                }}
+                className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+              >
+                <option value="ODD">Ganjil</option>
+                <option value="EVEN">Genap</option>
+              </select>
+            )}
+            <select
+              value={monitorStatus}
+              onChange={(event) => {
+                setMonitorStatus(event.target.value as '' | TeacherAttendanceMonitorStatus);
+                setMonitorPage(1);
+              }}
+              className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+            >
+              {MONITOR_STATUS_OPTIONS.map((option) => (
+                <option key={option.value || 'all'} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 px-6 py-4 bg-gray-50 border-b border-gray-100 text-sm">
+          <div className="rounded-lg bg-white p-3 border"><p className="text-gray-500">Jadwal</p><p className="text-xl font-bold">{teacherMonitor?.summary.expected || 0}</p></div>
+          <div className="rounded-lg bg-white p-3 border"><p className="text-gray-500">Sudah Diisi</p><p className="text-xl font-bold text-emerald-700">{teacherMonitor?.summary.submitted || 0}</p></div>
+          <div className="rounded-lg bg-white p-3 border"><p className="text-gray-500">Belum Diisi</p><p className="text-xl font-bold text-rose-700">{teacherMonitor?.summary.missing || 0}</p></div>
+          <div className="rounded-lg bg-white p-3 border"><p className="text-gray-500">Input Susulan</p><p className="text-xl font-bold text-amber-700">{teacherMonitor?.summary.lateInput || 0}</p></div>
+          <div className="rounded-lg bg-white p-3 border"><p className="text-gray-500">Diedit</p><p className="text-xl font-bold text-blue-700">{teacherMonitor?.summary.edited || 0}</p></div>
+        </div>
+        <div className="overflow-x-auto">
+          {isLoadingTeacherMonitor || isFetchingTeacherMonitor ? (
+            <div className="flex justify-center p-10"><Loader2 className="h-6 w-6 animate-spin text-blue-600" /></div>
+          ) : (
+            <table className="min-w-full divide-y divide-gray-100 text-sm">
+              <thead className="bg-gray-50 text-xs uppercase tracking-wide text-gray-500">
+                <tr>
+                  <th className="px-4 py-3 text-left">Tanggal/Jam</th>
+                  <th className="px-4 py-3 text-left">Guru</th>
+                  <th className="px-4 py-3 text-left">Kelas</th>
+                  <th className="px-4 py-3 text-left">Mapel</th>
+                  <th className="px-4 py-3 text-left">Status</th>
+                  <th className="px-4 py-3 text-left">Waktu Input/Edit</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {teacherSessions.map((session) => (
+                  <tr key={`${session.date}-${session.class.id}-${session.subject.id}-${session.period}`} className="hover:bg-gray-50">
+                    <td className="px-4 py-3">
+                      <div className="font-medium text-gray-900">{formatDate(session.date)}</div>
+                      <div className="text-xs text-gray-500">{DAY_LABELS[session.dayOfWeek] || session.dayOfWeek}, jam ke-{session.period}</div>
+                    </td>
+                    <td className="px-4 py-3 font-medium text-gray-900">{session.teacher.name}</td>
+                    <td className="px-4 py-3 text-gray-700">{session.class.name}</td>
+                    <td className="px-4 py-3 text-gray-700">{session.subject.name}</td>
+                    <td className="px-4 py-3">
+                      <span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${
+                        session.status === 'SUBMITTED' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'
+                      }`}>
+                        {session.status === 'SUBMITTED' ? 'Sudah diisi' : 'Belum diisi'}
+                      </span>
+                      {session.isLateInput && <span className="ml-2 inline-flex rounded-full bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-700">Input susulan</span>}
+                      {session.isEdited && <span className="ml-2 inline-flex rounded-full bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-700">Diedit</span>}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-gray-500">
+                      {session.attendance ? (
+                        <>
+                          <div>Input: {formatDateTime(session.attendance.recordedAt)}</div>
+                          <div>Edit: {formatDateTime(session.attendance.editedAt)}</div>
+                        </>
+                      ) : '-'}
+                    </td>
+                  </tr>
+                ))}
+                {teacherSessions.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="px-4 py-10 text-center text-gray-500">
+                      Belum ada jadwal mengajar pada filter ini.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          )}
+        </div>
+        {teacherMonitor?.pagination && (
+          <div className="flex items-center justify-between border-t border-gray-100 px-6 py-3 text-sm text-gray-500">
+            <span>Halaman {teacherMonitor.pagination.page} / {teacherMonitor.pagination.totalPages}</span>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setMonitorPage((page) => Math.max(1, page - 1))}
+                disabled={teacherMonitor.pagination.page <= 1}
+                className="rounded-lg border px-3 py-1.5 disabled:opacity-50"
+              >
+                Sebelumnya
+              </button>
+              <button
+                type="button"
+                onClick={() => setMonitorPage((page) => Math.min(teacherMonitor.pagination.totalPages, page + 1))}
+                disabled={teacherMonitor.pagination.page >= teacherMonitor.pagination.totalPages}
+                className="rounded-lg border px-3 py-1.5 disabled:opacity-50"
+              >
+                Berikutnya
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="bg-white rounded-xl shadow-md border-0 p-6 space-y-4">

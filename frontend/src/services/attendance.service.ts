@@ -1,6 +1,8 @@
 import api from './api';
 
 export type AttendanceStatus = 'PRESENT' | 'ABSENT' | 'SICK' | 'PERMISSION' | 'LATE';
+export type AttendanceRecapPeriod = 'YEAR' | 'SEMESTER' | 'MONTH' | 'WEEK';
+export type TeacherAttendanceMonitorStatus = 'SUBMITTED' | 'MISSING' | 'LATE_INPUT' | 'EDITED';
 
 export interface AttendanceRecord {
   studentId: number;
@@ -53,6 +55,107 @@ export interface DailyAttendanceRecapResponse {
     classId: number;
     academicYearId: number;
     semester: string | null;
+    dateRange: {
+      start: string;
+      end: string;
+    };
+  };
+}
+
+export interface AttendanceDetailRecord {
+  id?: number;
+  attendanceId?: number;
+  date: string;
+  status: AttendanceStatus;
+  note: string | null;
+  checkInTime?: string | null;
+  checkOutTime?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+  recordedAt?: string;
+  editedAt?: string;
+  recordedByName?: string | null;
+  editedByName?: string | null;
+}
+
+export interface AttendanceDetailStudent {
+  student: {
+    id: number;
+    name: string;
+    nis: string | null;
+    nisn: string | null;
+  };
+  summary: {
+    present: number;
+    late: number;
+    sick: number;
+    permission: number;
+    absent: number;
+    total: number;
+    percentage: number;
+  };
+  details: AttendanceDetailRecord[];
+}
+
+export interface AttendanceDetailResponse {
+  students: AttendanceDetailStudent[];
+  meta: {
+    classId: number;
+    subjectId?: number;
+    academicYearId: number;
+    period: AttendanceRecapPeriod;
+    semester: 'ODD' | 'EVEN' | null;
+    status: AttendanceStatus | null;
+    dateRange: {
+      start: string;
+      end: string;
+    };
+  };
+}
+
+export interface TeacherClassAttendanceSession {
+  date: string;
+  dayOfWeek: string;
+  period: number;
+  room: string | null;
+  teacher: { id: number; name: string };
+  class: { id: number; name: string; level: string | null };
+  subject: { id: number; name: string; code: string | null };
+  status: 'SUBMITTED' | 'MISSING';
+  isLateInput: boolean;
+  isEdited: boolean;
+  attendance: null | {
+    id: number;
+    recordedAt: string;
+    editedAt: string;
+    recordedById: number | null;
+    editedById: number | null;
+  };
+}
+
+export interface TeacherClassAttendanceRecapResponse {
+  summary: {
+    expected: number;
+    submitted: number;
+    missing: number;
+    lateInput: number;
+    edited: number;
+  };
+  sessions: TeacherClassAttendanceSession[];
+  pagination: {
+    page: number;
+    pageSize: number;
+    total: number;
+    totalPages: number;
+  };
+  meta: {
+    academicYearId: number;
+    classId: number | null;
+    subjectId: number | null;
+    teacherId: number | null;
+    period: AttendanceRecapPeriod;
+    semester: 'ODD' | 'EVEN' | null;
+    monitorStatus: TeacherAttendanceMonitorStatus | null;
     dateRange: {
       start: string;
       end: string;
@@ -417,6 +520,55 @@ export const attendanceService = {
     academicYearId?: number;
   }) => {
     const response = await api.get<{ data: LateSummaryResponse }>('/attendances/daily/late-summary', { params });
+    return response.data;
+  },
+
+  getDailyRecapDetail: async (params: {
+    classId: number;
+    academicYearId?: number;
+    period?: AttendanceRecapPeriod;
+    semester?: 'ODD' | 'EVEN';
+    month?: number;
+    year?: number;
+    weekStart?: string;
+    status?: AttendanceStatus;
+    studentId?: number;
+  }) => {
+    const response = await api.get<{ data: AttendanceDetailResponse }>('/attendances/daily/recap-detail', { params });
+    return response.data;
+  },
+
+  getSubjectRecap: async (params: {
+    classId: number;
+    subjectId: number;
+    academicYearId?: number;
+    period?: AttendanceRecapPeriod;
+    semester?: 'ODD' | 'EVEN';
+    month?: number;
+    year?: number;
+    weekStart?: string;
+    status?: AttendanceStatus;
+    studentId?: number;
+  }) => {
+    const response = await api.get<{ data: AttendanceDetailResponse }>('/attendances/subject/recap', { params });
+    return response.data;
+  },
+
+  getTeacherClassRecap: async (params: {
+    academicYearId?: number;
+    classId?: number;
+    subjectId?: number;
+    teacherId?: number;
+    period?: AttendanceRecapPeriod;
+    semester?: 'ODD' | 'EVEN';
+    month?: number;
+    year?: number;
+    weekStart?: string;
+    monitorStatus?: TeacherAttendanceMonitorStatus;
+    page?: number;
+    pageSize?: number;
+  }) => {
+    const response = await api.get<{ data: TeacherClassAttendanceRecapResponse }>('/attendances/teacher-class-recap', { params });
     return response.data;
   },
 

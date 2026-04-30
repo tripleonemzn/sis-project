@@ -5,42 +5,52 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-04-30 09:18 WIB
-- Current status: Perbaikan download file materi/tugas mobile dan limit upload 10MB sudah selesai. Download lampiran di mobile tidak lagi diarahkan ke web kosong; aplikasi mengunduh file secara native dan Android menyimpan lewat folder yang dipilih user.
+- Last updated: 2026-04-30 10:15 WIB
+- Current status: Batch awal presensi terpadu sudah selesai untuk backend dan web. Guru mapel kini punya rekap presensi per periode dengan detail tanggal S/I/A/T, wali kelas punya detail tanggal pada rekap, dan kurikulum/admin punya monitoring presensi guru mapel berbasis jadwal vs presensi yang sudah/belum diisi.
 - Objective/task aktif:
-  - Menjaga fitur operasional lintas web/mobile tetap user-friendly dan aman untuk produksi.
+  - Menyelesaikan peningkatan presensi siswa/guru lintas guru mapel, wali kelas, kurikulum, dan mobile parity.
 - Batch terakhir selesai:
-  - `Mobile Materi & Tugas - native download dan limit upload`
+  - `Presensi terpadu batch 1-2 - backend audit/rekap dan UI web`
 - Progress batch ini:
-  - `100%`
+  - `72%`
+- Progress presensi terpadu saat ini:
+  - `100%` backend audit dan endpoint rekap/detail
+  - `100%` web guru mapel rekap detail
+  - `100%` web wali kelas detail tanggal rekap
+  - `100%` web kurikulum/admin monitoring guru mapel
+  - `0%` mobile parity untuk rekap/detail baru
 - Progress roadmap perangkat ajar dinamis:
   - `100%` untuk rumusan arsitektur generik
   - `100%` untuk implementasi teknis scope aktif engine generik
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
-  - Commit: `51cc258`
-  - Title: `fix(mobile): download learning files natively`
+  - Commit: `pending`
+  - Title: `feat(attendance): add recap audit and web monitoring`
   - Summary:
-    - mobile student `Materi & Tugas` sekarang mengunduh lampiran materi/tugas lewat aplikasi, bukan membuka URL upload di browser
-    - mobile teacher `Materi & Tugas` juga memakai alur download native untuk lampiran
-    - upload materi, tugas, dan submisi tugas dibatasi 10MB dari backend; web/mobile memberi validasi dan label 10MB
-    - dependency mobile `expo-file-system` dikunci ke versi `19.0.21` yang selaras dengan dependency Expo runtime existing
+    - subject attendance mendapat audit fields (`createdAt`, `updatedAt`, `createdById`, `updatedById`, optional assignment/schedule link)
+    - endpoint baru tersedia untuk detail rekap presensi harian, rekap presensi mapel, dan monitoring presensi guru mapel berbasis jadwal
+    - penyimpanan presensi mapel tidak lagi menghapus seluruh record lalu membuat ulang jika update, sehingga record lebih stabil
+    - data presensi mapel lama dibackfill memakai tanggal presensi agar tidak otomatis dianggap input susulan
+    - web guru mapel mendapat tab `Rekap Presensi` dengan periode mingguan/bulanan/semester/tahun dan detail tanggal per siswa
+    - web wali kelas mendapat detail tanggal S/I/A/T pada rekap dengan periode mingguan/bulanan/semester/tahun
+    - web kurikulum/admin mendapat monitoring guru mapel: jadwal, sudah diisi, belum diisi, input susulan, dan diedit
 - Area/file disentuh:
-  - `backend/src/index.ts`
-  - `backend/src/utils/upload.ts`
-  - `frontend/src/pages/teacher/MaterialsAndAssignmentsPage.tsx`
-  - `mobile-app/app/(app)/learning.tsx`
-  - `mobile-app/app/(app)/teacher/materials.tsx`
-  - `mobile-app/src/lib/files/downloadFileToDevice.ts`
-  - `mobile-app/package.json`
-  - `mobile-app/package-lock.json`
+  - `backend/prisma/schema.prisma`
+  - `backend/prisma/migrations/20260430103000_add_subject_attendance_audit/migration.sql`
+  - `backend/prisma/migrations/20260430104500_backfill_subject_attendance_audit_timestamps/migration.sql`
+  - `backend/src/controllers/attendance.controller.ts`
+  - `backend/src/routes/attendance.routes.ts`
+  - `frontend/src/services/attendance.service.ts`
+  - `frontend/src/pages/teacher/TeacherAttendancePage.tsx`
+  - `frontend/src/pages/teacher/homeroom/HomeroomAttendancePage.tsx`
+  - `frontend/src/pages/admin/academic/AttendanceRecapPage.tsx`
   - `docs/CODEX_CONTINUITY.md`
 - Verifikasi batch ini:
   - `cd backend && npm run build`
+  - `cd backend && npx prisma generate`
+  - `cd backend && npx prisma migrate deploy`
   - `cd frontend && npm run build`
-  - `cd mobile-app && npm run typecheck`
-  - `cd mobile-app && npm run audit:parity:check`
   - `git diff --check`
   - `cd backend && npm run service:restart`
   - `cd backend && npm run service:health`
@@ -49,14 +59,12 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 - Publish/live status:
   - Backend sudah restart via PM2 dan health `Backend:200`, `Backend API:200`
   - Web sudah deploy ke `/var/www/html`
-  - Mobile OTA sudah publish ke channel `pilot-live`
-  - OTA update group: `43b21755-d754-482b-b94c-32d148edc9c3`
-  - Android update ID: `019ddc2d-ab55-726d-89a8-4f8c08bf5f45`
-  - Push notify update terkirim: `recipients=38`, `sent=38`, `failed=0`, `stale=0`
+  - Mobile OTA belum dipublish karena batch ini belum mengubah mobile; mobile parity menjadi batch berikutnya
 - Remaining work:
-  - Tidak ada untuk batch ini. Lanjut hanya jika user menemukan hasil uji perangkat nyata.
+  - Tambahkan parity mobile untuk rekap presensi guru mapel, detail rekap wali kelas, dan monitoring kurikulum/principal jika menu mobile terkait dipakai tester.
+  - Sanity test manual dengan akun guru/wakakur di browser untuk memastikan data jadwal/presensi real tampil sesuai ekspektasi.
 - Residual risk:
-  - Pada Android pertama kali download, user perlu memilih folder penyimpanan melalui picker sistem. Setelah izin folder tersimpan, download berikutnya bisa langsung memakai folder tersebut.
+  - Jika satu kelas-mapel punya lebih dari satu sesi pada hari yang sama, data lama tanpa `scheduleEntryId` masih dicocokkan fallback per tanggal+kelas+mapel. Data baru sudah mendukung link jadwal opsional, tetapi UI input belum memilih sesi spesifik.
 
 ## Status Saat Ini
 

@@ -23,6 +23,8 @@ import {
 } from 'lucide-react';
 import {
   attendanceService,
+  type AttendanceDetailStudent,
+  type AttendanceRecapPeriod,
   type AttendanceRecord,
   type AttendanceStatus,
   type DailyAttendanceRecapStudent,
@@ -45,11 +47,28 @@ const STATUS_OPTIONS: Array<{ value: AttendanceStatus; label: string; color: str
   { value: 'LATE', label: 'Telat', color: 'bg-orange-100 text-orange-700' },
 ];
 
+const STATUS_LABELS: Record<AttendanceStatus, string> = {
+  PRESENT: 'Hadir',
+  SICK: 'Sakit',
+  PERMISSION: 'Izin',
+  ABSENT: 'Alpha',
+  LATE: 'Telat',
+};
+
+const formatDate = (value?: string | null) => (value ? new Date(value).toLocaleDateString('id-ID') : '-');
+const formatDateTime = (value?: string | null) =>
+  value ? new Date(value).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' }) : '-';
+
 export const HomeroomAttendancePage = () => {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<'daily_log' | 'recap' | 'late'>('daily_log');
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [semesterFilter, setSemesterFilter] = useState<SemesterFilter>('ALL');
+  const [recapPeriod, setRecapPeriod] = useState<AttendanceRecapPeriod>('SEMESTER');
+  const [recapMonth, setRecapMonth] = useState(new Date().getMonth() + 1);
+  const [recapYear, setRecapYear] = useState(new Date().getFullYear());
+  const [recapWeekStart, setRecapWeekStart] = useState(new Date().toISOString().split('T')[0]);
+  const [selectedRecapDetail, setSelectedRecapDetail] = useState<AttendanceDetailStudent | null>(null);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(10);
@@ -173,6 +192,28 @@ export const HomeroomAttendancePage = () => {
     enabled: !!homeroomClass,
   });
 
+  const { data: dailyRecapDetailData, isLoading: isLoadingDailyDetail } = useQuery({
+    queryKey: [
+      'homeroom-daily-recap-detail',
+      homeroomClass?.id,
+      recapPeriod,
+      semesterFilter,
+      recapMonth,
+      recapYear,
+      recapWeekStart,
+    ],
+    queryFn: () => attendanceService.getDailyRecapDetail({
+      classId: homeroomClass!.id,
+      academicYearId: homeroomClass!.academicYearId,
+      period: recapPeriod,
+      semester: recapPeriod === 'SEMESTER' && semesterFilter !== 'ALL' ? semesterFilter : undefined,
+      month: recapPeriod === 'MONTH' ? recapMonth : undefined,
+      year: recapPeriod === 'MONTH' ? recapYear : undefined,
+      weekStart: recapPeriod === 'WEEK' ? recapWeekStart : undefined,
+    }),
+    enabled: !!homeroomClass && activeTab === 'recap',
+  });
+
   // 6. Fetch Late Summary
   const { data: lateSummaryData, isLoading: isLoadingLate } = useQuery({
     queryKey: ['homeroom-late-summary', homeroomClass?.id],
@@ -224,6 +265,7 @@ export const HomeroomAttendancePage = () => {
       toast.success('Presensi berhasil diperbarui');
       queryClient.invalidateQueries({ queryKey: ['homeroom-daily-log'] });
       queryClient.invalidateQueries({ queryKey: ['homeroom-daily-recap'] });
+      queryClient.invalidateQueries({ queryKey: ['homeroom-daily-recap-detail'] });
       setIsEditing(false);
     },
     onError: (error: unknown) => {
@@ -325,7 +367,18 @@ export const HomeroomAttendancePage = () => {
   const getCurrentData = (): Array<DailyLogItem | DailyRecapItem | LateSummaryItem> => {
     if (activeTab === 'daily_log') return (dailyLogData?.data || []) as DailyLogItem[];
     if (activeTab === 'recap') {
-      const recap = (dailyRecapData?.data?.recap || []) as DailyRecapItem[];
+      const recap = dailyRecapDetailData?.data?.students
+        ? dailyRecapDetailData.data.students.map((item) => ({
+            student: item.student,
+            present: item.summary.present,
+            late: item.summary.late,
+            sick: item.summary.sick,
+            permission: item.summary.permission,
+            absent: item.summary.absent,
+            total: item.summary.total,
+            percentage: item.summary.percentage,
+          }))
+        : ((dailyRecapData?.data?.recap || []) as DailyRecapItem[]);
       return recap.slice().sort((a, b) => a.student.name.localeCompare(b.student.name));
     }
     if (activeTab === 'late') return (lateSummaryData?.data?.recap || []) as LateSummaryItem[];
@@ -454,8 +507,48 @@ export const HomeroomAttendancePage = () => {
           )}
 
           {activeTab === 'recap' && (
-            <div className="flex items-center space-x-2 w-full sm:w-auto">
+            <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
               <Filter className="w-4 h-4 text-gray-500" />
+              <select
+                value={recapPeriod}
+                onChange={(e) => setRecapPeriod(e.target.value as AttendanceRecapPeriod)}
+                className="block w-full sm:w-auto pl-3 pr-10 py-2 text-base bg-white border border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md text-gray-900"
+              >
+                <option value="WEEK">Mingguan</option>
+                <option value="MONTH">Bulanan</option>
+                <option value="SEMESTER">Semester</option>
+                <option value="YEAR">1 Tahun Ajaran</option>
+              </select>
+              {recapPeriod === 'WEEK' && (
+                <input
+                  type="date"
+                  value={recapWeekStart}
+                  onChange={(e) => setRecapWeekStart(e.target.value)}
+                  className="block w-full sm:w-auto pl-3 pr-3 py-2 text-base bg-white border border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md text-gray-900"
+                />
+              )}
+              {recapPeriod === 'MONTH' && (
+                <>
+                  <select
+                    value={recapMonth}
+                    onChange={(e) => setRecapMonth(Number(e.target.value))}
+                    className="block w-full sm:w-auto pl-3 pr-10 py-2 text-base bg-white border border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md text-gray-900"
+                  >
+                    {Array.from({ length: 12 }, (_, index) => index + 1).map((month) => (
+                      <option key={month} value={month}>
+                        {new Date(2026, month - 1, 1).toLocaleString('id-ID', { month: 'long' })}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    type="number"
+                    value={recapYear}
+                    onChange={(e) => setRecapYear(Number(e.target.value))}
+                    className="block w-28 pl-3 pr-3 py-2 text-base bg-white border border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md text-gray-900"
+                  />
+                </>
+              )}
+              {recapPeriod === 'SEMESTER' && (
               <select
                 value={semesterFilter}
                 onChange={(e) => setSemesterFilter(e.target.value as SemesterFilter)}
@@ -465,6 +558,7 @@ export const HomeroomAttendancePage = () => {
                 <option value="ODD">Semester Ganjil</option>
                 <option value="EVEN">Semester Genap</option>
               </select>
+              )}
               <button className="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
                 <Download className="w-4 h-4 mr-2" />
                 Export
@@ -679,7 +773,7 @@ export const HomeroomAttendancePage = () => {
               </table>
             )
           ) : activeTab === 'recap' ? (
-            isLoadingDaily ? (
+            isLoadingDaily || isLoadingDailyDetail ? (
               <div className="p-12 flex justify-center">
                 <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
               </div>
@@ -716,6 +810,9 @@ export const HomeroomAttendancePage = () => {
                     </th>
                     <th scope="col" className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
                       % Kehadiran
+                    </th>
+                    <th scope="col" className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Detail
                     </th>
                   </tr>
                 </thead>
@@ -769,11 +866,25 @@ export const HomeroomAttendancePage = () => {
                           {student.percentage}%
                         </span>
                       </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-center text-sm">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const detail = dailyRecapDetailData?.data?.students.find(
+                              (item) => item.student.id === student.student.id,
+                            );
+                            setSelectedRecapDetail(detail || null);
+                          }}
+                          className="inline-flex items-center rounded-lg border border-blue-200 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-50"
+                        >
+                          Detail Tanggal
+                        </button>
+                      </td>
                     </tr>
                   ))}
                   {paginatedData.length === 0 && (
                     <tr>
-                      <td colSpan={10} className="px-6 py-12 text-center text-gray-500">
+                      <td colSpan={11} className="px-6 py-12 text-center text-gray-500">
                         <FileText className="mx-auto h-12 w-12 text-gray-300 mb-3" />
                         <p>{search ? 'Siswa tidak ditemukan' : 'Belum ada data presensi untuk ditampilkan.'}</p>
                       </td>
@@ -917,6 +1028,59 @@ export const HomeroomAttendancePage = () => {
           </div>
         </div>
       </div>
+
+      {selectedRecapDetail && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/20 p-4">
+          <div className="max-h-[82vh] w-full max-w-3xl overflow-hidden rounded-2xl bg-white shadow-xl">
+            <div className="flex items-start justify-between border-b border-gray-100 p-5">
+              <div>
+                <h2 className="text-lg font-bold text-gray-900">Detail Presensi {selectedRecapDetail.student.name}</h2>
+                <p className="text-sm text-gray-500">Tanggal status S/I/A/T pada periode rekap yang dipilih.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedRecapDetail(null)}
+                className="rounded-lg p-2 text-gray-500 hover:bg-gray-100"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="max-h-[62vh] overflow-y-auto p-5">
+              <table className="min-w-full divide-y divide-gray-200 text-sm">
+                <thead className="bg-gray-50 text-xs uppercase text-gray-500">
+                  <tr>
+                    <th className="px-3 py-2 text-left">Tanggal</th>
+                    <th className="px-3 py-2 text-left">Status</th>
+                    <th className="px-3 py-2 text-left">Jam Datang/Pulang</th>
+                    <th className="px-3 py-2 text-left">Keterangan</th>
+                    <th className="px-3 py-2 text-left">Terakhir Diedit</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {selectedRecapDetail.details.map((detail) => (
+                    <tr key={`${detail.id}-${detail.date}-${detail.status}`}>
+                      <td className="px-3 py-2 font-medium text-gray-900">{formatDate(detail.date)}</td>
+                      <td className="px-3 py-2">{STATUS_LABELS[detail.status]}</td>
+                      <td className="px-3 py-2 text-gray-600">
+                        {detail.checkInTime || '-'} / {detail.checkOutTime || '-'}
+                      </td>
+                      <td className="px-3 py-2 text-gray-600">{detail.note || '-'}</td>
+                      <td className="px-3 py-2 text-xs text-gray-500">{formatDateTime(detail.updatedAt || detail.createdAt || null)}</td>
+                    </tr>
+                  ))}
+                  {selectedRecapDetail.details.length === 0 && (
+                    <tr>
+                      <td colSpan={5} className="px-3 py-8 text-center text-gray-500">
+                        Belum ada detail presensi pada periode ini.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
