@@ -5,12 +5,12 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-04-30 18:04 WIB
-- Current status: UI remedial guru mapel sudah dipisah agar tidak ambigu. Aksi baris sekarang membedakan `Terbitkan` untuk menjadwalkan/memberikan remedial ke siswa, `Input Nilai` untuk mencatat hasil remedial, dan `Riwayat` untuk melihat percobaan/aktivitas yang sudah ada. Popup remedial juga mengikuti mode aksi tersebut sehingga guru tidak lagi melihat form terbitkan dan input nilai dalam satu alur yang bercampur.
+- Last updated: 2026-05-01 05:53 WIB
+- Current status: UI remedial guru mapel sudah dirapikan menjadi satu pintu `Kelola Remedial`. Guru tidak lagi menerbitkan remedial dari aksi per siswa atau tombol `Terbitkan Remedial Terpilih` di luar popup. Tombol `Kelola Remedial` membuka popup yang berisi daftar siswa belum KKM dengan checkbox, status blokir wali kelas/remedial aktif, pilihan metode tugas/soal, paket soal, tenggat, dan tombol terbitkan massal. Kolom aksi tabel utama kini hanya untuk `Input Nilai` dan `Riwayat`.
 - Objective/task aktif:
   - Mengembangkan fitur remedial nilai untuk guru mapel dengan sumber nilai spesifik, riwayat percobaan lebih dari 1x, nilai asli tetap utuh, dan nilai efektif remedial dibatasi sampai KKM.
 - Batch terakhir selesai:
-  - `Remedial batch 13 - separated action modes for publish, score input, and history`
+  - `Remedial batch 14 - centralized remedial management modal`
 - Progress batch remedial saat ini:
   - `100%` untuk fondasi database remedial
   - `100%` untuk API kandidat nilai belum tuntas dan pencatatan remedial
@@ -31,14 +31,16 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
-  - Commit: `b2ce3f5`
-  - Title: `fix(grades): split remedial action modes`
+  - Commit: `31c97c7`
+  - Title: `fix(grades): centralize remedial publishing`
   - Summary:
-    - tombol aksi remedial per siswa dipisah menjadi `Terbitkan`, `Input Nilai`, dan `Riwayat`
-    - popup `Terbitkan Remedial` hanya menampilkan pilihan metode tugas/soal dan paket soal
+    - tombol `Terbitkan` per siswa dihapus dari tabel remedial guru mapel
+    - tombol luar `Terbitkan Remedial Terpilih` diganti menjadi satu tombol `Kelola Remedial`
+    - checkbox pemilihan siswa dipindah ke dalam popup `Kelola Remedial`
+    - popup menampilkan daftar siswa belum KKM, status wali kelas/remedial aktif, pilihan metode, paket soal, tenggat, dan catatan
     - popup `Input Nilai Remedial` hanya menampilkan input nilai manual hasil remedial
     - popup `Riwayat Remedial` hanya menampilkan data riwayat tanpa tombol simpan/terbitkan
-    - guard blokir wali kelas tetap dihormati pada aksi `Terbitkan` dan `Input Nilai`
+    - guard blokir wali kelas tetap dihormati pada pemilihan siswa remedial dan input nilai
 - Area/file disentuh:
   - `frontend/src/pages/teacher/TeacherGradesPage.tsx`
   - `docs/CODEX_CONTINUITY.md`
