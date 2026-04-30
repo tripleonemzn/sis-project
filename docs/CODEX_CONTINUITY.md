@@ -31,7 +31,7 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
-  - Commit: `pending`
+  - Commit: `44f015b`
   - Title: `fix(grades): polish remedial tab and scope candidates`
   - Summary:
     - tab `Input Nilai` dan `Remedial` dipertahankan memakai indikator `border-b-2` standar, dengan filter semester serta kelas-mapel berada di card tab atas
