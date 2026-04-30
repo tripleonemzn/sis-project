@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef, type WheelEvent } from 'react';
 import { Save, Loader2, X } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { gradeService } from '../../services/grade.service';
-import type { GradeComponent } from '../../services/grade.service';
+import type { GradeComponent, RemedialScoreEntry, ScoreRemedialAttempt } from '../../services/grade.service';
 import { teacherAssignmentService } from '../../services/teacherAssignment.service';
 import type { TeacherAssignment, TeacherAssignmentDetail } from '../../services/teacherAssignment.service';
 import {
@@ -115,6 +115,13 @@ type BulkGradeSaveResult = {
     failed?: number;
     errors?: Array<{ student_id: number; error: string }>;
   };
+};
+
+type TeacherGradeTab = 'INPUT' | 'REMEDIAL';
+
+type RemedialSourceOption = {
+  code: string;
+  label: string;
 };
 
 const EMPTY_COMPETENCY_SET: CompetencyThresholdSet = { A: '', B: '', C: '', D: '' };
@@ -256,6 +263,57 @@ const formatScoreDisplay = (value: number | null | undefined): string => {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return '-';
   return parsed.toFixed(2);
+};
+
+const formatDateTimeDisplay = (value?: string | null): string => {
+  if (!value) return '-';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return '-';
+  return parsed.toLocaleString('id-ID', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+};
+
+const getApiErrorMessage = (error: unknown, fallback: string): string => {
+  if (typeof error === 'object' && error !== null) {
+    const maybeError = error as { response?: { data?: { message?: string } }; message?: string };
+    return maybeError.response?.data?.message || maybeError.message || fallback;
+  }
+  return fallback;
+};
+
+const getRemedialStatusMeta = (status?: string | null) => {
+  const normalized = String(status || '').toUpperCase();
+  if (normalized === 'PASSED') {
+    return {
+      label: 'Tuntas',
+      className: 'bg-emerald-50 text-emerald-700 border border-emerald-200',
+    };
+  }
+  if (normalized === 'STILL_BELOW_KKM') {
+    return {
+      label: 'Masih Belum KKM',
+      className: 'bg-amber-50 text-amber-700 border border-amber-200',
+    };
+  }
+  if (normalized === 'CANCELLED') {
+    return {
+      label: 'Dibatalkan',
+      className: 'bg-slate-50 text-slate-600 border border-slate-200',
+    };
+  }
+  return {
+    label: 'Tercatat',
+    className: 'bg-blue-50 text-blue-700 border border-blue-200',
+  };
+};
+
+const resolveRemedialComponentCode = (component: GradeComponent): string => {
+  return normalizeSlotCode(component.code || component.typeCode || component.reportSlotCode || component.reportSlot || component.type);
 };
 
 const parseFormativeSlotDrafts = (drafts: string[]): { values: number[]; invalid: boolean } => {
@@ -658,6 +716,7 @@ export const TeacherGradesPage = () => {
   const { data: activeAcademicYear } = useActiveAcademicYear();
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [activeTab, setActiveTab] = useState<TeacherGradeTab>('INPUT');
   
   // Filter states
   const [assignments, setAssignments] = useState<TeacherAssignment[]>([]);
@@ -679,12 +738,24 @@ export const TeacherGradesPage = () => {
   const [reportGradeMap, setReportGradeMap] = useState<Record<number, StudentReportGrade>>({});
   const [descriptions, setDescriptions] = useState<Record<number, string>>({});
   const [formativeSlotDrafts, setFormativeSlotDrafts] = useState<Record<number, string[]>>({});
+  const [remedialRows, setRemedialRows] = useState<RemedialScoreEntry[]>([]);
+  const [remedialLoading, setRemedialLoading] = useState(false);
+  const [remedialComponentCode, setRemedialComponentCode] = useState('');
+  const [remedialIncludeAll, setRemedialIncludeAll] = useState(false);
+  const [selectedRemedial, setSelectedRemedial] = useState<RemedialScoreEntry | null>(null);
+  const [remedialDetail, setRemedialDetail] = useState<RemedialScoreEntry | null>(null);
+  const [remedialDetailLoading, setRemedialDetailLoading] = useState(false);
+  const [remedialScoreInput, setRemedialScoreInput] = useState('');
+  const [remedialNoteInput, setRemedialNoteInput] = useState('');
+  const [remedialSaving, setRemedialSaving] = useState(false);
   const [isFilterRestoreDone, setIsFilterRestoreDone] = useState(false);
   const restoredAssignmentRef = useRef<string | undefined>(undefined);
   const gradeComponentRequestRef = useRef(0);
   const studentsRequestRef = useRef(0);
   const existingGradesRequestRef = useRef(0);
   const assignmentsRequestRef = useRef(0);
+  const remedialRequestRef = useRef(0);
+  const remedialDetailRequestRef = useRef(0);
   
   const selectedAcademicYearNum = Number(selectedAcademicYear);
   const assignmentOptions = useMemo(() => {
@@ -761,6 +832,23 @@ export const TeacherGradesPage = () => {
       : isFinalComponent
         ? 'Komponen Akhir Semester/Tahun'
         : 'Komponen Input Sederhana';
+  const remedialSourceOptions = useMemo<RemedialSourceOption[]>(() => {
+    const optionMap = new Map<string, string>();
+    filteredComponents.forEach((component) => {
+      const code = resolveRemedialComponentCode(component);
+      if (!code || optionMap.has(code)) return;
+      optionMap.set(code, buildComponentDisplayLabel(component));
+    });
+    return Array.from(optionMap.entries()).map(([code, label]) => ({ code, label }));
+  }, [filteredComponents]);
+  const remedialSummary = useMemo(() => {
+    const complete = remedialRows.filter((row) => row.isComplete).length;
+    return {
+      total: remedialRows.length,
+      pending: remedialRows.length - complete,
+      complete,
+    };
+  }, [remedialRows]);
   const selectedComponentFormulaHint = isFormatifComponent
     ? `Input bertahap, sistem hitung rata-rata ${resolveReadableComponentLabel(selectedComponentObj, 'komponen')} otomatis.`
     : isMidtermComponent
@@ -1027,6 +1115,33 @@ export const TeacherGradesPage = () => {
       setSelectedComponent('');
     }
   }, [filteredComponents, selectedAssignmentObj, selectedComponent]);
+
+  useEffect(() => {
+    setRemedialRows([]);
+    setRemedialComponentCode('');
+    setSelectedRemedial(null);
+    setRemedialDetail(null);
+  }, [selectedAssignment, selectedSemester]);
+
+  useEffect(() => {
+    if (!remedialComponentCode) return;
+    const stillExists = remedialSourceOptions.some((option) => option.code === remedialComponentCode);
+    if (!stillExists) {
+      setRemedialComponentCode('');
+    }
+  }, [remedialComponentCode, remedialSourceOptions]);
+
+  useEffect(() => {
+    if (activeTab !== 'REMEDIAL') return;
+    fetchRemedialRows(true);
+  }, [
+    activeTab,
+    remedialComponentCode,
+    remedialIncludeAll,
+    selectedAcademicYear,
+    selectedAssignment,
+    selectedSemester,
+  ]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchGradeComponents = async () => {
     const requestId = ++gradeComponentRequestRef.current;
@@ -1401,6 +1516,110 @@ export const TeacherGradesPage = () => {
     syncFormativeSlotDrafts(studentId, nextDrafts);
   };
 
+  const fetchRemedialRows = async (silent = false) => {
+    const requestId = ++remedialRequestRef.current;
+    const assignment = selectedAssignmentObj;
+    const academicYearId = Number(selectedAcademicYear);
+
+    if (
+      !assignment ||
+      !Number.isFinite(academicYearId) ||
+      academicYearId <= 0 ||
+      !selectedSemester
+    ) {
+      setRemedialRows([]);
+      return;
+    }
+
+    try {
+      if (!silent) setRemedialLoading(true);
+      const rows = await gradeService.getRemedialEligibleScores({
+        subjectId: assignment.subject.id,
+        academicYearId,
+        classId: assignment.class.id,
+        semester: selectedSemester,
+        componentCode: remedialComponentCode || undefined,
+        includeAll: remedialIncludeAll,
+        limit: 500,
+      });
+      if (requestId !== remedialRequestRef.current) return;
+      setRemedialRows(Array.isArray(rows) ? rows : []);
+    } catch (error) {
+      if (requestId !== remedialRequestRef.current) return;
+      console.error('Fetch remedial rows error:', error);
+      toast.error(getApiErrorMessage(error, 'Gagal memuat daftar remedial'));
+      setRemedialRows([]);
+    } finally {
+      if (requestId === remedialRequestRef.current) {
+        setRemedialLoading(false);
+      }
+    }
+  };
+
+  const fetchRemedialDetail = async (scoreEntryId: number) => {
+    const requestId = ++remedialDetailRequestRef.current;
+    try {
+      setRemedialDetailLoading(true);
+      const detail = await gradeService.getScoreRemedials(scoreEntryId);
+      if (requestId !== remedialDetailRequestRef.current) return;
+      setRemedialDetail(detail);
+      setSelectedRemedial(detail);
+    } catch (error) {
+      if (requestId !== remedialDetailRequestRef.current) return;
+      console.error('Fetch remedial detail error:', error);
+      toast.error(getApiErrorMessage(error, 'Gagal memuat riwayat remedial'));
+    } finally {
+      if (requestId === remedialDetailRequestRef.current) {
+        setRemedialDetailLoading(false);
+      }
+    }
+  };
+
+  const openRemedialModal = (row: RemedialScoreEntry) => {
+    setSelectedRemedial(row);
+    setRemedialDetail(row);
+    setRemedialScoreInput('');
+    setRemedialNoteInput('');
+    fetchRemedialDetail(row.scoreEntryId);
+  };
+
+  const closeRemedialModal = () => {
+    setSelectedRemedial(null);
+    setRemedialDetail(null);
+    setRemedialScoreInput('');
+    setRemedialNoteInput('');
+    setRemedialDetailLoading(false);
+  };
+
+  const handleSaveRemedial = async () => {
+    const activeRemedial = remedialDetail || selectedRemedial;
+    if (!activeRemedial) return;
+    const parsedScore = Number(remedialScoreInput.replace(',', '.'));
+    if (!Number.isFinite(parsedScore) || parsedScore < 0 || parsedScore > 100) {
+      toast.error('Nilai remedial harus berupa angka 0-100.');
+      return;
+    }
+
+    try {
+      setRemedialSaving(true);
+      await gradeService.createScoreRemedial({
+        scoreEntryId: activeRemedial.scoreEntryId,
+        remedialScore: parsedScore,
+        note: remedialNoteInput.trim() || undefined,
+      });
+      toast.success('Nilai remedial berhasil disimpan.');
+      setRemedialScoreInput('');
+      setRemedialNoteInput('');
+      await fetchRemedialDetail(activeRemedial.scoreEntryId);
+      await fetchRemedialRows(true);
+    } catch (error) {
+      console.error('Save remedial error:', error);
+      toast.error(getApiErrorMessage(error, 'Gagal menyimpan nilai remedial'));
+    } finally {
+      setRemedialSaving(false);
+    }
+  };
+
   const handleSaveSettings = async () => {
     if (!selectedAssignment) return;
     try {
@@ -1602,6 +1821,13 @@ export const TeacherGradesPage = () => {
     return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">Belum Tuntas</span>;
   };
 
+  const activeRemedialDetail = remedialDetail || selectedRemedial;
+  const remedialAttempts = activeRemedialDetail?.remedials
+    ? [...activeRemedialDetail.remedials].sort(
+        (a: ScoreRemedialAttempt, b: ScoreRemedialAttempt) => b.attemptNumber - a.attemptNumber,
+      )
+    : [];
+
   return (
       <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -1611,12 +1837,39 @@ export const TeacherGradesPage = () => {
         </div>
       </div>
 
-      {/* Description Box */}
-      <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
-        <span className="font-semibold">Informasi Penilaian:</span> {getDescription()}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 px-5 pt-4">
+        <div className="flex flex-wrap gap-5 border-b border-gray-200">
+          {[
+            { key: 'INPUT' as const, label: 'Input Nilai' },
+            { key: 'REMEDIAL' as const, label: 'Remedial' },
+          ].map((tab) => {
+            const isActive = activeTab === tab.key;
+            return (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => setActiveTab(tab.key)}
+                className={`inline-flex items-center px-1 pb-3 text-sm font-medium border-b-2 transition-colors ${
+                  isActive
+                    ? 'border-blue-600 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                {tab.label}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
-      {selectedComponentObj ? (
+      {/* Description Box */}
+      {activeTab === 'INPUT' ? (
+        <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
+          <span className="font-semibold">Informasi Penilaian:</span> {getDescription()}
+        </div>
+      ) : null}
+
+      {activeTab === 'INPUT' && selectedComponentObj ? (
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3">
           <div className="flex flex-wrap items-center gap-2 text-xs">
             <span className="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-gray-700">
@@ -1692,6 +1945,7 @@ export const TeacherGradesPage = () => {
                 </div>
             </div>
 
+            {activeTab === 'INPUT' ? (
             <div className="md:col-span-2 lg:col-span-2">
                 <div className={isFinalComponent ? "flex gap-2 items-end" : ""}>
                         <div className="flex-1">
@@ -1728,11 +1982,12 @@ export const TeacherGradesPage = () => {
                         )}
                     </div>
             </div>
+            ) : null}
         </div>
       </div>
 
       {/* Table */}
-	      {selectedAcademicYear && selectedAssignment && selectedComponent && (
+	      {activeTab === 'INPUT' && selectedAcademicYear && selectedAssignment && selectedComponent && (
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
               <div className="overflow-x-auto">
                   <table className="w-full border-collapse">
@@ -2020,10 +2275,333 @@ export const TeacherGradesPage = () => {
               </div>
           </div>
       )}
+
+      {activeTab === 'REMEDIAL' && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900">Remedial Nilai</h2>
+              <p className="mt-1 text-sm text-gray-600">
+                Pilih sumber nilai, lalu input remedial untuk siswa yang nilainya masih di bawah KKM.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => fetchRemedialRows(false)}
+              disabled={remedialLoading || !selectedAcademicYear || !selectedAssignment || !selectedSemester}
+              className="inline-flex items-center justify-center rounded-lg border border-blue-200 px-4 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {remedialLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Muat Ulang
+            </button>
+          </div>
+
+          {!selectedAcademicYear || !selectedAssignment || !selectedSemester ? (
+            <div className="mt-5 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              Pilih semester dan kelas & mapel terlebih dahulu untuk melihat kandidat remedial.
+            </div>
+          ) : (
+            <>
+              <div className="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-[minmax(240px,360px)_1fr] lg:items-end">
+                <div>
+                  <label htmlFor="remedial-source" className="block text-sm font-medium text-gray-700 mb-2">
+                    Sumber Nilai
+                  </label>
+                  <select
+                    id="remedial-source"
+                    value={remedialComponentCode}
+                    onChange={(event) => setRemedialComponentCode(event.target.value)}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+                  >
+                    <option value="">Semua sumber nilai</option>
+                    {remedialSourceOptions.map((option) => (
+                      <option key={option.code} value={option.code}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-1 text-xs text-gray-500">
+                    Opsi mengikuti komponen nilai aktif pada mapel ini.
+                  </p>
+                </div>
+
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
+                  <label className="inline-flex items-center gap-2 text-sm text-gray-700">
+                    <input
+                      type="checkbox"
+                      checked={remedialIncludeAll}
+                      onChange={(event) => setRemedialIncludeAll(event.target.checked)}
+                      className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    Tampilkan yang sudah tuntas
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    <span className="inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
+                      Total: {remedialSummary.total}
+                    </span>
+                    <span className="inline-flex rounded-full bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700">
+                      Belum KKM: {remedialSummary.pending}
+                    </span>
+                    <span className="inline-flex rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
+                      Tuntas: {remedialSummary.complete}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-5 overflow-x-auto rounded-lg border border-gray-200">
+                <table className="w-full min-w-[980px] border-collapse">
+                  <thead>
+                    <tr className="bg-gray-50 border-b border-gray-200">
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">No</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">NIS / NISN</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nama Siswa</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Sumber Nilai</th>
+                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Nilai Asli</th>
+                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Efektif</th>
+                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">KKM</th>
+                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Percobaan</th>
+                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {remedialLoading ? (
+                      <tr>
+                        <td colSpan={10} className="px-4 py-8 text-center text-sm text-gray-500">
+                          <Loader2 className="mx-auto mb-2 h-5 w-5 animate-spin text-blue-600" />
+                          Memuat kandidat remedial...
+                        </td>
+                      </tr>
+                    ) : remedialRows.length > 0 ? (
+                      remedialRows.map((row, index) => {
+                        const statusMeta = getRemedialStatusMeta(
+                          row.isComplete ? 'PASSED' : row.latestAttempt?.status || 'STILL_BELOW_KKM',
+                        );
+                        return (
+                          <tr key={row.scoreEntryId} className="hover:bg-gray-50">
+                            <td className="px-4 py-3 text-sm text-gray-500">{index + 1}</td>
+                            <td className="px-4 py-3 text-sm text-gray-700">
+                              <div>{row.student.nis || '-'}</div>
+                              <div className="text-xs text-gray-500">NISN: {row.student.nisn || '-'}</div>
+                            </td>
+                            <td className="px-4 py-3 text-sm font-medium text-gray-900">{row.student.name}</td>
+                            <td className="px-4 py-3 text-sm text-gray-700">
+                              <div className="font-medium text-gray-900">{row.sourceLabel || '-'}</div>
+                              <div className="text-xs text-gray-500">{row.sourceKey || row.componentCode || '-'}</div>
+                            </td>
+                            <td className="px-4 py-3 text-center text-sm font-semibold text-red-600">
+                              {formatScoreDisplay(row.originalScore)}
+                            </td>
+                            <td className={`px-4 py-3 text-center text-sm font-semibold ${row.currentEffectiveScore < row.kkm ? 'text-red-600' : 'text-emerald-700'}`}>
+                              {formatScoreDisplay(row.currentEffectiveScore)}
+                            </td>
+                            <td className="px-4 py-3 text-center text-sm text-gray-700">{formatScoreDisplay(row.kkm)}</td>
+                            <td className="px-4 py-3 text-center text-sm text-gray-700">{row.attemptCount || 0}x</td>
+                            <td className="px-4 py-3 text-center">
+                              <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${statusMeta.className}`}>
+                                {statusMeta.label}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-right">
+                              <button
+                                type="button"
+                                onClick={() => openRemedialModal(row)}
+                                className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
+                              >
+                                {row.isComplete ? 'Riwayat' : 'Input Remedial'}
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    ) : (
+                      <tr>
+                        <td colSpan={10} className="px-4 py-8 text-center text-sm text-gray-500">
+                          Tidak ada kandidat remedial pada filter ini.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {activeRemedialDetail && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/25 backdrop-blur-[2px]">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-3xl max-h-[calc(100vh-7rem)] overflow-hidden flex flex-col animate-in fade-in zoom-in duration-200">
+            <div className="flex items-start justify-between gap-4 border-b border-gray-200 px-6 py-4">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">Input Remedial</h3>
+                <p className="text-sm text-gray-600">
+                  {activeRemedialDetail.student.name} • {activeRemedialDetail.sourceLabel}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeRemedialModal}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+                aria-label="Tutup popup remedial"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-6 py-5">
+              {remedialDetailLoading ? (
+                <div className="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+                  <Loader2 className="mr-2 inline h-4 w-4 animate-spin" />
+                  Memuat riwayat remedial...
+                </div>
+              ) : null}
+
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+                <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
+                  <p className="text-xs font-medium uppercase tracking-wider text-gray-500">Nilai Asli</p>
+                  <p className="mt-1 text-lg font-bold text-red-600">{formatScoreDisplay(activeRemedialDetail.originalScore)}</p>
+                </div>
+                <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
+                  <p className="text-xs font-medium uppercase tracking-wider text-gray-500">Efektif</p>
+                  <p className="mt-1 text-lg font-bold text-gray-900">{formatScoreDisplay(activeRemedialDetail.currentEffectiveScore)}</p>
+                </div>
+                <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
+                  <p className="text-xs font-medium uppercase tracking-wider text-gray-500">KKM</p>
+                  <p className="mt-1 text-lg font-bold text-gray-900">{formatScoreDisplay(activeRemedialDetail.kkm)}</p>
+                </div>
+                <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
+                  <p className="text-xs font-medium uppercase tracking-wider text-gray-500">Percobaan</p>
+                  <p className="mt-1 text-lg font-bold text-gray-900">{activeRemedialDetail.attemptCount || 0}x</p>
+                </div>
+              </div>
+
+              <div className="mt-5 rounded-lg border border-gray-200">
+                <div className="border-b border-gray-200 px-4 py-3">
+                  <h4 className="text-sm font-semibold text-gray-900">Riwayat Percobaan</h4>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[620px] border-collapse">
+                    <thead>
+                      <tr className="bg-gray-50">
+                        <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Percobaan</th>
+                        <th className="px-4 py-2 text-center text-xs font-medium uppercase tracking-wider text-gray-500">Nilai Remedial</th>
+                        <th className="px-4 py-2 text-center text-xs font-medium uppercase tracking-wider text-gray-500">Efektif</th>
+                        <th className="px-4 py-2 text-center text-xs font-medium uppercase tracking-wider text-gray-500">Status</th>
+                        <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Catatan</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200 bg-white">
+                      {remedialAttempts.length > 0 ? (
+                        remedialAttempts.map((attempt) => {
+                          const statusMeta = getRemedialStatusMeta(attempt.status);
+                          return (
+                            <tr key={attempt.id}>
+                              <td className="px-4 py-3 text-sm text-gray-700">
+                                <div className="font-medium">Ke-{attempt.attemptNumber}</div>
+                                <div className="text-xs text-gray-500">{formatDateTimeDisplay(attempt.recordedAt)}</div>
+                              </td>
+                              <td className="px-4 py-3 text-center text-sm font-semibold text-gray-900">
+                                {formatScoreDisplay(attempt.remedialScore)}
+                              </td>
+                              <td className="px-4 py-3 text-center text-sm font-semibold text-gray-900">
+                                {formatScoreDisplay(attempt.effectiveScore)}
+                              </td>
+                              <td className="px-4 py-3 text-center">
+                                <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${statusMeta.className}`}>
+                                  {statusMeta.label}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 text-sm text-gray-600">{attempt.note || '-'}</td>
+                            </tr>
+                          );
+                        })
+                      ) : (
+                        <tr>
+                          <td colSpan={5} className="px-4 py-6 text-center text-sm text-gray-500">
+                            Belum ada percobaan remedial.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {activeRemedialDetail.isComplete ? (
+                <div className="mt-5 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+                  Nilai ini sudah tuntas. Riwayat remedial tetap tersimpan tanpa menimpa nilai asli.
+                </div>
+              ) : (
+                <div className="mt-5 rounded-lg border border-blue-100 bg-blue-50 p-4">
+                  <h4 className="text-sm font-semibold text-gray-900">Tambah Percobaan Remedial</h4>
+                  <p className="mt-1 text-xs text-blue-800">
+                    Nilai efektif remedial otomatis memakai nilai terbaik, tetapi maksimal hanya sampai KKM.
+                  </p>
+                  <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-[180px_1fr]">
+                    <div>
+                      <label htmlFor="remedial-score" className="block text-sm font-medium text-gray-700 mb-2">
+                        Nilai Remedial
+                      </label>
+                      <input
+                        id="remedial-score"
+                        type="number"
+                        inputMode="decimal"
+                        min="0"
+                        max="100"
+                        value={remedialScoreInput}
+                        onChange={(event) => setRemedialScoreInput(event.target.value)}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg text-center focus:ring-blue-500 focus:border-blue-500"
+                        placeholder="0-100"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="remedial-note" className="block text-sm font-medium text-gray-700 mb-2">
+                        Catatan
+                      </label>
+                      <textarea
+                        id="remedial-note"
+                        rows={3}
+                        value={remedialNoteInput}
+                        onChange={(event) => setRemedialNoteInput(event.target.value)}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+                        placeholder="Opsional, misalnya materi yang diremedialkan."
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-3 border-t border-gray-200 px-6 py-4">
+              <button
+                type="button"
+                onClick={closeRemedialModal}
+                className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium transition-colors"
+                disabled={remedialSaving}
+              >
+                Tutup
+              </button>
+              {!activeRemedialDetail.isComplete ? (
+                <button
+                  type="button"
+                  onClick={handleSaveRemedial}
+                  disabled={remedialSaving}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-70"
+                >
+                  {remedialSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                  Simpan Remedial
+                </button>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      )}
       {/* Modal Settings */}
       {showSettingsModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/25 backdrop-blur-[2px]" onClick={() => setShowSettingsModal(false)}>
-            <div className="bg-white rounded-xl shadow-xl w-full max-w-lg p-6 animate-in fade-in zoom-in duration-200 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/25 backdrop-blur-[2px]">
+            <div className="bg-white rounded-xl shadow-xl w-full max-w-lg p-6 animate-in fade-in zoom-in duration-200 max-h-[calc(100vh-7rem)] overflow-y-auto">
                 <div className="flex justify-between items-center mb-6">
                     <h3 className="text-xl font-bold text-gray-900">Setting Capaian Kompetensi</h3>
                     <button onClick={() => setShowSettingsModal(false)} className="text-gray-400 hover:text-gray-600 transition-colors">

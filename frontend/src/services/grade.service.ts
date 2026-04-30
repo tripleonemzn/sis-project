@@ -285,6 +285,66 @@ export interface HomeroomResultPublicationsData {
   };
 }
 
+export type ScoreRemedialStatus = 'RECORDED' | 'PASSED' | 'STILL_BELOW_KKM' | 'CANCELLED' | string;
+
+export interface ScoreRemedialAttempt {
+  id: number;
+  scoreEntryId: number;
+  attemptNumber: number;
+  originalScore: number;
+  previousEffectiveScore: number;
+  remedialScore: number;
+  effectiveScore: number;
+  kkm: number;
+  status: ScoreRemedialStatus;
+  note?: string | null;
+  recordedAt: string;
+  recordedById?: number | null;
+}
+
+export interface RemedialScoreEntry {
+  id: number;
+  scoreEntryId: number;
+  studentId: number;
+  subjectId: number;
+  academicYearId: number;
+  semester: 'ODD' | 'EVEN';
+  componentCode?: string | null;
+  componentType?: string | null;
+  componentTypeCode?: string | null;
+  reportSlot?: string | null;
+  reportSlotCode?: string | null;
+  sourceType?: string | null;
+  sourceKey?: string | null;
+  sourceLabel: string;
+  originalScore: number;
+  currentEffectiveScore: number;
+  kkm: number;
+  isComplete: boolean;
+  attemptCount: number;
+  latestAttempt?: ScoreRemedialAttempt | null;
+  kkmSource?: string;
+  classId?: number | null;
+  classLevel?: string | null;
+  student: {
+    id: number;
+    name: string;
+    nis?: string | null;
+    nisn?: string | null;
+    classId?: number | null;
+  };
+  subject: {
+    id: number;
+    code?: string | null;
+    name: string;
+  };
+  academicYear: {
+    id: number;
+    name: string;
+  };
+  remedials: ScoreRemedialAttempt[];
+}
+
 export const gradeService = {
   getComponents: async (params?: {
     subject_id?: number;
@@ -420,6 +480,56 @@ export const gradeService = {
     mode: 'FOLLOW_GLOBAL' | 'BLOCKED';
   }) => {
     const response = await api.put('/grades/homeroom-result-publications', payload);
+    return response.data;
+  },
+
+  getRemedialEligibleScores: async (params: {
+    subjectId: number;
+    academicYearId: number;
+    semester: 'ODD' | 'EVEN';
+    classId?: number;
+    studentId?: number;
+    componentCode?: string;
+    includeAll?: boolean;
+    limit?: number;
+  }): Promise<RemedialScoreEntry[]> => {
+    const response = await api.get('/grades/remedials/eligible', {
+      params: {
+        subject_id: params.subjectId,
+        academic_year_id: params.academicYearId,
+        semester: params.semester,
+        class_id: params.classId,
+        student_id: params.studentId,
+        component_code: params.componentCode || undefined,
+        include_all: params.includeAll ? 'true' : undefined,
+        limit: params.limit,
+      },
+    });
+    return (response.data?.data || []) as RemedialScoreEntry[];
+  },
+
+  getScoreRemedials: async (scoreEntryId: number): Promise<RemedialScoreEntry> => {
+    const response = await api.get('/grades/remedials', {
+      params: {
+        score_entry_id: scoreEntryId,
+      },
+    });
+    if (!response.data?.data) {
+      throw new Error('Riwayat remedial tidak tersedia.');
+    }
+    return response.data.data as RemedialScoreEntry;
+  },
+
+  createScoreRemedial: async (payload: {
+    scoreEntryId: number;
+    remedialScore: number;
+    note?: string;
+  }) => {
+    const response = await api.post('/grades/remedials', {
+      score_entry_id: payload.scoreEntryId,
+      remedial_score: payload.remedialScore,
+      note: payload.note,
+    });
     return response.data;
   },
 };
