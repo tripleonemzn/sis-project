@@ -318,3 +318,41 @@ Dokumen ini adalah policy kerja default untuk setiap sesi baru yang mengerjakan 
    - Jika sesi terhenti saat worktree masih kotor, isi handoff harus menjelaskan dengan jujur perubahan yang belum selesai dan apa yang harus dicek lebih dulu sebelum melanjutkan.
    - Jika satu batch sudah benar-benar selesai, dorong penyelesaian sampai commit/push sesuai policy agar room baru tidak bergantung pada worktree kotor.
    - `docs/CODEX_CONTINUITY.md` adalah source of truth progres operasional antar-room; setiap room baru wajib membacanya sebelum menyimpulkan status terakhir project.
+
+21. **Koordinasi multi-PC / multi-Codex wajib menjaga production aman**
+   - Project ini boleh dikerjakan dari lebih dari satu PC atau lebih dari satu akun Codex, tetapi setiap sesi harus menganggap ada kemungkinan agent lain sedang bekerja pada repo yang sama.
+   - Prinsip utamanya adalah `satu batch = satu owner = satu area kerja jelas`.
+   - Sebelum mulai batch dari PC mana pun, wajib lakukan bootstrap aman:
+     - baca `AGENTS.md`
+     - baca `docs/CODEX_CONTINUITY.md`
+     - `git fetch origin`
+     - cek apakah branch lokal behind/ahead dari `origin/main`
+     - cek `git status --short`
+     - cek commit terbaru minimal `git log -1 --stat --decorate`
+   - Jangan mulai mengedit jika branch lokal tertinggal dari `origin/main`. Sinkronkan dulu dengan cara aman, lalu baca ulang konteks yang berubah.
+   - Jangan mengerjakan area/file yang sama dengan PC lain secara bersamaan kecuali user memberi pembagian eksplisit dan konsekuensi konfliknya sudah dipahami.
+   - Pembagian kerja harus dibuat sekonkret mungkin, misalnya:
+     - PC 1 mengerjakan backend/controller/migration untuk fitur A
+     - PC 2 mengerjakan frontend/mobile untuk fitur B
+     - PC 1 tidak menyentuh file yang menjadi owner PC 2, dan sebaliknya
+   - Jika task besar perlu paralel di domain yang saling terkait, dahulukan kontrak stabil yang kecil seperti API shape, route, tipe response, atau DTO. Setelah kontrak disepakati/ter-commit, barulah PC lain membangun UI/consumer di atasnya.
+   - Commit kecil dan sering lebih aman daripada menahan perubahan besar lama di satu PC. Setiap batch yang sudah utuh harus segera:
+     - diverifikasi
+     - update `docs/CODEX_CONTINUITY.md`
+     - commit
+     - push ke `origin/main`
+   - Sebelum deploy web, restart backend, menjalankan migration, publish OTA mobile, atau aksi lain yang memengaruhi tester/production, wajib memastikan:
+     - worktree clean
+     - local `main` sinkron dengan `origin/main`
+     - tidak ada agent lain yang sedang melakukan deploy/restart/publish pada area yang sama
+     - verifikasi minimum relevan sudah dijalankan setelah sinkronisasi terakhir
+   - Jangan ada dua PC melakukan deploy/restart/publish OTA bersamaan. Jika perlu, gunakan `docs/CODEX_CONTINUITY.md` sebagai catatan lock ringan, misalnya `Deploy in progress by PC-1: backend restart`.
+   - Jika menemukan konflik git, file berubah mendadak, commit remote baru menyentuh area yang sama, atau hasil uji tidak cocok dengan laporan agent lain, hentikan perubahan pada area tersebut dan laporkan konflik dengan jelas. Jangan overwrite, reset, checkout, atau revert perubahan agent lain tanpa instruksi eksplisit user.
+   - Jika satu PC membuat perubahan backend/API yang menjadi dependency PC lain, PC tersebut wajib menjelaskan kontrak data dan commit hash di `docs/CODEX_CONTINUITY.md` agar PC lain tidak menebak dari chat.
+   - Jika satu PC menemukan bug produksi serius saat PC lain sedang mengerjakan fitur, prioritas berpindah ke containment/stabilitas. Koordinasi harus menghentikan rollout fitur sementara sampai risiko production aman.
+   - Saat menutup pekerjaan multi-PC, laporan final wajib menyebut:
+     - area yang dikerjakan oleh sesi/PC ini
+     - commit hash yang sudah dipush
+     - apakah ada asumsi/dependency untuk PC lain
+     - status deploy/OTA jika ada
+     - status worktree clean
