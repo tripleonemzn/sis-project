@@ -5,8 +5,8 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-04-30 16:39 WIB
-- Current status: Batch student-facing remedial selesai dan live untuk web/backend. Aktivitas remedial metode `Tugas remedial` dan `Soal/quiz remedial` sekarang punya endpoint siswa tersendiri dan tampil sebagai tab `Remedial` di menu `Materi & Tugas` siswa pada web dan mobile.
+- Last updated: 2026-04-30 16:43 WIB
+- Current status: Batch student-facing remedial selesai dan live untuk web/backend/mobile. Aktivitas remedial metode `Tugas remedial` dan `Soal/quiz remedial` sekarang punya endpoint siswa tersendiri dan tampil sebagai tab `Remedial` di menu `Materi & Tugas` siswa pada web dan mobile.
 - Objective/task aktif:
   - Mengembangkan fitur remedial nilai untuk guru mapel dengan sumber nilai spesifik, riwayat percobaan lebih dari 1x, nilai asli tetap utuh, dan nilai efektif remedial dibatasi sampai KKM.
 - Batch terakhir selesai:
@@ -61,7 +61,8 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 - Publish/live status:
   - Web sudah deploy live
   - Backend sudah direload via PM2 dan health tetap `Backend:200`, `Backend API:200`
-  - Mobile OTA belum publish pada update ini karena safety gate menahan publish saat worktree masih berisi perubahan lintas backend/web/mobile; publish OTA perlu dijalankan ulang setelah commit/push batch ini
+  - Mobile OTA sudah publish ke channel `pilot-live`, runtime `0.2.2`, update group `e63acf18-cb26-4442-9edb-bf253900f976`
+  - Push notify OTA berhasil terkirim: `recipients=64`, `sent=64`, `failed=0`, `stale=0`
 - Remaining work:
   - Jika user ingin remedial menjadi workflow pengerjaan penuh, batch lanjutan perlu menambah aktivitas draft sebelum nilai dicatat dan/atau integrasi submit jawaban remedial khusus.
 - Residual risk:
