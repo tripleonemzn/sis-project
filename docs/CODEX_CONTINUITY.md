@@ -5,7 +5,7 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-04-30 09:16 WIB
+- Last updated: 2026-04-30 09:18 WIB
 - Current status: Perbaikan download file materi/tugas mobile dan limit upload 10MB sudah selesai. Download lampiran di mobile tidak lagi diarahkan ke web kosong; aplikasi mengunduh file secara native dan Android menyimpan lewat folder yang dipilih user.
 - Objective/task aktif:
   - Menjaga fitur operasional lintas web/mobile tetap user-friendly dan aman untuk produksi.
@@ -49,9 +49,12 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 - Publish/live status:
   - Backend sudah restart via PM2 dan health `Backend:200`, `Backend API:200`
   - Web sudah deploy ke `/var/www/html`
-  - Mobile OTA masih perlu publish setelah commit dokumentasi ini
+  - Mobile OTA sudah publish ke channel `pilot-live`
+  - OTA update group: `43b21755-d754-482b-b94c-32d148edc9c3`
+  - Android update ID: `019ddc2d-ab55-726d-89a8-4f8c08bf5f45`
+  - Push notify update terkirim: `recipients=38`, `sent=38`, `failed=0`, `stale=0`
 - Remaining work:
-  - Commit dokumentasi, push ke `origin/main`, publish OTA mobile ke channel tester, lalu final clean check.
+  - Tidak ada untuk batch ini. Lanjut hanya jika user menemukan hasil uji perangkat nyata.
 - Residual risk:
   - Pada Android pertama kali download, user perlu memilih folder penyimpanan melalui picker sistem. Setelah izin folder tersimpan, download berikutnya bisa langsung memakai folder tersebut.
 
