@@ -7,6 +7,7 @@ import {
   ReportComponentSlot,
   ExamSessionStatus,
   ExamType,
+  ScoreRemedialMethod,
   ScoreRemedialStatus,
 } from '@prisma/client'
 import prisma from '../utils/prisma'
@@ -3276,6 +3277,28 @@ function roundRemedialScore(value: number): number {
   return Number(Math.max(0, Math.min(100, value)).toFixed(2))
 }
 
+function normalizeScoreRemedialMethod(value: unknown): ScoreRemedialMethod {
+  const normalized = String(value || '').trim().toUpperCase()
+  if (normalized === ScoreRemedialMethod.ASSIGNMENT) return ScoreRemedialMethod.ASSIGNMENT
+  if (normalized === ScoreRemedialMethod.QUESTION_SET || normalized === 'QUIZ' || normalized === 'SOAL') {
+    return ScoreRemedialMethod.QUESTION_SET
+  }
+  return ScoreRemedialMethod.MANUAL_SCORE
+}
+
+function normalizeOptionalRemedialText(value: unknown, maxLength: number): string | null {
+  const normalized = String(value || '').trim()
+  if (!normalized) return null
+  return normalized.slice(0, maxLength)
+}
+
+function normalizeOptionalRemedialDate(value: unknown): Date | null {
+  const raw = String(value || '').trim()
+  if (!raw) return null
+  const parsed = new Date(raw)
+  return Number.isFinite(parsed.getTime()) ? parsed : null
+}
+
 function resolveRemedialEffectiveScore(params: {
   originalScore: number
   previousEffectiveScore?: number | null
@@ -3723,6 +3746,22 @@ export const createScoreRemedial = async (req: Request, res: Response) => {
       req.body?.remedial_score ?? req.body?.remedialScore,
       'Nilai remedial',
     )
+    const method = normalizeScoreRemedialMethod(req.body?.method || req.body?.remedialMethod)
+    const activityTitle = normalizeOptionalRemedialText(
+      req.body?.activity_title ?? req.body?.activityTitle,
+      160,
+    )
+    const activityInstructions = normalizeOptionalRemedialText(
+      req.body?.activity_instructions ?? req.body?.activityInstructions,
+      2000,
+    )
+    const activityDueAt = normalizeOptionalRemedialDate(
+      req.body?.activity_due_at ?? req.body?.activityDueAt,
+    )
+    const activityReferenceUrl = normalizeOptionalRemedialText(
+      req.body?.activity_reference_url ?? req.body?.activityReferenceUrl,
+      500,
+    )
     const note = String(req.body?.note || '').trim() || null
 
     if (!scoreEntryId) {
@@ -3730,6 +3769,9 @@ export const createScoreRemedial = async (req: Request, res: Response) => {
     }
     if (remedialScore === undefined || remedialScore === null) {
       throw new ApiError(400, 'Nilai remedial wajib diisi.')
+    }
+    if (method !== ScoreRemedialMethod.MANUAL_SCORE && !activityTitle && !activityInstructions && !activityReferenceUrl) {
+      throw new ApiError(400, 'Isi judul, instruksi, atau tautan remedial untuk metode tugas/soal.')
     }
 
     const entry = await loadRemedialScoreEntry(scoreEntryId)
@@ -3775,6 +3817,11 @@ export const createScoreRemedial = async (req: Request, res: Response) => {
         effectiveScore,
         kkm: kkmInfo.kkm,
         status,
+        method,
+        activityTitle,
+        activityInstructions,
+        activityDueAt,
+        activityReferenceUrl,
         note,
         recordedById: toPositiveInt(user?.id) || null,
       },

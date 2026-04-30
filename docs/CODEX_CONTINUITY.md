@@ -5,12 +5,12 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-04-30 13:48 WIB
-- Current status: Follow-up policy/UI remedial selesai. Tab `Input Nilai Siswa` sekarang memakai komponen shared `UnderlineTabBar` dengan icon seperti acuan `Kelola Ujian`, dan `AGENTS.md` sudah diperjelas agar tab horizontal web ke depan mengutamakan pola/komponen `Kelola Ujian` beserta icon.
+- Last updated: 2026-04-30 14:01 WIB
+- Current status: Batch metode remedial selesai dan live. Popup `Input Remedial` sekarang mendukung metode `Input nilai manual`, `Tugas remedial`, dan `Soal/quiz remedial`, lengkap dengan judul aktivitas, instruksi, tenggat, dan tautan referensi yang tersimpan di riwayat percobaan.
 - Objective/task aktif:
   - Mengembangkan fitur remedial nilai untuk guru mapel dengan sumber nilai spesifik, riwayat percobaan lebih dari 1x, nilai asli tetap utuh, dan nilai efektif remedial dibatasi sampai KKM.
 - Batch terakhir selesai:
-  - `Remedial batch 6 - tab standardization policy`
+  - `Remedial batch 7 - assignment/question method metadata`
 - Progress batch remedial saat ini:
   - `100%` untuk fondasi database remedial
   - `100%` untuk API kandidat nilai belum tuntas dan pencatatan remedial
@@ -31,29 +31,39 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
-  - Commit: `cd26446`
-  - Title: `style(grades): align remedial tabs with exam standard`
+  - Commit: `pending`
+  - Title: `feat(grades): add remedial activity methods`
   - Summary:
-    - halaman guru mapel `Input Nilai Siswa` memakai `UnderlineTabBar` shared dengan icon `Input Nilai` dan `Remedial`
-    - policy `AGENTS.md` diperbarui: tab horizontal web harus merujuk ke pola `Kelola Ujian`, mengutamakan `UnderlineTabBar`/pola identik, dan memakai icon relevan agar mudah discan
-    - konsep policy remedial dikonfirmasi: nilai remedial tetap mengikuti gate publikasi wali kelas karena yang terbaca siswa adalah nilai publik/rapor yang dirilis, sedangkan guru mapel hanya mencatat hasil remedial sampai efektif maksimal KKM
+    - `StudentScoreRemedial` memiliki enum metode dan metadata aktivitas optional (`activityTitle`, `activityInstructions`, `activityDueAt`, `activityReferenceUrl`)
+    - API `POST /api/grades/remedials` menerima metode remedial dan metadata aktivitas tanpa mengubah logika nilai efektif maksimal KKM
+    - UI popup remedial menampilkan pilihan metode, form tugas/soal, serta riwayat percobaan dengan informasi metode dan tautan
+    - ini adalah fondasi aman untuk pemberian tugas/soal remedial; integrasi penuh ke modul tugas/ujian siswa dapat dilanjutkan pada batch berikutnya jika dibutuhkan
 - Area/file disentuh:
-  - `AGENTS.md`
+  - `backend/prisma/schema.prisma`
+  - `backend/prisma/migrations/20260430135500_add_score_remedial_method_fields/migration.sql`
+  - `backend/src/controllers/grade.controller.ts`
   - `frontend/src/pages/teacher/TeacherGradesPage.tsx`
+  - `frontend/src/services/grade.service.ts`
   - `docs/CODEX_CONTINUITY.md`
 - Verifikasi batch ini:
+  - `cd backend && npx prisma generate`
   - `git diff --check`
+  - `cd backend && npm run build`
   - `cd frontend && npm run build`
+  - `cd backend && npx prisma migrate deploy`
+  - `cd backend && npm run service:restart`
+  - `cd backend && npm run service:health`
   - `cd frontend && npm run deploy`
   - `curl -I https://siskgb2.id/teacher/grades`
 - Publish/live status:
   - Web sudah deploy live dan `/teacher/grades` merespons `200`
-  - Backend tidak disentuh pada batch ini
+  - Backend sudah direload via PM2 dan health tetap `Backend:200`, `Backend API:200`
+  - Migration `20260430135500_add_score_remedial_method_fields` sudah applied ke database production
   - Mobile OTA tidak dijalankan karena tidak ada perubahan source mobile
 - Remaining work:
-  - Jika user setuju, batch berikutnya dapat menambah workflow `Paket Remedial` agar guru bisa membuat/memberikan soal remedial dari sumber nilai tertentu, bukan hanya mencatat hasil remedial manual.
+  - Jika user ingin siswa benar-benar mengerjakan langsung dari aplikasi, batch berikutnya perlu menghubungkan metode `Tugas remedial` ke modul `Materi & Tugas` dan metode `Soal/quiz remedial` ke modul `Bank Soal/Ujian`, termasuk tampilan siswa/mobile.
 - Residual risk:
-  - Tidak ada risiko runtime baru; perubahan batch ini frontend/docs only.
+  - Fitur saat ini menyimpan metode dan instruksi aktivitas remedial pada riwayat percobaan, tetapi belum membuat assignment/exam schedule otomatis untuk siswa.
 
 ## Status Saat Ini
 

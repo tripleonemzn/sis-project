@@ -2,7 +2,12 @@ import { useState, useEffect, useMemo, useRef, type WheelEvent } from 'react';
 import { ClipboardList, Loader2, RotateCcw, Save, X } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { gradeService } from '../../services/grade.service';
-import type { GradeComponent, RemedialScoreEntry, ScoreRemedialAttempt } from '../../services/grade.service';
+import type {
+  GradeComponent,
+  RemedialScoreEntry,
+  ScoreRemedialAttempt,
+  ScoreRemedialMethod,
+} from '../../services/grade.service';
 import { teacherAssignmentService } from '../../services/teacherAssignment.service';
 import type { TeacherAssignment, TeacherAssignmentDetail } from '../../services/teacherAssignment.service';
 import {
@@ -311,6 +316,13 @@ const getRemedialStatusMeta = (status?: string | null) => {
     label: 'Tercatat',
     className: 'bg-blue-50 text-blue-700 border border-blue-200',
   };
+};
+
+const getRemedialMethodLabel = (method?: string | null) => {
+  const normalized = String(method || 'MANUAL_SCORE').toUpperCase();
+  if (normalized === 'ASSIGNMENT') return 'Tugas Remedial';
+  if (normalized === 'QUESTION_SET') return 'Soal/Quiz Remedial';
+  return 'Input Nilai Manual';
 };
 
 const resolveRemedialComponentCode = (component: GradeComponent): string => {
@@ -746,6 +758,11 @@ export const TeacherGradesPage = () => {
   const [remedialDetailLoading, setRemedialDetailLoading] = useState(false);
   const [remedialScoreInput, setRemedialScoreInput] = useState('');
   const [remedialNoteInput, setRemedialNoteInput] = useState('');
+  const [remedialMethodInput, setRemedialMethodInput] = useState<ScoreRemedialMethod>('MANUAL_SCORE');
+  const [remedialActivityTitleInput, setRemedialActivityTitleInput] = useState('');
+  const [remedialActivityInstructionsInput, setRemedialActivityInstructionsInput] = useState('');
+  const [remedialActivityDueAtInput, setRemedialActivityDueAtInput] = useState('');
+  const [remedialActivityReferenceUrlInput, setRemedialActivityReferenceUrlInput] = useState('');
   const [remedialSaving, setRemedialSaving] = useState(false);
   const [isFilterRestoreDone, setIsFilterRestoreDone] = useState(false);
   const restoredAssignmentRef = useRef<string | undefined>(undefined);
@@ -1569,6 +1586,11 @@ export const TeacherGradesPage = () => {
     setRemedialDetail(row);
     setRemedialScoreInput('');
     setRemedialNoteInput('');
+    setRemedialMethodInput('MANUAL_SCORE');
+    setRemedialActivityTitleInput('');
+    setRemedialActivityInstructionsInput('');
+    setRemedialActivityDueAtInput('');
+    setRemedialActivityReferenceUrlInput('');
     fetchRemedialDetail(row.scoreEntryId);
   };
 
@@ -1577,6 +1599,11 @@ export const TeacherGradesPage = () => {
     setRemedialDetail(null);
     setRemedialScoreInput('');
     setRemedialNoteInput('');
+    setRemedialMethodInput('MANUAL_SCORE');
+    setRemedialActivityTitleInput('');
+    setRemedialActivityInstructionsInput('');
+    setRemedialActivityDueAtInput('');
+    setRemedialActivityReferenceUrlInput('');
     setRemedialDetailLoading(false);
   };
 
@@ -1588,17 +1615,39 @@ export const TeacherGradesPage = () => {
       toast.error('Nilai remedial harus berupa angka 0-100.');
       return;
     }
+    const activityTitle = remedialActivityTitleInput.trim();
+    const activityInstructions = remedialActivityInstructionsInput.trim();
+    const activityReferenceUrl = remedialActivityReferenceUrlInput.trim();
+    if (
+      remedialMethodInput !== 'MANUAL_SCORE' &&
+      !activityTitle &&
+      !activityInstructions &&
+      !activityReferenceUrl
+    ) {
+      toast.error('Isi judul, instruksi, atau tautan untuk metode tugas/soal remedial.');
+      return;
+    }
 
     try {
       setRemedialSaving(true);
       await gradeService.createScoreRemedial({
         scoreEntryId: activeRemedial.scoreEntryId,
         remedialScore: parsedScore,
+        method: remedialMethodInput,
+        activityTitle: activityTitle || undefined,
+        activityInstructions: activityInstructions || undefined,
+        activityDueAt: remedialActivityDueAtInput || undefined,
+        activityReferenceUrl: activityReferenceUrl || undefined,
         note: remedialNoteInput.trim() || undefined,
       });
       toast.success('Nilai remedial berhasil disimpan.');
       setRemedialScoreInput('');
       setRemedialNoteInput('');
+      setRemedialMethodInput('MANUAL_SCORE');
+      setRemedialActivityTitleInput('');
+      setRemedialActivityInstructionsInput('');
+      setRemedialActivityDueAtInput('');
+      setRemedialActivityReferenceUrlInput('');
       await fetchRemedialDetail(activeRemedial.scoreEntryId);
       await fetchRemedialRows(true);
       await refreshReportGradeSnapshot();
@@ -2421,6 +2470,7 @@ export const TeacherGradesPage = () => {
                         <th className="px-4 py-2 text-center text-xs font-medium uppercase tracking-wider text-gray-500">Nilai Remedial</th>
                         <th className="px-4 py-2 text-center text-xs font-medium uppercase tracking-wider text-gray-500">Efektif</th>
                         <th className="px-4 py-2 text-center text-xs font-medium uppercase tracking-wider text-gray-500">Status</th>
+                        <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Metode</th>
                         <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Catatan</th>
                       </tr>
                     </thead>
@@ -2445,13 +2495,32 @@ export const TeacherGradesPage = () => {
                                   {statusMeta.label}
                                 </span>
                               </td>
+                              <td className="px-4 py-3 text-sm text-gray-700">
+                                <div className="font-medium text-gray-900">{getRemedialMethodLabel(attempt.method)}</div>
+                                {attempt.activityTitle ? (
+                                  <div className="text-xs text-gray-500">{attempt.activityTitle}</div>
+                                ) : null}
+                                {attempt.activityDueAt ? (
+                                  <div className="text-xs text-gray-500">Tenggat: {formatDateTimeDisplay(attempt.activityDueAt)}</div>
+                                ) : null}
+                                {attempt.activityReferenceUrl ? (
+                                  <a
+                                    href={attempt.activityReferenceUrl}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="text-xs font-medium text-blue-600 hover:text-blue-700"
+                                  >
+                                    Buka tautan
+                                  </a>
+                                ) : null}
+                              </td>
                               <td className="px-4 py-3 text-sm text-gray-600">{attempt.note || '-'}</td>
                             </tr>
                           );
                         })
                       ) : (
                         <tr>
-                          <td colSpan={5} className="px-4 py-6 text-center text-sm text-gray-500">
+                          <td colSpan={6} className="px-4 py-6 text-center text-sm text-gray-500">
                             Belum ada percobaan remedial.
                           </td>
                         </tr>
@@ -2489,18 +2558,95 @@ export const TeacherGradesPage = () => {
                       />
                     </div>
                     <div>
-                      <label htmlFor="remedial-note" className="block text-sm font-medium text-gray-700 mb-2">
-                        Catatan
+                      <label htmlFor="remedial-method" className="block text-sm font-medium text-gray-700 mb-2">
+                        Metode Remedial
                       </label>
-                      <textarea
-                        id="remedial-note"
-                        rows={3}
-                        value={remedialNoteInput}
-                        onChange={(event) => setRemedialNoteInput(event.target.value)}
+                      <select
+                        id="remedial-method"
+                        value={remedialMethodInput}
+                        onChange={(event) => setRemedialMethodInput(event.target.value as ScoreRemedialMethod)}
                         className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
-                        placeholder="Opsional, misalnya materi yang diremedialkan."
-                      />
+                      >
+                        <option value="MANUAL_SCORE">Input nilai manual</option>
+                        <option value="ASSIGNMENT">Tugas remedial</option>
+                        <option value="QUESTION_SET">Soal/quiz remedial</option>
+                      </select>
+                      <p className="mt-1 text-xs text-blue-800">
+                        Jika memakai tugas/soal, isi instruksi atau tautan agar riwayat percobaan jelas.
+                      </p>
                     </div>
+                  </div>
+
+                  {remedialMethodInput !== 'MANUAL_SCORE' ? (
+                    <div className="mt-4 rounded-lg border border-blue-200 bg-white p-4">
+                      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                        <div>
+                          <label htmlFor="remedial-activity-title" className="block text-sm font-medium text-gray-700 mb-2">
+                            Judul Tugas/Soal
+                          </label>
+                          <input
+                            id="remedial-activity-title"
+                            type="text"
+                            value={remedialActivityTitleInput}
+                            onChange={(event) => setRemedialActivityTitleInput(event.target.value)}
+                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+                            placeholder="Contoh: Remedial TP 1.1"
+                          />
+                        </div>
+                        <div>
+                          <label htmlFor="remedial-activity-due" className="block text-sm font-medium text-gray-700 mb-2">
+                            Tenggat
+                          </label>
+                          <input
+                            id="remedial-activity-due"
+                            type="datetime-local"
+                            value={remedialActivityDueAtInput}
+                            onChange={(event) => setRemedialActivityDueAtInput(event.target.value)}
+                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+                          />
+                        </div>
+                      </div>
+                      <div className="mt-4">
+                        <label htmlFor="remedial-activity-instructions" className="block text-sm font-medium text-gray-700 mb-2">
+                          Instruksi untuk Siswa
+                        </label>
+                        <textarea
+                          id="remedial-activity-instructions"
+                          rows={3}
+                          value={remedialActivityInstructionsInput}
+                          onChange={(event) => setRemedialActivityInstructionsInput(event.target.value)}
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+                          placeholder="Tulis instruksi tugas/soal remedial yang diberikan."
+                        />
+                      </div>
+                      <div className="mt-4">
+                        <label htmlFor="remedial-activity-link" className="block text-sm font-medium text-gray-700 mb-2">
+                          Tautan Tugas/Soal
+                        </label>
+                        <input
+                          id="remedial-activity-link"
+                          type="url"
+                          value={remedialActivityReferenceUrlInput}
+                          onChange={(event) => setRemedialActivityReferenceUrlInput(event.target.value)}
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+                          placeholder="Opsional, misalnya link Google Form / dokumen soal."
+                        />
+                      </div>
+                    </div>
+                  ) : null}
+
+                  <div className="mt-4">
+                    <label htmlFor="remedial-note" className="block text-sm font-medium text-gray-700 mb-2">
+                      Catatan
+                    </label>
+                    <textarea
+                      id="remedial-note"
+                      rows={3}
+                      value={remedialNoteInput}
+                      onChange={(event) => setRemedialNoteInput(event.target.value)}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="Opsional, misalnya materi yang diremedialkan."
+                    />
                   </div>
                 </div>
               )}

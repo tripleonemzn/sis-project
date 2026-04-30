@@ -286,6 +286,7 @@ export interface HomeroomResultPublicationsData {
 }
 
 export type ScoreRemedialStatus = 'RECORDED' | 'PASSED' | 'STILL_BELOW_KKM' | 'CANCELLED' | string;
+export type ScoreRemedialMethod = 'MANUAL_SCORE' | 'ASSIGNMENT' | 'QUESTION_SET' | string;
 
 export interface ScoreRemedialAttempt {
   id: number;
@@ -297,6 +298,11 @@ export interface ScoreRemedialAttempt {
   effectiveScore: number;
   kkm: number;
   status: ScoreRemedialStatus;
+  method?: ScoreRemedialMethod | null;
+  activityTitle?: string | null;
+  activityInstructions?: string | null;
+  activityDueAt?: string | null;
+  activityReferenceUrl?: string | null;
   note?: string | null;
   recordedAt: string;
   recordedById?: number | null;
@@ -523,11 +529,21 @@ export const gradeService = {
   createScoreRemedial: async (payload: {
     scoreEntryId: number;
     remedialScore: number;
+    method?: ScoreRemedialMethod;
+    activityTitle?: string;
+    activityInstructions?: string;
+    activityDueAt?: string;
+    activityReferenceUrl?: string;
     note?: string;
   }) => {
     const response = await api.post('/grades/remedials', {
       score_entry_id: payload.scoreEntryId,
       remedial_score: payload.remedialScore,
+      method: payload.method,
+      activity_title: payload.activityTitle,
+      activity_instructions: payload.activityInstructions,
+      activity_due_at: payload.activityDueAt,
+      activity_reference_url: payload.activityReferenceUrl,
       note: payload.note,
     });
     return response.data;

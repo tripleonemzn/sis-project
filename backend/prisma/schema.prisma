@@ -1386,6 +1386,11 @@ model StudentScoreRemedial {
   effectiveScore         Float
   kkm                    Int
   status                 ScoreRemedialStatus @default(RECORDED)
+  method                 ScoreRemedialMethod @default(MANUAL_SCORE)
+  activityTitle          String?
+  activityInstructions   String?
+  activityDueAt          DateTime?
+  activityReferenceUrl   String?
   note                   String?
   recordedById           Int?
   recordedAt             DateTime            @default(now())
@@ -3472,6 +3477,12 @@ enum ScoreRemedialStatus {
   PASSED
   STILL_BELOW_KKM
   CANCELLED
+}
+
+enum ScoreRemedialMethod {
+  MANUAL_SCORE
+  ASSIGNMENT
+  QUESTION_SET
 }
 
 enum ApprovalStatus {
