@@ -13,6 +13,12 @@ import { BRAND_COLORS } from '../../../src/config/brand';
 import { useAuth } from '../../../src/features/auth/AuthProvider';
 import { academicYearApi } from '../../../src/features/academicYear/academicYearApi';
 import { adminApi } from '../../../src/features/admin/adminApi';
+import { attendanceApi } from '../../../src/features/attendance/attendanceApi';
+import {
+  AttendanceRecapPeriod,
+  TeacherAttendanceMonitorStatus,
+  TeacherClassAttendanceSession,
+} from '../../../src/features/attendance/types';
 import { attendanceRecapApi } from '../../../src/features/attendanceRecap/attendanceRecapApi';
 import { AttendanceRecapPayload } from '../../../src/features/attendanceRecap/types';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
@@ -21,6 +27,54 @@ import { CACHE_MAX_SNAPSHOTS_PER_FEATURE, CACHE_TTL_MS } from '../../../src/conf
 import { scaleWithAppTextScale } from '../../../src/theme/AppTextScaleProvider';
 
 type SemesterFilter = 'ALL' | 'ODD' | 'EVEN';
+type Semester = 'ODD' | 'EVEN';
+type MonitorStatusFilter = 'ALL' | TeacherAttendanceMonitorStatus;
+
+const PERIOD_OPTIONS: Array<{ value: AttendanceRecapPeriod; label: string }> = [
+  { value: 'WEEK', label: 'Mingguan' },
+  { value: 'MONTH', label: 'Bulanan' },
+  { value: 'SEMESTER', label: 'Semester' },
+  { value: 'YEAR', label: 'Satu Tahun' },
+];
+
+const MONTH_OPTIONS = Array.from({ length: 12 }, (_, index) => ({
+  value: String(index + 1),
+  label: new Date(2026, index, 1).toLocaleDateString('id-ID', { month: 'long' }),
+}));
+
+function toIsoDateLocal(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function defaultSemesterByDate(): Semester {
+  return new Date().getMonth() + 1 >= 7 ? 'ODD' : 'EVEN';
+}
+
+function formatShortDate(value?: string | null) {
+  if (!value) return '-';
+  return new Date(value).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+function formatDateTime(value?: string | null) {
+  if (!value) return '-';
+  return new Date(value).toLocaleString('id-ID', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function monitorStatusLabel(session: TeacherClassAttendanceSession) {
+  if (session.status === 'MISSING') return 'Belum Presensi';
+  if (session.isLateInput) return 'Input Susulan';
+  if (session.isEdited) return 'Pernah Diedit';
+  return 'Sudah Presensi';
+}
 
 export default function PrincipalAttendanceScreen() {
   const router = useRouter();
@@ -35,6 +89,13 @@ export default function PrincipalAttendanceScreen() {
   });
   const [search, setSearch] = useState('');
   const [summaryDetailVisible, setSummaryDetailVisible] = useState(false);
+  const [monitorPeriod, setMonitorPeriod] = useState<AttendanceRecapPeriod>('WEEK');
+  const [monitorSemester, setMonitorSemester] = useState<Semester>(defaultSemesterByDate());
+  const [monitorMonth, setMonitorMonth] = useState(String(new Date().getMonth() + 1));
+  const [monitorYear, setMonitorYear] = useState(String(new Date().getFullYear()));
+  const [monitorWeekStart, setMonitorWeekStart] = useState(new Date());
+  const [monitorStatus, setMonitorStatus] = useState<MonitorStatusFilter>('ALL');
+  const monitorWeekStartIso = toIsoDateLocal(monitorWeekStart);
 
   const activeYearQuery = useQuery({
     queryKey: ['mobile-principal-attendance-active-year'],
@@ -100,6 +161,32 @@ export default function PrincipalAttendanceScreen() {
         throw error;
       }
     },
+  });
+
+  const teacherMonitorQuery = useQuery({
+    queryKey: [
+      'mobile-principal-teacher-attendance-monitor',
+      activeYearQuery.data?.id,
+      monitorPeriod,
+      monitorSemester,
+      monitorMonth,
+      monitorYear,
+      monitorWeekStartIso,
+      monitorStatus,
+    ],
+    enabled: isAuthenticated && user?.role === 'PRINCIPAL' && !!activeYearQuery.data?.id,
+    queryFn: async () =>
+      attendanceApi.getTeacherClassRecap({
+        academicYearId: activeYearQuery.data?.id,
+        period: monitorPeriod,
+        semester: monitorPeriod === 'SEMESTER' ? monitorSemester : null,
+        month: monitorPeriod === 'MONTH' ? Number(monitorMonth) : null,
+        year: monitorPeriod === 'MONTH' ? Number(monitorYear) : null,
+        weekStart: monitorPeriod === 'WEEK' ? monitorWeekStartIso : null,
+        monitorStatus: monitorStatus === 'ALL' ? null : monitorStatus,
+        page: 1,
+        pageSize: 50,
+      }),
   });
 
   const appliedClass = classItems.find((item) => item.id === appliedFilters.classId) || null;
@@ -168,10 +255,11 @@ export default function PrincipalAttendanceScreen() {
         contentContainerStyle={pagePadding}
         refreshControl={
           <RefreshControl
-            refreshing={activeYearQuery.isFetching || classesQuery.isFetching || recapQuery.isFetching}
+            refreshing={activeYearQuery.isFetching || classesQuery.isFetching || recapQuery.isFetching || teacherMonitorQuery.isFetching}
             onRefresh={() => {
               void activeYearQuery.refetch();
               void classesQuery.refetch();
+              void teacherMonitorQuery.refetch();
               if (appliedFilters.classId) {
                 void recapQuery.refetch();
               }
@@ -431,6 +519,209 @@ export default function PrincipalAttendanceScreen() {
               </Text>
             </View>
           )
+        ) : null}
+
+        <View
+          style={{
+            backgroundColor: '#fff',
+            borderWidth: 1,
+            borderColor: '#dbe7fb',
+            borderRadius: 12,
+            padding: 12,
+            marginTop: 12,
+            marginBottom: 12,
+          }}
+        >
+          <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', fontSize: scaleWithAppTextScale(16), marginBottom: 4 }}>
+            Monitoring Presensi Guru Mapel
+          </Text>
+          <Text style={{ color: BRAND_COLORS.textMuted, marginBottom: 12 }}>
+            Pantau kelas yang sudah/belum dipresensi guru mapel pada periode berjalan.
+          </Text>
+          <MobileSelectField
+            label="Periode"
+            value={monitorPeriod}
+            options={PERIOD_OPTIONS}
+            onChange={(next) => setMonitorPeriod((next as AttendanceRecapPeriod) || 'WEEK')}
+            placeholder="Pilih periode"
+          />
+          <View style={{ height: 10 }} />
+          <MobileSelectField
+            label="Status"
+            value={monitorStatus}
+            options={[
+              { value: 'ALL', label: 'Semua Status' },
+              { value: 'SUBMITTED', label: 'Sudah Presensi' },
+              { value: 'MISSING', label: 'Belum Presensi' },
+              { value: 'LATE_INPUT', label: 'Input Susulan' },
+              { value: 'EDITED', label: 'Pernah Diedit' },
+            ]}
+            onChange={(next) => setMonitorStatus((next as MonitorStatusFilter) || 'ALL')}
+            placeholder="Pilih status"
+          />
+          {monitorPeriod === 'SEMESTER' ? (
+            <View style={{ marginTop: 10 }}>
+              <MobileSelectField
+                label="Semester"
+                value={monitorSemester}
+                options={[
+                  { value: 'ODD', label: 'Semester Ganjil' },
+                  { value: 'EVEN', label: 'Semester Genap' },
+                ]}
+                onChange={(next) => setMonitorSemester((next as Semester) || defaultSemesterByDate())}
+                placeholder="Pilih semester"
+              />
+            </View>
+          ) : null}
+          {monitorPeriod === 'MONTH' ? (
+            <View style={{ marginTop: 10 }}>
+              <MobileSelectField
+                label="Bulan"
+                value={monitorMonth}
+                options={MONTH_OPTIONS}
+                onChange={(next) => setMonitorMonth(next || String(new Date().getMonth() + 1))}
+                placeholder="Pilih bulan"
+              />
+              <TextInput
+                value={monitorYear}
+                onChangeText={(value) => setMonitorYear(value.replace(/[^0-9]/g, '').slice(0, 4))}
+                keyboardType="number-pad"
+                placeholder="Tahun"
+                placeholderTextColor="#94a3b8"
+                style={{
+                  marginTop: 10,
+                  borderWidth: 1,
+                  borderColor: '#dbe7fb',
+                  borderRadius: 10,
+                  paddingHorizontal: 12,
+                  paddingVertical: 11,
+                  color: BRAND_COLORS.textDark,
+                  backgroundColor: '#fff',
+                }}
+              />
+            </View>
+          ) : null}
+          {monitorPeriod === 'WEEK' ? (
+            <View style={{ marginTop: 10 }}>
+              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginBottom: 6 }}>
+                Awal Minggu: {formatShortDate(monitorWeekStartIso)}
+              </Text>
+              <View style={{ flexDirection: 'row', marginHorizontal: -4 }}>
+                {[
+                  { label: '-7 Hari', offset: -7 },
+                  { label: 'Minggu Ini', offset: 0 },
+                  { label: '+7 Hari', offset: 7 },
+                ].map((item) => (
+                  <View key={item.label} style={{ flex: 1, paddingHorizontal: 4 }}>
+                    <Pressable
+                      onPress={() => {
+                        setMonitorWeekStart(item.offset === 0 ? new Date() : new Date(monitorWeekStart.getFullYear(), monitorWeekStart.getMonth(), monitorWeekStart.getDate() + item.offset));
+                      }}
+                      style={{
+                        borderWidth: 1,
+                        borderColor: item.offset === 0 ? '#bfdbfe' : '#cbd5e1',
+                        borderRadius: 8,
+                        paddingVertical: 9,
+                        alignItems: 'center',
+                        backgroundColor: item.offset === 0 ? '#eff6ff' : '#fff',
+                      }}
+                    >
+                      <Text style={{ color: item.offset === 0 ? '#1d4ed8' : '#334155', fontWeight: '700', fontSize: scaleWithAppTextScale(12) }}>
+                        {item.label}
+                      </Text>
+                    </Pressable>
+                  </View>
+                ))}
+              </View>
+            </View>
+          ) : null}
+        </View>
+
+        {teacherMonitorQuery.isLoading ? <QueryStateView type="loading" message="Mengambil monitoring presensi guru..." /> : null}
+        {teacherMonitorQuery.isError ? (
+          <QueryStateView
+            type="error"
+            message="Gagal memuat monitoring presensi guru."
+            onRetry={() => teacherMonitorQuery.refetch()}
+          />
+        ) : null}
+        {!teacherMonitorQuery.isLoading && !teacherMonitorQuery.isError ? (
+          <View style={{ marginBottom: 12 }}>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, marginBottom: 8 }}>
+              {[
+                { label: 'Jadwal', value: teacherMonitorQuery.data?.summary.expected || 0, color: BRAND_COLORS.textDark },
+                { label: 'Sudah', value: teacherMonitorQuery.data?.summary.submitted || 0, color: '#166534' },
+                { label: 'Belum', value: teacherMonitorQuery.data?.summary.missing || 0, color: '#b91c1c' },
+                { label: 'Susulan', value: teacherMonitorQuery.data?.summary.lateInput || 0, color: '#92400e' },
+                { label: 'Diedit', value: teacherMonitorQuery.data?.summary.edited || 0, color: '#1d4ed8' },
+              ].map((item) => (
+                <View key={item.label} style={{ width: '33.3333%', paddingHorizontal: 4, marginBottom: 8 }}>
+                  <View
+                    style={{
+                      backgroundColor: '#fff',
+                      borderWidth: 1,
+                      borderColor: '#dbe7fb',
+                      borderRadius: 10,
+                      paddingVertical: 10,
+                      alignItems: 'center',
+                    }}
+                  >
+                    <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(11) }}>{item.label}</Text>
+                    <Text style={{ color: item.color, fontWeight: '700', fontSize: scaleWithAppTextScale(16), marginTop: 2 }}>{item.value}</Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+
+            {(teacherMonitorQuery.data?.sessions || []).length > 0 ? (
+              (teacherMonitorQuery.data?.sessions || []).map((session) => (
+                <View
+                  key={`${session.date}-${session.teacher.id}-${session.class.id}-${session.subject.id}-${session.period}`}
+                  style={{
+                    backgroundColor: '#fff',
+                    borderWidth: 1,
+                    borderColor: '#dbe7fb',
+                    borderRadius: 10,
+                    padding: 10,
+                    marginBottom: 8,
+                  }}
+                >
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 10 }}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>{session.teacher.name}</Text>
+                      <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 2 }}>
+                        {session.subject.name} • {session.class.name}
+                      </Text>
+                    </View>
+                    <Text style={{ color: session.status === 'MISSING' ? '#b91c1c' : '#166534', fontWeight: '700' }}>
+                      {monitorStatusLabel(session)}
+                    </Text>
+                  </View>
+                  <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 8 }}>
+                    {formatShortDate(session.date)} • Jam ke-{session.period} • Ruang {session.room || '-'}
+                  </Text>
+                  {session.attendance ? (
+                    <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 4 }}>
+                      Input: {formatDateTime(session.attendance.recordedAt)} • Edit: {formatDateTime(session.attendance.editedAt)}
+                    </Text>
+                  ) : null}
+                </View>
+              ))
+            ) : (
+              <View
+                style={{
+                  backgroundColor: '#fff',
+                  borderWidth: 1,
+                  borderStyle: 'dashed',
+                  borderColor: '#cbd5e1',
+                  borderRadius: 12,
+                  padding: 18,
+                }}
+              >
+                <Text style={{ color: BRAND_COLORS.textMuted }}>Belum ada jadwal presensi guru pada filter ini.</Text>
+              </View>
+            )}
+          </View>
         ) : null}
       </ScrollView>
 

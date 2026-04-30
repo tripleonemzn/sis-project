@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Alert, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../../src/components/AppLoadingScreen';
+import { MobileMenuTabBar } from '../../../src/components/MobileMenuTabBar';
 import { MobileSelectField } from '../../../src/components/MobileSelectField';
 import { QueryStateView } from '../../../src/components/QueryStateView';
 import { useAuth } from '../../../src/features/auth/AuthProvider';
@@ -15,7 +16,11 @@ import {
   filterRegularTeacherAssignments,
 } from '../../../src/features/teacherAssignments/utils';
 import { attendanceApi } from '../../../src/features/attendance/attendanceApi';
-import { TeacherAttendanceStatus } from '../../../src/features/attendance/types';
+import {
+  AttendanceDetailStudent,
+  AttendanceRecapPeriod,
+  TeacherAttendanceStatus,
+} from '../../../src/features/attendance/types';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
 import {
   buildResponsivePageContentStyle,
@@ -33,6 +38,9 @@ type StatusConfig = {
   text: string;
 };
 
+type TabKey = 'INPUT' | 'RECAP';
+type Semester = 'ODD' | 'EVEN';
+
 const STATUS_OPTIONS: StatusConfig[] = [
   { value: 'PRESENT', label: 'Hadir', shortLabel: 'H', iconName: 'check-circle', bg: '#dcfce7', border: '#86efac', text: '#166534' },
   { value: 'SICK', label: 'Sakit', shortLabel: 'S', iconName: 'plus-circle', bg: '#dbeafe', border: '#93c5fd', text: '#1d4ed8' },
@@ -40,6 +48,23 @@ const STATUS_OPTIONS: StatusConfig[] = [
   { value: 'ABSENT', label: 'Alpha', shortLabel: 'A', iconName: 'x-circle', bg: '#fee2e2', border: '#fca5a5', text: '#991b1b' },
   { value: 'LATE', label: 'Telat', shortLabel: 'T', iconName: 'clock', bg: '#fef3c7', border: '#fcd34d', text: '#92400e' },
 ];
+
+const PERIOD_OPTIONS: Array<{ value: AttendanceRecapPeriod; label: string }> = [
+  { value: 'WEEK', label: 'Mingguan' },
+  { value: 'MONTH', label: 'Bulanan' },
+  { value: 'SEMESTER', label: 'Semester' },
+  { value: 'YEAR', label: 'Satu Tahun' },
+];
+
+const SEMESTER_OPTIONS: Array<{ value: Semester; label: string }> = [
+  { value: 'ODD', label: 'Semester Ganjil' },
+  { value: 'EVEN', label: 'Semester Genap' },
+];
+
+const MONTH_OPTIONS = Array.from({ length: 12 }, (_, index) => ({
+  value: String(index + 1),
+  label: new Date(2026, index, 1).toLocaleDateString('id-ID', { month: 'long' }),
+}));
 
 function toIsoDateLocal(date: Date) {
   const year = date.getFullYear();
@@ -57,6 +82,30 @@ function formatLongDate(date: Date) {
   });
 }
 
+function defaultSemesterByDate(): Semester {
+  return new Date().getMonth() + 1 >= 7 ? 'ODD' : 'EVEN';
+}
+
+function formatShortDate(value?: string | null) {
+  if (!value) return '-';
+  return new Date(value).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+function formatDateTime(value?: string | null) {
+  if (!value) return '-';
+  return new Date(value).toLocaleString('id-ID', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function statusLabel(status?: TeacherAttendanceStatus | null) {
+  return STATUS_OPTIONS.find((item) => item.value === status)?.label || '-';
+}
+
 export default function TeacherAttendanceScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -72,9 +121,16 @@ export default function TeacherAttendanceScreen() {
   const [selectedAssignmentId, setSelectedAssignmentId] = useState<number | null>(
     Number.isFinite(initialAssignmentId || NaN) ? initialAssignmentId : null,
   );
+  const [tab, setTab] = useState<TabKey>('INPUT');
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [draftOverrides, setDraftOverrides] = useState<Record<number, TeacherAttendanceStatus>>({});
   const [search, setSearch] = useState('');
+  const [recapPeriod, setRecapPeriod] = useState<AttendanceRecapPeriod>('WEEK');
+  const [recapSemester, setRecapSemester] = useState<Semester>(defaultSemesterByDate());
+  const [recapMonth, setRecapMonth] = useState(String(new Date().getMonth() + 1));
+  const [recapYear, setRecapYear] = useState(String(new Date().getFullYear()));
+  const [recapWeekStart, setRecapWeekStart] = useState(new Date());
+  const [selectedRecapStudentId, setSelectedRecapStudentId] = useState<number | null>(null);
 
   const assignments = useMemo(
     () => filterRegularTeacherAssignments(assignmentsQuery.data?.assignments || []),
@@ -91,6 +147,7 @@ export default function TeacherAttendanceScreen() {
     [assignments],
   );
   const selectedDateIso = toIsoDateLocal(selectedDate);
+  const recapWeekStartIso = toIsoDateLocal(recapWeekStart);
 
   const detailQuery = useQuery({
     queryKey: ['mobile-teacher-assignment-detail', effectiveSelectedAssignmentId],
@@ -107,6 +164,30 @@ export default function TeacherAttendanceScreen() {
         classId: selectedAssignment!.class.id,
         subjectId: selectedAssignment!.subject.id,
         academicYearId: selectedAssignment!.academicYear.id,
+      }),
+  });
+
+  const recapQuery = useQuery({
+    queryKey: [
+      'mobile-teacher-subject-recap',
+      effectiveSelectedAssignmentId,
+      recapPeriod,
+      recapSemester,
+      recapMonth,
+      recapYear,
+      recapWeekStartIso,
+    ],
+    enabled: isAuthenticated && user?.role === 'TEACHER' && tab === 'RECAP' && !!selectedAssignment,
+    queryFn: () =>
+      attendanceApi.getSubjectRecap({
+        classId: selectedAssignment!.class.id,
+        subjectId: selectedAssignment!.subject.id,
+        academicYearId: selectedAssignment!.academicYear.id,
+        period: recapPeriod,
+        semester: recapPeriod === 'SEMESTER' ? recapSemester : null,
+        month: recapPeriod === 'MONTH' ? Number(recapMonth) : null,
+        year: recapPeriod === 'MONTH' ? Number(recapYear) : null,
+        weekStart: recapPeriod === 'WEEK' ? recapWeekStartIso : null,
       }),
   });
 
@@ -146,6 +227,9 @@ export default function TeacherAttendanceScreen() {
       await queryClient.invalidateQueries({
         queryKey: ['mobile-teacher-subject-attendance', effectiveSelectedAssignmentId, selectedDateIso],
       });
+      await queryClient.invalidateQueries({
+        queryKey: ['mobile-teacher-subject-recap', effectiveSelectedAssignmentId],
+      });
       Alert.alert('Sukses', 'Presensi mapel berhasil disimpan.');
     },
     onError: (error: unknown) => {
@@ -178,6 +262,34 @@ export default function TeacherAttendanceScreen() {
       return haystacks.some((value) => value.toLowerCase().includes(searchNormalized));
     });
   }, [students, searchNormalized]);
+
+  const recapStudents = useMemo(() => recapQuery.data?.students || [], [recapQuery.data?.students]);
+  const filteredRecapStudents = useMemo(() => {
+    if (!searchNormalized) return recapStudents;
+    return recapStudents.filter((row) => {
+      const haystacks = [row.student.name || '', row.student.nis || '', row.student.nisn || ''];
+      return haystacks.some((value) => value.toLowerCase().includes(searchNormalized));
+    });
+  }, [recapStudents, searchNormalized]);
+  const selectedRecapStudent =
+    filteredRecapStudents.find((row) => row.student.id === selectedRecapStudentId) || null;
+  const recapSummary = useMemo(() => {
+    if (!filteredRecapStudents.length) return { present: 0, sick: 0, permission: 0, absent: 0, late: 0, percentage: 0 };
+    const totals = filteredRecapStudents.reduce(
+      (acc, row) => {
+        acc.present += row.summary.present;
+        acc.sick += row.summary.sick;
+        acc.permission += row.summary.permission;
+        acc.absent += row.summary.absent;
+        acc.late += row.summary.late;
+        acc.percentage += row.summary.percentage;
+        return acc;
+      },
+      { present: 0, sick: 0, permission: 0, absent: 0, late: 0, percentage: 0 },
+    );
+    totals.percentage = totals.percentage / filteredRecapStudents.length;
+    return totals;
+  }, [filteredRecapStudents]);
 
   const handleStatusChange = (studentId: number, status: TeacherAttendanceStatus) => {
     setDraftOverrides((prev) => ({
@@ -235,10 +347,11 @@ export default function TeacherAttendanceScreen() {
           refreshing={
             assignmentsQuery.isFetching ||
             detailQuery.isFetching ||
-            (attendanceQuery.isFetching && !attendanceQuery.isLoading)
+            (attendanceQuery.isFetching && !attendanceQuery.isLoading) ||
+            (recapQuery.isFetching && !recapQuery.isLoading)
           }
           onRefresh={async () => {
-            await Promise.all([assignmentsQuery.refetch(), detailQuery.refetch(), attendanceQuery.refetch()]);
+            await Promise.all([assignmentsQuery.refetch(), detailQuery.refetch(), attendanceQuery.refetch(), recapQuery.refetch()]);
           }}
         />
       }
@@ -280,6 +393,7 @@ export default function TeacherAttendanceScreen() {
                 />
               </View>
 
+              {tab === 'INPUT' ? (
               <View
                 style={{
                   flex: 1,
@@ -344,14 +458,43 @@ export default function TeacherAttendanceScreen() {
                   </View>
                 </View>
               </View>
+              ) : null}
+            </View>
+
+            <View
+              style={{
+                backgroundColor: '#fff',
+                borderWidth: 1,
+                borderColor: '#dbe7fb',
+                borderRadius: 12,
+                padding: 12,
+                marginBottom: 12,
+              }}
+            >
+              <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 8 }}>Mode Tampilan</Text>
+              <MobileMenuTabBar
+                items={[
+                  { key: 'INPUT', label: 'Input Presensi', iconName: 'edit-3' },
+                  { key: 'RECAP', label: 'Rekap Presensi', iconName: 'bar-chart-2' },
+                ]}
+                activeKey={tab}
+                onChange={(next) => {
+                  setTab(next as TabKey);
+                  setSelectedRecapStudentId(null);
+                }}
+                layout={layout.prefersSplitPane ? 'fill' : 'scroll'}
+                minTabWidth={132}
+                maxTabWidth={160}
+                compact
+              />
             </View>
 
             {detailQuery.isLoading ? <QueryStateView type="loading" message="Memuat daftar siswa..." /> : null}
             {detailQuery.isError ? (
               <QueryStateView type="error" message="Gagal memuat detail assignment." onRetry={() => detailQuery.refetch()} />
             ) : null}
-            {attendanceQuery.isLoading ? <QueryStateView type="loading" message="Memuat presensi pada tanggal terpilih..." /> : null}
-            {attendanceQuery.isError ? (
+            {tab === 'INPUT' && attendanceQuery.isLoading ? <QueryStateView type="loading" message="Memuat presensi pada tanggal terpilih..." /> : null}
+            {tab === 'INPUT' && attendanceQuery.isError ? (
               <QueryStateView
                 type="error"
                 message="Gagal memuat data presensi mapel."
@@ -360,6 +503,7 @@ export default function TeacherAttendanceScreen() {
             ) : null}
 
             {!detailQuery.isLoading && !detailQuery.isError && detailQuery.data ? (
+              tab === 'INPUT' ? (
               <>
                 <View
                   style={{
@@ -603,8 +747,299 @@ export default function TeacherAttendanceScreen() {
                   </View>
                 )}
               </>
+              ) : (
+                <>
+                  <View
+                    style={{
+                      backgroundColor: '#fff',
+                      borderWidth: 1,
+                      borderColor: '#dbe7fb',
+                      borderRadius: 12,
+                      padding: 12,
+                      marginBottom: 12,
+                    }}
+                  >
+                    <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 8 }}>Filter Rekap</Text>
+                    <MobileSelectField
+                      label="Periode"
+                      value={recapPeriod}
+                      options={PERIOD_OPTIONS}
+                      onChange={(next) => {
+                        setRecapPeriod((next as AttendanceRecapPeriod) || 'WEEK');
+                        setSelectedRecapStudentId(null);
+                      }}
+                      placeholder="Pilih periode"
+                    />
+                    {recapPeriod === 'SEMESTER' ? (
+                      <View style={{ marginTop: 10 }}>
+                        <MobileSelectField
+                          label="Semester"
+                          value={recapSemester}
+                          options={SEMESTER_OPTIONS}
+                          onChange={(next) => {
+                            setRecapSemester((next as Semester) || defaultSemesterByDate());
+                            setSelectedRecapStudentId(null);
+                          }}
+                          placeholder="Pilih semester"
+                        />
+                      </View>
+                    ) : null}
+                    {recapPeriod === 'MONTH' ? (
+                      <View style={{ flexDirection: layout.prefersSplitPane ? 'row' : 'column', gap: 10, marginTop: 10 }}>
+                        <View style={{ flex: 1 }}>
+                          <MobileSelectField
+                            label="Bulan"
+                            value={recapMonth}
+                            options={MONTH_OPTIONS}
+                            onChange={(next) => {
+                              setRecapMonth(next || String(new Date().getMonth() + 1));
+                              setSelectedRecapStudentId(null);
+                            }}
+                            placeholder="Pilih bulan"
+                          />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ color: '#64748b', fontSize: scaleFont(12), marginBottom: 6 }}>Tahun</Text>
+                          <TextInput
+                            value={recapYear}
+                            onChangeText={(value) => {
+                              setRecapYear(value.replace(/[^0-9]/g, '').slice(0, 4));
+                              setSelectedRecapStudentId(null);
+                            }}
+                            keyboardType="number-pad"
+                            placeholder="Tahun"
+                            placeholderTextColor="#94a3b8"
+                            style={{
+                              borderWidth: 1,
+                              borderColor: '#dbe7fb',
+                              borderRadius: 10,
+                              paddingHorizontal: 12,
+                              paddingVertical: 11,
+                              color: '#0f172a',
+                              backgroundColor: '#fff',
+                            }}
+                          />
+                        </View>
+                      </View>
+                    ) : null}
+                    {recapPeriod === 'WEEK' ? (
+                      <View style={{ marginTop: 10 }}>
+                        <Text style={{ color: '#64748b', fontSize: scaleFont(12), marginBottom: 6 }}>Awal Minggu</Text>
+                        <Text style={{ color: '#334155', marginBottom: 8 }}>{formatLongDate(recapWeekStart)}</Text>
+                        <View style={{ flexDirection: 'row', marginHorizontal: -4 }}>
+                          {[
+                            { label: '-7 Hari', offset: -7 },
+                            { label: 'Minggu Ini', offset: 0 },
+                            { label: '+7 Hari', offset: 7 },
+                          ].map((item) => (
+                            <View key={item.label} style={{ flex: 1, paddingHorizontal: 4 }}>
+                              <Pressable
+                                onPress={() => {
+                                  setRecapWeekStart(item.offset === 0 ? new Date() : new Date(recapWeekStart.getFullYear(), recapWeekStart.getMonth(), recapWeekStart.getDate() + item.offset));
+                                  setSelectedRecapStudentId(null);
+                                }}
+                                style={{
+                                  borderWidth: 1,
+                                  borderColor: item.offset === 0 ? '#bfdbfe' : '#cbd5e1',
+                                  borderRadius: 8,
+                                  paddingVertical: 9,
+                                  alignItems: 'center',
+                                  backgroundColor: item.offset === 0 ? '#eff6ff' : '#fff',
+                                }}
+                              >
+                                <Text style={{ color: item.offset === 0 ? '#1d4ed8' : '#334155', fontWeight: '700', fontSize: scaleFont(12) }}>
+                                  {item.label}
+                                </Text>
+                              </Pressable>
+                            </View>
+                          ))}
+                        </View>
+                      </View>
+                    ) : null}
+                  </View>
+
+                  <View
+                    style={{
+                      backgroundColor: '#1e3a8a',
+                      borderRadius: 12,
+                      padding: 12,
+                      marginBottom: 12,
+                    }}
+                  >
+                    <Text style={{ color: '#bfdbfe', fontSize: scaleFont(12), marginBottom: 6 }}>
+                      {detailQuery.data.subject.name} • {detailQuery.data.class.name}
+                    </Text>
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -3 }}>
+                      {[
+                        { label: 'Hadir', value: recapSummary.present },
+                        { label: 'Sakit', value: recapSummary.sick },
+                        { label: 'Izin', value: recapSummary.permission },
+                        { label: 'Alpha', value: recapSummary.absent },
+                        { label: 'Telat', value: recapSummary.late },
+                      ].map((item) => (
+                        <View key={item.label} style={{ width: '20%', paddingHorizontal: 3, marginBottom: 6 }}>
+                          <View
+                            style={{
+                              backgroundColor: 'rgba(255,255,255,0.12)',
+                              borderRadius: 8,
+                              paddingVertical: 7,
+                              alignItems: 'center',
+                            }}
+                          >
+                            <Text style={{ color: '#bfdbfe', fontSize: scaleFont(10) }} numberOfLines={1}>
+                              {item.label}
+                            </Text>
+                            <Text style={{ color: '#fff', fontWeight: '700', fontSize: scaleFont(14) }}>{item.value}</Text>
+                          </View>
+                        </View>
+                      ))}
+                    </View>
+                    <Text style={{ color: '#fff', fontWeight: '700', marginTop: 4 }}>
+                      Rata-rata Kehadiran: {recapSummary.percentage.toFixed(1)}%
+                    </Text>
+                  </View>
+
+                  <View
+                    style={{
+                      backgroundColor: '#fff',
+                      borderWidth: 1,
+                      borderColor: '#dbe7fb',
+                      borderRadius: 999,
+                      paddingHorizontal: 12,
+                      marginBottom: 10,
+                    }}
+                  >
+                    <TextInput
+                      value={search}
+                      onChangeText={setSearch}
+                      placeholder="Cari siswa (nama / NIS / NISN)"
+                      placeholderTextColor="#94a3b8"
+                      style={{ paddingVertical: 10, color: '#0f172a' }}
+                    />
+                  </View>
+
+                  {recapQuery.isLoading ? <QueryStateView type="loading" message="Mengambil rekap presensi mapel..." /> : null}
+                  {recapQuery.isError ? (
+                    <QueryStateView type="error" message="Gagal memuat rekap presensi mapel." onRetry={() => recapQuery.refetch()} />
+                  ) : null}
+
+                  {!recapQuery.isLoading && !recapQuery.isError ? (
+                    filteredRecapStudents.length > 0 ? (
+                      <View>
+                        {filteredRecapStudents.map((row: AttendanceDetailStudent) => {
+                          const selected = selectedRecapStudent?.student.id === row.student.id;
+                          return (
+                            <View
+                              key={row.student.id}
+                              style={{
+                                backgroundColor: '#fff',
+                                borderWidth: 1,
+                                borderColor: selected ? '#93c5fd' : '#dbe7fb',
+                                borderRadius: 10,
+                                padding: 10,
+                                marginBottom: 8,
+                              }}
+                            >
+                              <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 3 }}>{row.student.name}</Text>
+                              <Text style={{ color: '#64748b', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginBottom: 8 }}>
+                                NIS: {row.student.nis || '-'} • NISN: {row.student.nisn || '-'}
+                              </Text>
+                              <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -3 }}>
+                                {[
+                                  { label: 'Hadir', value: row.summary.present, color: '#166534' },
+                                  { label: 'Telat', value: row.summary.late, color: '#92400e' },
+                                  { label: 'Sakit', value: row.summary.sick, color: '#1d4ed8' },
+                                  { label: 'Izin', value: row.summary.permission, color: '#a16207' },
+                                  { label: 'Alpha', value: row.summary.absent, color: '#b91c1c' },
+                                ].map((item) => (
+                                  <View key={item.label} style={{ width: '20%', paddingHorizontal: 3 }}>
+                                    <View
+                                      style={{
+                                        backgroundColor: '#f8fbff',
+                                        borderWidth: 1,
+                                        borderColor: '#dbe7fb',
+                                        borderRadius: 8,
+                                        paddingVertical: 6,
+                                        alignItems: 'center',
+                                      }}
+                                    >
+                                      <Text style={{ color: '#64748b', fontSize: scaleFont(10) }}>{item.label}</Text>
+                                      <Text style={{ color: item.color, fontWeight: '700', fontSize: scaleFont(14) }}>{item.value}</Text>
+                                    </View>
+                                  </View>
+                                ))}
+                              </View>
+                              <Pressable
+                                onPress={() => setSelectedRecapStudentId(selected ? null : row.student.id)}
+                                style={{
+                                  marginTop: 8,
+                                  borderWidth: 1,
+                                  borderColor: '#bfdbfe',
+                                  borderRadius: 8,
+                                  paddingVertical: 8,
+                                  alignItems: 'center',
+                                  backgroundColor: selected ? '#eff6ff' : '#fff',
+                                }}
+                              >
+                                <Text style={{ color: '#1d4ed8', fontWeight: '700' }}>
+                                  {selected ? 'Tutup Detail Tanggal' : 'Lihat Detail Tanggal'}
+                                </Text>
+                              </Pressable>
+                              {selected ? (
+                                <View style={{ marginTop: 8, borderTopWidth: 1, borderTopColor: '#e2e8f0', paddingTop: 8 }}>
+                                  {row.details.length > 0 ? (
+                                    row.details.map((detail) => (
+                                      <View
+                                        key={`${detail.attendanceId || detail.id}-${detail.date}-${detail.status}`}
+                                        style={{
+                                          borderWidth: 1,
+                                          borderColor: '#e2e8f0',
+                                          borderRadius: 8,
+                                          padding: 8,
+                                          marginBottom: 6,
+                                          backgroundColor: '#f8fafc',
+                                        }}
+                                      >
+                                        <Text style={{ color: '#0f172a', fontWeight: '700' }}>
+                                          {formatShortDate(detail.date)} • {statusLabel(detail.status)}
+                                        </Text>
+                                        <Text style={{ color: '#64748b', fontSize: scaleFont(11), marginTop: 2 }}>
+                                          Catatan: {detail.note || '-'}
+                                        </Text>
+                                        <Text style={{ color: '#64748b', fontSize: scaleFont(11), marginTop: 2 }}>
+                                          Input: {formatDateTime(detail.recordedAt || detail.createdAt)} • Edit: {formatDateTime(detail.editedAt || detail.updatedAt)}
+                                        </Text>
+                                      </View>
+                                    ))
+                                  ) : (
+                                    <Text style={{ color: '#64748b' }}>Belum ada detail tanggal pada periode ini.</Text>
+                                  )}
+                                </View>
+                              ) : null}
+                            </View>
+                          );
+                        })}
+                      </View>
+                    ) : (
+                      <View
+                        style={{
+                          borderWidth: 1,
+                          borderColor: '#cbd5e1',
+                          borderStyle: 'dashed',
+                          borderRadius: 10,
+                          padding: 16,
+                          backgroundColor: '#fff',
+                        }}
+                      >
+                        <Text style={{ color: '#64748b' }}>Tidak ada data rekap sesuai filter.</Text>
+                      </View>
+                    )
+                  ) : null}
+                </>
+              )
             ) : null}
 
+            {tab === 'INPUT' ? (
             <Pressable
               onPress={() => saveMutation.mutate()}
               disabled={saveMutation.isPending || !selectedAssignment || !detailQuery.data}
@@ -620,6 +1055,7 @@ export default function TeacherAttendanceScreen() {
                 {saveMutation.isPending ? 'Menyimpan...' : 'Simpan Presensi'}
               </Text>
             </Pressable>
+            ) : null}
           </>
         ) : (
           <View

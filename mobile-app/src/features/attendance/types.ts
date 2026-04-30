@@ -294,6 +294,8 @@ export type DailyPresenceOperationalParticipant = {
 };
 
 export type TeacherAttendanceStatus = 'PRESENT' | 'ABSENT' | 'SICK' | 'PERMISSION' | 'LATE';
+export type AttendanceRecapPeriod = 'YEAR' | 'SEMESTER' | 'MONTH' | 'WEEK';
+export type TeacherAttendanceMonitorStatus = 'SUBMITTED' | 'MISSING' | 'LATE_INPUT' | 'EDITED';
 
 export type TeacherSubjectAttendanceRecord = {
   studentId: number;
@@ -337,5 +339,114 @@ export type DailyLateSummaryPayload = {
   meta: {
     classId: number;
     academicYearId: number;
+  };
+};
+
+export type AttendanceSummaryCounts = {
+  present: number;
+  late: number;
+  sick: number;
+  permission: number;
+  absent: number;
+  total: number;
+  percentage: number;
+};
+
+export type AttendanceDetailRecord = {
+  id?: number;
+  attendanceId?: number;
+  date: string;
+  status: TeacherAttendanceStatus;
+  note?: string | null;
+  checkInTime?: string | null;
+  checkOutTime?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+  recordedAt?: string | null;
+  editedAt?: string | null;
+  recordedByName?: string | null;
+  editedByName?: string | null;
+};
+
+export type AttendanceDetailStudent = {
+  student: DailyAttendanceStudent;
+  summary: AttendanceSummaryCounts;
+  details: AttendanceDetailRecord[];
+};
+
+export type AttendanceDetailPayload = {
+  students: AttendanceDetailStudent[];
+  meta: {
+    classId: number;
+    subjectId?: number | null;
+    academicYearId: number;
+    period: AttendanceRecapPeriod;
+    semester?: 'ODD' | 'EVEN' | null;
+    status?: TeacherAttendanceStatus | null;
+    dateRange?: {
+      start: string;
+      end: string;
+    };
+  };
+};
+
+export type TeacherClassAttendanceSession = {
+  date: string;
+  dayOfWeek: string;
+  period: number;
+  room?: string | null;
+  teacher: {
+    id: number;
+    name: string;
+  };
+  class: {
+    id: number;
+    name: string;
+    level?: string | null;
+  };
+  subject: {
+    id: number;
+    name: string;
+    code?: string | null;
+  };
+  status: 'SUBMITTED' | 'MISSING';
+  isLateInput: boolean;
+  isEdited: boolean;
+  attendance?: {
+    id: number;
+    recordedAt: string;
+    editedAt: string;
+    recordedById?: number | null;
+    editedById?: number | null;
+  } | null;
+};
+
+export type TeacherClassAttendanceRecapPayload = {
+  summary: {
+    expected: number;
+    submitted: number;
+    missing: number;
+    lateInput: number;
+    edited: number;
+  };
+  sessions: TeacherClassAttendanceSession[];
+  pagination: {
+    page: number;
+    pageSize: number;
+    total: number;
+    totalPages: number;
+  };
+  meta: {
+    academicYearId: number;
+    classId?: number | null;
+    subjectId?: number | null;
+    teacherId?: number | null;
+    period: AttendanceRecapPeriod;
+    semester?: 'ODD' | 'EVEN' | null;
+    monitorStatus?: TeacherAttendanceMonitorStatus | null;
+    dateRange?: {
+      start: string;
+      end: string;
+    };
   };
 };

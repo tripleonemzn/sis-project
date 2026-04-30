@@ -1,6 +1,8 @@
 import { apiClient } from '../../lib/api/client';
 import {
   DailyAttendanceEntry,
+  AttendanceDetailPayload,
+  AttendanceRecapPeriod,
   DailyLateSummaryPayload,
   DailyPresenceMonitorScanResult,
   DailyPresenceOperationalParticipant,
@@ -17,6 +19,9 @@ import {
   StudentAttendanceHistory,
   TeacherSubjectAttendance,
   TeacherSubjectAttendanceRecord,
+  TeacherAttendanceMonitorStatus,
+  TeacherClassAttendanceRecapPayload,
+  TeacherAttendanceStatus,
 } from './types';
 
 type AttendanceHistoryResponse = {
@@ -44,6 +49,20 @@ type DailyLateSummaryResponse = {
   success: boolean;
   message: string;
   data: DailyLateSummaryPayload;
+};
+
+type AttendanceDetailResponse = {
+  statusCode: number;
+  success: boolean;
+  message: string;
+  data: AttendanceDetailPayload;
+};
+
+type TeacherClassAttendanceRecapResponse = {
+  statusCode: number;
+  success: boolean;
+  message: string;
+  data: TeacherClassAttendanceRecapPayload;
 };
 
 type MutationResponse = {
@@ -163,6 +182,23 @@ export const attendanceApi = {
     const response = await apiClient.post<SubjectAttendanceResponse>('/attendances/subject', payload);
     return response.data?.data || null;
   },
+  async getSubjectRecap(params: {
+    classId: number;
+    subjectId: number;
+    academicYearId?: number;
+    period?: AttendanceRecapPeriod;
+    semester?: 'ODD' | 'EVEN' | null;
+    month?: number | null;
+    year?: number | null;
+    weekStart?: string | null;
+    studentId?: number | null;
+    status?: TeacherAttendanceStatus | null;
+  }) {
+    const response = await apiClient.get<AttendanceDetailResponse>('/attendances/subject/recap', {
+      params,
+    });
+    return response.data?.data;
+  },
   async getDailyAttendance(params: {
     date: string;
     classId: number;
@@ -180,8 +216,43 @@ export const attendanceApi = {
     const response = await apiClient.post<MutationResponse>('/attendances/daily', payload);
     return response.data?.data || null;
   },
+  async getDailyRecapDetail(params: {
+    classId: number;
+    academicYearId?: number;
+    period?: AttendanceRecapPeriod;
+    semester?: 'ODD' | 'EVEN' | null;
+    month?: number | null;
+    year?: number | null;
+    weekStart?: string | null;
+    studentId?: number | null;
+    status?: TeacherAttendanceStatus | null;
+  }) {
+    const response = await apiClient.get<AttendanceDetailResponse>('/attendances/daily/recap-detail', {
+      params,
+    });
+    return response.data?.data;
+  },
   async getLateSummaryByClass(params: { classId: number; academicYearId?: number }) {
     const response = await apiClient.get<DailyLateSummaryResponse>('/attendances/daily/late-summary', { params });
+    return response.data?.data;
+  },
+  async getTeacherClassRecap(params?: {
+    academicYearId?: number;
+    period?: AttendanceRecapPeriod;
+    semester?: 'ODD' | 'EVEN' | null;
+    month?: number | null;
+    year?: number | null;
+    weekStart?: string | null;
+    classId?: number | null;
+    subjectId?: number | null;
+    teacherId?: number | null;
+    monitorStatus?: TeacherAttendanceMonitorStatus | null;
+    page?: number;
+    pageSize?: number;
+  }) {
+    const response = await apiClient.get<TeacherClassAttendanceRecapResponse>('/attendances/teacher-class-recap', {
+      params,
+    });
     return response.data?.data;
   },
   async getDailyPresenceOverview(params?: { date?: string; limit?: number }) {

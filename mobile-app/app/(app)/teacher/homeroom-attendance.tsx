@@ -13,13 +13,13 @@ import { academicYearApi } from '../../../src/features/academicYear/academicYear
 import { adminApi } from '../../../src/features/admin/adminApi';
 import { attendanceApi } from '../../../src/features/attendance/attendanceApi';
 import {
+  AttendanceDetailStudent,
+  AttendanceRecapPeriod,
   DailyAttendanceEntry,
   DailyAttendanceStudent,
   DailyLateSummaryRow,
   TeacherAttendanceStatus,
 } from '../../../src/features/attendance/types';
-import { attendanceRecapApi } from '../../../src/features/attendanceRecap/attendanceRecapApi';
-import { AttendanceRecapRow } from '../../../src/features/attendanceRecap/types';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
 import { notifyApiError, notifySuccess } from '../../../src/lib/ui/feedback';
 import {
@@ -53,6 +53,18 @@ const STATUS_OPTIONS: StatusConfig[] = [
   { value: 'LATE', label: 'Telat', shortLabel: 'T', bg: '#fef3c7', border: '#fcd34d', text: '#92400e' },
 ];
 
+const PERIOD_OPTIONS: Array<{ value: AttendanceRecapPeriod; label: string }> = [
+  { value: 'WEEK', label: 'Mingguan' },
+  { value: 'MONTH', label: 'Bulanan' },
+  { value: 'SEMESTER', label: 'Semester' },
+  { value: 'YEAR', label: 'Satu Tahun' },
+];
+
+const MONTH_OPTIONS = Array.from({ length: 12 }, (_, index) => ({
+  value: String(index + 1),
+  label: new Date(2026, index, 1).toLocaleDateString('id-ID', { month: 'long' }),
+}));
+
 function defaultSemesterByDate(): Semester {
   const month = new Date().getMonth() + 1;
   return month >= 7 ? 'ODD' : 'EVEN';
@@ -72,6 +84,26 @@ function formatLongDate(date: Date) {
     month: 'long',
     year: 'numeric',
   });
+}
+
+function formatShortDate(value?: string | null) {
+  if (!value) return '-';
+  return new Date(value).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+function formatDateTime(value?: string | null) {
+  if (!value) return '-';
+  return new Date(value).toLocaleString('id-ID', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function statusLabel(status?: TeacherAttendanceStatus | null) {
+  return STATUS_OPTIONS.find((item) => item.value === status)?.label || '-';
 }
 
 function matchesStudentQuery(
@@ -99,12 +131,18 @@ export default function TeacherHomeroomAttendanceScreen() {
 
   const [tab, setTab] = useState<TabKey>('DAILY');
   const [semester, setSemester] = useState<Semester>(defaultSemesterByDate());
+  const [recapPeriod, setRecapPeriod] = useState<AttendanceRecapPeriod>('WEEK');
+  const [recapMonth, setRecapMonth] = useState(String(new Date().getMonth() + 1));
+  const [recapYear, setRecapYear] = useState(String(new Date().getFullYear()));
+  const [recapWeekStart, setRecapWeekStart] = useState(new Date());
+  const [selectedRecapStudentId, setSelectedRecapStudentId] = useState<number | null>(null);
   const [search, setSearch] = useState('');
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [selectedClassId, setSelectedClassId] = useState<number | null>(null);
   const [draftOverrides, setDraftOverrides] = useState<Record<number, Partial<DraftRecord>>>({});
 
   const selectedDateIso = toIsoDateLocal(selectedDate);
+  const recapWeekStartIso = toIsoDateLocal(recapWeekStart);
 
   const activeYearQuery = useQuery({
     queryKey: ['mobile-homeroom-active-year'],
@@ -169,7 +207,16 @@ export default function TeacherHomeroomAttendanceScreen() {
   });
 
   const recapQuery = useQuery({
-    queryKey: ['mobile-homeroom-recap', effectiveSelectedClassId, selectedAcademicYearId, semester],
+    queryKey: [
+      'mobile-homeroom-recap-detail',
+      effectiveSelectedClassId,
+      selectedAcademicYearId,
+      recapPeriod,
+      semester,
+      recapMonth,
+      recapYear,
+      recapWeekStartIso,
+    ],
     enabled:
       isAuthenticated &&
       user?.role === 'TEACHER' &&
@@ -177,10 +224,14 @@ export default function TeacherHomeroomAttendanceScreen() {
       !!effectiveSelectedClassId &&
       !!selectedAcademicYearId,
     queryFn: async () =>
-      attendanceRecapApi.getDailyRecap({
+      attendanceApi.getDailyRecapDetail({
         classId: Number(effectiveSelectedClassId),
         academicYearId: Number(selectedAcademicYearId),
-        semester,
+        period: recapPeriod,
+        semester: recapPeriod === 'SEMESTER' ? semester : null,
+        month: recapPeriod === 'MONTH' ? Number(recapMonth) : null,
+        year: recapPeriod === 'MONTH' ? Number(recapYear) : null,
+        weekStart: recapPeriod === 'WEEK' ? recapWeekStartIso : null,
       }),
   });
 
@@ -235,7 +286,7 @@ export default function TeacherHomeroomAttendanceScreen() {
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['mobile-homeroom-daily'] }),
-        queryClient.invalidateQueries({ queryKey: ['mobile-homeroom-recap'] }),
+        queryClient.invalidateQueries({ queryKey: ['mobile-homeroom-recap-detail'] }),
         queryClient.invalidateQueries({ queryKey: ['mobile-homeroom-late'] }),
       ]);
       notifySuccess('Presensi wali kelas berhasil disimpan.');
@@ -245,7 +296,8 @@ export default function TeacherHomeroomAttendanceScreen() {
     },
   });
 
-  const recapRows = useMemo(() => recapQuery.data?.recap || [], [recapQuery.data?.recap]);
+  const recapRows = useMemo(() => recapQuery.data?.students || [], [recapQuery.data?.students]);
+  const selectedRecapStudent = recapRows.find((row) => row.student.id === selectedRecapStudentId) || null;
   const lateRows = useMemo(() => lateQuery.data?.recap || [], [lateQuery.data?.recap]);
 
   const filteredDailyRows = useMemo(
@@ -290,9 +342,9 @@ export default function TeacherHomeroomAttendanceScreen() {
   const recapSummary = useMemo(() => {
     if (!filteredRecapRows.length) return { avgAttendance: 0, totalAbsent: 0, totalLate: 0 };
     const avgAttendance =
-      filteredRecapRows.reduce((sum, row) => sum + Number(row.percentage || 0), 0) / filteredRecapRows.length;
-    const totalAbsent = filteredRecapRows.reduce((sum, row) => sum + Number(row.absent || 0), 0);
-    const totalLate = filteredRecapRows.reduce((sum, row) => sum + Number(row.late || 0), 0);
+      filteredRecapRows.reduce((sum, row) => sum + Number(row.summary.percentage || 0), 0) / filteredRecapRows.length;
+    const totalAbsent = filteredRecapRows.reduce((sum, row) => sum + Number(row.summary.absent || 0), 0);
+    const totalLate = filteredRecapRows.reduce((sum, row) => sum + Number(row.summary.late || 0), 0);
     return { avgAttendance, totalAbsent, totalLate };
   }, [filteredRecapRows]);
 
@@ -447,6 +499,7 @@ export default function TeacherHomeroomAttendanceScreen() {
               onChange={(next) => {
                 setSelectedClassId(next ? Number(next) : null);
                 setDraftOverrides({});
+                setSelectedRecapStudentId(null);
               }}
               placeholder="Pilih kelas wali"
               helperText={selectedClass ? `${selectedClass.major?.name || '-'} • ${selectedClass.teacher?.name || 'Wali kelas'}` : undefined}
@@ -492,7 +545,10 @@ export default function TeacherHomeroomAttendanceScreen() {
             { key: 'LATE', label: 'Telat', iconName: 'alert-circle' },
           ]}
           activeKey={tab}
-          onChange={(next) => setTab(next as TabKey)}
+          onChange={(next) => {
+            setTab(next as TabKey);
+            setSelectedRecapStudentId(null);
+          }}
           layout={layout.prefersSplitPane ? 'fill' : 'scroll'}
           minTabWidth={86}
           maxTabWidth={104}
@@ -512,12 +568,99 @@ export default function TeacherHomeroomAttendanceScreen() {
           }}
         >
           <MobileSelectField
+            label="Periode Rekap"
+            value={recapPeriod}
+            options={PERIOD_OPTIONS}
+            onChange={(next) => {
+              setRecapPeriod((next as AttendanceRecapPeriod) || 'WEEK');
+              setSelectedRecapStudentId(null);
+            }}
+            placeholder="Pilih periode"
+          />
+          <View style={{ height: 10 }} />
+          <MobileSelectField
             label="Semester Rekap"
             value={semester}
             options={semesterSelectOptions}
-            onChange={(next) => setSemester((next as Semester) || defaultSemesterByDate())}
+            onChange={(next) => {
+              setSemester((next as Semester) || defaultSemesterByDate());
+              setSelectedRecapStudentId(null);
+            }}
             placeholder="Pilih semester"
+            disabled={recapPeriod !== 'SEMESTER'}
           />
+          {recapPeriod === 'MONTH' ? (
+            <View style={{ flexDirection: layout.prefersSplitPane ? 'row' : 'column', gap: 10, marginTop: 10 }}>
+              <View style={{ flex: 1 }}>
+                <MobileSelectField
+                  label="Bulan"
+                  value={recapMonth}
+                  options={MONTH_OPTIONS}
+                  onChange={(next) => {
+                    setRecapMonth(next || String(new Date().getMonth() + 1));
+                    setSelectedRecapStudentId(null);
+                  }}
+                  placeholder="Pilih bulan"
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleFont(12), marginBottom: 6 }}>Tahun</Text>
+                <TextInput
+                  value={recapYear}
+                  onChangeText={(value) => {
+                    setRecapYear(value.replace(/[^0-9]/g, '').slice(0, 4));
+                    setSelectedRecapStudentId(null);
+                  }}
+                  keyboardType="number-pad"
+                  placeholder="Tahun"
+                  placeholderTextColor="#94a3b8"
+                  style={{
+                    borderWidth: 1,
+                    borderColor: '#dbe7fb',
+                    borderRadius: 10,
+                    paddingHorizontal: 12,
+                    paddingVertical: 11,
+                    color: BRAND_COLORS.textDark,
+                    backgroundColor: '#fff',
+                  }}
+                />
+              </View>
+            </View>
+          ) : null}
+          {recapPeriod === 'WEEK' ? (
+            <View style={{ marginTop: 10 }}>
+              <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleFont(12), marginBottom: 6 }}>Awal Minggu</Text>
+              <Text style={{ color: '#334155', marginBottom: 8 }}>{formatLongDate(recapWeekStart)}</Text>
+              <View style={{ flexDirection: 'row', marginHorizontal: -4 }}>
+                {[
+                  { label: '-7 Hari', offset: -7 },
+                  { label: 'Minggu Ini', offset: 0 },
+                  { label: '+7 Hari', offset: 7 },
+                ].map((item) => (
+                  <View key={item.label} style={{ flex: 1, paddingHorizontal: 4 }}>
+                    <Pressable
+                      onPress={() => {
+                        setRecapWeekStart(item.offset === 0 ? new Date() : new Date(recapWeekStart.getFullYear(), recapWeekStart.getMonth(), recapWeekStart.getDate() + item.offset));
+                        setSelectedRecapStudentId(null);
+                      }}
+                      style={{
+                        borderWidth: 1,
+                        borderColor: item.offset === 0 ? '#bfdbfe' : '#cbd5e1',
+                        borderRadius: 8,
+                        paddingVertical: 9,
+                        alignItems: 'center',
+                        backgroundColor: item.offset === 0 ? '#eff6ff' : '#fff',
+                      }}
+                    >
+                      <Text style={{ color: item.offset === 0 ? '#1d4ed8' : '#334155', fontWeight: '700', fontSize: scaleFont(12) }}>
+                        {item.label}
+                      </Text>
+                    </Pressable>
+                  </View>
+                ))}
+              </View>
+            </View>
+          ) : null}
         </View>
       ) : null}
 
@@ -893,54 +1036,107 @@ export default function TeacherHomeroomAttendanceScreen() {
           {!recapQuery.isLoading && !recapQuery.isError ? (
             filteredRecapRows.length > 0 ? (
               <View>
-                {filteredRecapRows.map((row: AttendanceRecapRow) => (
-                  <View
-                    key={row.student.id}
-                    style={{
-                      backgroundColor: '#fff',
-                      borderWidth: 1,
-                      borderColor: '#dbe7fb',
-                      borderRadius: 10,
-                      padding: 10,
-                      marginBottom: 8,
-                    }}
-                  >
-                    <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 3 }}>
-                      {row.student.name}
-                    </Text>
-                    <Text style={{ color: '#64748b', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginBottom: 8 }}>
-                      NIS: {row.student.nis || '-'} • NISN: {row.student.nisn || '-'}
-                    </Text>
-                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -3 }}>
-                      {[
-                        { label: 'Hadir', value: row.present, color: '#166534' },
-                        { label: 'Telat', value: row.late, color: '#92400e' },
-                        { label: 'Sakit', value: row.sick, color: '#1d4ed8' },
-                        { label: 'Izin', value: row.permission, color: '#a16207' },
-                        { label: 'Alpha', value: row.absent, color: '#b91c1c' },
-                      ].map((item) => (
-                        <View key={item.label} style={{ width: '20%', paddingHorizontal: 3 }}>
-                          <View
-                            style={{
-                              backgroundColor: '#f8fbff',
-                              borderWidth: 1,
-                              borderColor: '#dbe7fb',
-                              borderRadius: 8,
-                              paddingVertical: 6,
-                              alignItems: 'center',
-                            }}
-                          >
-                            <Text style={{ color: '#64748b', fontSize: scaleFont(10) }}>{item.label}</Text>
-                            <Text style={{ color: item.color, fontWeight: '700', fontSize: scaleFont(14) }}>{item.value}</Text>
+                {filteredRecapRows.map((row: AttendanceDetailStudent) => {
+                  const selected = selectedRecapStudent?.student.id === row.student.id;
+                  return (
+                    <View
+                      key={row.student.id}
+                      style={{
+                        backgroundColor: '#fff',
+                        borderWidth: 1,
+                        borderColor: selected ? '#93c5fd' : '#dbe7fb',
+                        borderRadius: 10,
+                        padding: 10,
+                        marginBottom: 8,
+                      }}
+                    >
+                      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 3 }}>
+                        {row.student.name}
+                      </Text>
+                      <Text style={{ color: '#64748b', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginBottom: 8 }}>
+                        NIS: {row.student.nis || '-'} • NISN: {row.student.nisn || '-'}
+                      </Text>
+                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -3 }}>
+                        {[
+                          { label: 'Hadir', value: row.summary.present, color: '#166534' },
+                          { label: 'Telat', value: row.summary.late, color: '#92400e' },
+                          { label: 'Sakit', value: row.summary.sick, color: '#1d4ed8' },
+                          { label: 'Izin', value: row.summary.permission, color: '#a16207' },
+                          { label: 'Alpha', value: row.summary.absent, color: '#b91c1c' },
+                        ].map((item) => (
+                          <View key={item.label} style={{ width: '20%', paddingHorizontal: 3 }}>
+                            <View
+                              style={{
+                                backgroundColor: '#f8fbff',
+                                borderWidth: 1,
+                                borderColor: '#dbe7fb',
+                                borderRadius: 8,
+                                paddingVertical: 6,
+                                alignItems: 'center',
+                              }}
+                            >
+                              <Text style={{ color: '#64748b', fontSize: scaleFont(10) }}>{item.label}</Text>
+                              <Text style={{ color: item.color, fontWeight: '700', fontSize: scaleFont(14) }}>{item.value}</Text>
+                            </View>
                           </View>
+                        ))}
+                      </View>
+                      <Text style={{ color: BRAND_COLORS.navy, fontWeight: '700', marginTop: 8 }}>
+                        Persentase Kehadiran: {row.summary.percentage}%
+                      </Text>
+                      <Pressable
+                        onPress={() => setSelectedRecapStudentId(selected ? null : row.student.id)}
+                        style={{
+                          marginTop: 8,
+                          borderWidth: 1,
+                          borderColor: '#bfdbfe',
+                          borderRadius: 8,
+                          paddingVertical: 8,
+                          alignItems: 'center',
+                          backgroundColor: selected ? '#eff6ff' : '#fff',
+                        }}
+                      >
+                        <Text style={{ color: '#1d4ed8', fontWeight: '700' }}>
+                          {selected ? 'Tutup Detail Tanggal' : 'Lihat Detail Tanggal'}
+                        </Text>
+                      </Pressable>
+                      {selected ? (
+                        <View style={{ marginTop: 8, borderTopWidth: 1, borderTopColor: '#e2e8f0', paddingTop: 8 }}>
+                          {row.details.length > 0 ? (
+                            row.details.map((detail) => (
+                              <View
+                                key={`${detail.id || detail.attendanceId}-${detail.date}-${detail.status}`}
+                                style={{
+                                  borderWidth: 1,
+                                  borderColor: '#e2e8f0',
+                                  borderRadius: 8,
+                                  padding: 8,
+                                  marginBottom: 6,
+                                  backgroundColor: '#f8fafc',
+                                }}
+                              >
+                                <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>
+                                  {formatShortDate(detail.date)} • {statusLabel(detail.status)}
+                                </Text>
+                                <Text style={{ color: '#64748b', fontSize: scaleFont(11), marginTop: 2 }}>
+                                  Masuk: {detail.checkInTime || '-'} • Pulang: {detail.checkOutTime || '-'}
+                                </Text>
+                                <Text style={{ color: '#64748b', fontSize: scaleFont(11), marginTop: 2 }}>
+                                  Catatan: {detail.note || '-'}
+                                </Text>
+                                <Text style={{ color: '#64748b', fontSize: scaleFont(11), marginTop: 2 }}>
+                                  Input: {formatDateTime(detail.createdAt || detail.recordedAt)} • Edit: {formatDateTime(detail.updatedAt || detail.editedAt)}
+                                </Text>
+                              </View>
+                            ))
+                          ) : (
+                            <Text style={{ color: BRAND_COLORS.textMuted }}>Belum ada detail tanggal pada periode ini.</Text>
+                          )}
                         </View>
-                      ))}
+                      ) : null}
                     </View>
-                    <Text style={{ color: BRAND_COLORS.navy, fontWeight: '700', marginTop: 8 }}>
-                      Persentase Kehadiran: {row.percentage}%
-                    </Text>
-                  </View>
-                ))}
+                  );
+                })}
               </View>
             ) : (
               <View
