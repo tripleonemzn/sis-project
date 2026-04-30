@@ -5,12 +5,12 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-04-30 17:01 WIB
-- Current status: Batch remedial berbasis paket soal selesai dan live untuk web/backend/mobile. Guru mapel sekarang bisa memberi aktivitas remedial bertarget dari popup remedial tanpa langsung mencatat nilai, memilih paket soal existing untuk metode `Soal/quiz remedial`, atau membuka editor paket ujian untuk membuat paket baru dari bank soal. Aktivitas tetap student-scoped lewat `StudentScoreRemedial` status `DRAFT/Diberikan`, sehingga tidak bocor menjadi jadwal ujian reguler satu kelas.
+- Last updated: 2026-04-30 17:20 WIB
+- Current status: Batch remedial berbasis paket soal sudah bisa dikerjakan siswa dan live untuk web/backend/mobile. Guru mapel dapat memberi aktivitas remedial student-scoped dari popup remedial, siswa dapat membuka tombol `Kerjakan`/`Kerjakan Soal Remedial`, jawaban tersimpan di row remedial siswa, nilai remedial dihitung saat submit, dan nilai efektif tetap dibatasi sampai KKM. Alur ini tidak memakai jadwal ujian reguler kelas sehingga aktivitas remedial tidak bocor ke siswa lain.
 - Objective/task aktif:
   - Mengembangkan fitur remedial nilai untuk guru mapel dengan sumber nilai spesifik, riwayat percobaan lebih dari 1x, nilai asli tetap utuh, dan nilai efektif remedial dibatasi sampai KKM.
 - Batch terakhir selesai:
-  - `Remedial batch 9 - packet-linked targeted remedial activities`
+  - `Remedial batch 10 - student takes remedial question set`
 - Progress batch remedial saat ini:
   - `100%` untuk fondasi database remedial
   - `100%` untuk API kandidat nilai belum tuntas dan pencatatan remedial
@@ -31,19 +31,22 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
-  - Commit: `f99af2c`
-  - Title: `feat(grades): link remedial activities to exam packets`
+  - Commit: `dd079a0`
+  - Title: `feat(grades): let students take remedial question sets`
   - Summary:
-    - `student_score_remedials` mendapat field referensi paket soal remedial dan paket sumber ujian
-    - `POST /api/grades/remedials` sekarang mendukung `save_as_draft` untuk memberi aktivitas remedial tanpa nilai; status `DRAFT` tidak dihitung ke nilai efektif/rapor
-    - popup remedial guru mapel punya alur `Berikan Aktivitas` terpisah dari `Simpan Nilai`, plus dropdown paket soal existing untuk metode `Soal/quiz remedial`
-    - web dan mobile siswa menampilkan info paket soal pada tab `Remedial` jika aktivitasnya memakai paket ujian
+    - `student_score_remedials` menyimpan jawaban, waktu mulai, dan waktu submit aktivitas paket soal remedial
+    - endpoint student-scoped baru tersedia untuk mulai dan submit aktivitas remedial berbasis paket soal
+    - web siswa memakai surface pengerjaan ujian existing dalam mode remedial tanpa fullscreen/proctoring reguler
+    - mobile siswa menampilkan aksi `Kerjakan Soal Remedial` yang membuka route pengerjaan remedial sesuai source of truth web
+    - submit final menghitung nilai remedial, memperbarui status, menyinkronkan `ReportGrade`, dan mengirim refresh realtime scoped
 - Area/file disentuh:
-  - `backend/src/controllers/grade.controller.ts`
   - `backend/prisma/schema.prisma`
-  - `backend/prisma/migrations/20260430171000_add_score_remedial_exam_packet_links/migration.sql`
+  - `backend/prisma/migrations/20260430172500_add_score_remedial_activity_attempt_fields/migration.sql`
+  - `backend/src/controllers/grade.controller.ts`
+  - `backend/src/routes/grade.routes.ts`
+  - `frontend/src/App.tsx`
+  - `frontend/src/pages/student/StudentExamTakePage.tsx`
   - `frontend/src/pages/student/StudentLearningPage.tsx`
-  - `frontend/src/pages/teacher/TeacherGradesPage.tsx`
   - `frontend/src/services/grade.service.ts`
   - `mobile-app/app/(app)/learning.tsx`
   - `mobile-app/src/features/learning/types.ts`
@@ -61,16 +64,16 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `cd backend && npm run service:health`
   - `cd frontend && npm run deploy`
   - `cd mobile-app && npm run check:ota:testers`
-  - `cd mobile-app && npm run update:testers -- "Penyempurnaan remedial: aktivitas remedial kini dapat menampilkan paket soal yang diberikan guru. Silakan perbarui untuk menikmati fitur terbaru."`
+  - `cd mobile-app && npm run update:testers -- "Penyempurnaan remedial: siswa kini dapat mengerjakan paket soal remedial yang diberikan guru. Silakan perbarui untuk menikmati fitur terbaru."`
 - Publish/live status:
   - Web sudah deploy live
   - Backend sudah direload via PM2 dan health tetap `Backend:200`, `Backend API:200`
-  - Mobile OTA sudah publish ke channel `pilot-live`, runtime `0.2.2`, update group `881b0ef5-fc4a-4271-9739-ef1e72973648`
+  - Mobile OTA sudah publish ke channel `pilot-live`, runtime `0.2.2`, update group `0298fa2f-7e23-4ca1-8aa2-ec1159b9622a`
   - Push notify OTA berhasil terkirim: `recipients=65`, `sent=65`, `failed=0`, `stale=0`
 - Remaining work:
-  - Jika user ingin remedial dikerjakan langsung di aplikasi seperti ujian penuh, batch berikutnya perlu membuat mode pengerjaan remedial student-scoped yang membaca paket soal tersebut tanpa memakai jadwal ujian reguler kelas.
+  - Tidak ada sisa wajib pada batch remedial ini. Jika user ingin pengalaman native penuh di mobile, batch berikutnya bisa membuat layar CBT remedial native, tetapi saat ini mobile sudah punya aksi aman untuk membuka pengerjaan remedial dari aplikasi.
 - Residual risk:
-  - Batch ini belum membuat attempt pengerjaan soal remedial di aplikasi siswa; aktivitas baru menampilkan paket/instruksi secara tertarget dan aman dari kebocoran jadwal reguler.
+  - Mobile masih memakai route web untuk pengerjaan soal remedial, bukan layar CBT native. Scoring otomatis mengikuti kemampuan scoring objektif yang tersedia dari paket soal existing; butir yang memerlukan koreksi manual tetap perlu kebijakan lanjutan bila nanti dipakai untuk remedial esai.
 
 ## Status Saat Ini
 
