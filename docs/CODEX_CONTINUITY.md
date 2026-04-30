@@ -5,19 +5,19 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-04-30 12:20 WIB
-- Current status: Batch 1 fitur remedial sudah selesai pada pondasi backend, migration sudah apply, backend sudah restart, dan health check normal.
+- Last updated: 2026-04-30 12:30 WIB
+- Current status: Batch 2 fitur remedial sudah selesai pada UI web guru mapel dan sudah deploy live. Guru mapel sekarang punya tab `Remedial` di halaman `Input Nilai Siswa` untuk melihat kandidat nilai di bawah KKM, memilih sumber nilai, input remedial berulang, dan melihat riwayat percobaan.
 - Objective/task aktif:
   - Mengembangkan fitur remedial nilai untuk guru mapel dengan sumber nilai spesifik, riwayat percobaan lebih dari 1x, nilai asli tetap utuh, dan nilai efektif remedial dibatasi sampai KKM.
 - Batch terakhir selesai:
-  - `Remedial batch 1 - backend foundation`
+  - `Remedial batch 2 - teacher web UI`
 - Progress batch remedial saat ini:
   - `100%` untuk fondasi database remedial
   - `100%` untuk API kandidat nilai belum tuntas dan pencatatan remedial
-  - `0%` untuk UI guru mapel
+  - `100%` untuk UI web guru mapel
   - `0%` untuk integrasi nilai efektif remedial ke perhitungan rapor/leger
 - Progress fitur remedial keseluruhan:
-  - `35%`
+  - `65%`
 - Progress presensi terpadu saat ini:
   - `100%` backend audit dan endpoint rekap/detail
   - `100%` web guru mapel rekap detail
@@ -31,38 +31,35 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
-  - Commit: `2dd22de`
-  - Title: `feat(grades): add remedial score foundation`
+  - Commit: `34328b6`
+  - Title: `feat(grades): add teacher remedial UI`
   - Summary:
-    - model `StudentScoreRemedial` ditambahkan dan menempel ke `StudentScoreEntry` agar remedial selalu terkait ke sumber nilai spesifik
-    - enum `ScoreRemedialStatus` ditambahkan untuk status percobaan remedial
-    - endpoint `GET /api/grades/remedials/eligible` tersedia untuk daftar nilai yang belum tuntas berdasarkan mapel/tahun/semester/kelas/siswa
-    - endpoint `GET /api/grades/remedials` tersedia untuk melihat riwayat remedial satu sumber nilai
-    - endpoint `POST /api/grades/remedials` tersedia untuk mencatat percobaan remedial baru
-    - nilai asli tidak ditimpa; nilai efektif remedial dihitung dari nilai terbaik tetapi dibatasi maksimum KKM
-    - endpoint kandidat diberi limit maksimal 500 row dan cache KKM per request untuk menghindari query membesar tanpa batas
+    - halaman guru mapel `Input Nilai Siswa` sekarang memakai tab standar `Input Nilai` dan `Remedial`
+    - tab `Remedial` memakai filter aman berdasarkan semester dan kelas-mapel yang sudah ada
+    - tabel remedial menampilkan NIS/NISN, nama siswa, sumber nilai, nilai asli, nilai efektif, KKM, percobaan, status, dan aksi
+    - guru bisa memilih sumber nilai remedial dari komponen nilai dinamis atau melihat semua sumber nilai sekaligus
+    - popup remedial menampilkan ringkasan nilai, riwayat percobaan, dan form tambah nilai remedial tanpa menimpa nilai asli
+    - frontend service remedial ditambahkan untuk endpoint eligible, detail riwayat, dan create attempt
+    - popup remedial mengikuti standar modal project: backdrop ringan, center, body scroll, dan tutup lewat tombol eksplisit
 - Area/file disentuh:
-  - `backend/prisma/schema.prisma`
-  - `backend/prisma/migrations/20260430121000_add_student_score_remedials/migration.sql`
-  - `backend/src/controllers/grade.controller.ts`
-  - `backend/src/routes/grade.routes.ts`
+  - `frontend/src/pages/teacher/TeacherGradesPage.tsx`
+  - `frontend/src/services/grade.service.ts`
   - `docs/CODEX_CONTINUITY.md`
 - Verifikasi batch ini:
-  - `cd backend && npx prisma generate`
-  - `cd backend && npx prisma migrate deploy`
-  - `cd backend && npm run build`
   - `git diff --check`
-  - `cd backend && npm run service:restart`
-  - `cd backend && npm run service:health`
+  - `cd frontend && npm run build`
+  - `cd frontend && npm run deploy`
+  - `curl -I https://siskgb2.id/`
+  - `curl -I https://siskgb2.id/teacher/grades`
 - Publish/live status:
-  - Backend sudah restart dan health `Backend:200`, `Backend API:200`
-  - Web deploy tidak dijalankan karena batch ini belum menyentuh frontend UI
-  - Mobile OTA tidak dijalankan karena batch ini belum menyentuh mobile
+  - Web sudah deploy live dan route `/teacher/grades` merespons `200`
+  - Backend tidak direstart karena batch ini frontend-only dan memakai endpoint remedial Batch 1 yang sudah live
+  - Mobile OTA tidak dijalankan karena belum ditemukan screen mobile guru mapel yang memakai alur input nilai remedial; parity mobile perlu diaudit saat Batch 3 jika fitur ini harus muncul di mobile
 - Remaining work:
-  - Batch 2: buat UI guru mapel untuk memilih sumber nilai remedial, melihat kandidat belum tuntas, menginput remedial berulang, dan melihat riwayat percobaan.
-  - Batch 3: integrasikan nilai efektif remedial ke perhitungan rapor/leger secara aman dan audit tampilan siswa/walas/mobile bila diperlukan.
+  - Batch 3: integrasikan nilai efektif remedial ke perhitungan rapor/leger secara aman.
+  - Batch 3: audit tampilan siswa, wali kelas, kurikulum, dan mobile agar nilai efektif remedial terbaca konsisten di area yang memang harus menampilkan nilai final.
 - Residual risk:
-  - Remedial sudah bisa disimpan di backend, tetapi belum memengaruhi nilai rapor/leger sampai batch integrasi berikutnya agar perubahan perhitungan nilai tidak masuk tanpa UI/audit lengkap.
+  - Remedial sudah bisa diinput guru mapel dari UI web, tetapi nilai efektif remedial belum memengaruhi rapor/leger sampai Batch 3 agar perubahan perhitungan nilai masuk dengan audit lintas role yang lengkap.
 
 ## Status Saat Ini
 
