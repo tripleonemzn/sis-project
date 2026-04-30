@@ -3841,6 +3841,183 @@ function formatRemedialScoreEntry(entry: RemedialScoreEntryRow, kkm: number) {
   }
 }
 
+type RemedialHomeroomPublicationInfo = {
+  publicationCode: string
+  classId: number | null
+  mode: HomeroomResultPublicationMode
+  isBlocked: boolean
+  label: string
+  description: string
+  updatedAt: Date | null
+}
+
+function resolveRemedialPublicationCode(entry: {
+  reportSlotCode?: string | null
+  componentCode?: string | null
+}): string {
+  const reportSlotCode = normalizeReportSlotCode(entry.reportSlotCode || entry.componentCode)
+  if (reportSlotCode && reportSlotCode !== DEFAULT_REPORT_SLOT_CODE) return reportSlotCode
+  return normalizeComponentCode(entry.componentCode || '')
+}
+
+async function resolveRemedialHomeroomPublicationInfo(params: {
+  entry: RemedialScoreEntryRow
+  fallbackClassId?: number | null
+  classPreferencesCache?: Map<number, unknown>
+}): Promise<RemedialHomeroomPublicationInfo> {
+  const publicationCode = resolveRemedialPublicationCode(params.entry)
+  const classId =
+    Number(params.fallbackClassId || 0) > 0
+      ? Number(params.fallbackClassId)
+      : Number(params.entry.student?.classId || 0) > 0
+        ? Number(params.entry.student?.classId)
+        : null
+
+  if (!publicationCode || !classId) {
+    return {
+      publicationCode,
+      classId,
+      mode: 'FOLLOW_GLOBAL',
+      isBlocked: false,
+      label: 'Mengikuti aturan wali kelas',
+      description: 'Siswa dapat diproses remedial.',
+      updatedAt: null,
+    }
+  }
+
+  let preferences: unknown
+  if (params.classPreferencesCache?.has(classId)) {
+    preferences = params.classPreferencesCache.get(classId)
+  } else {
+    const classRow = await prisma.class.findUnique({
+      where: { id: classId },
+      select: {
+        teacher: {
+          select: {
+            preferences: true,
+          },
+        },
+      },
+    })
+    preferences = classRow?.teacher?.preferences || null
+    params.classPreferencesCache?.set(classId, preferences)
+  }
+
+  const publication = readHomeroomResultPublication({
+    preferences,
+    academicYearId: Number(params.entry.academicYearId),
+    classId,
+    studentId: Number(params.entry.studentId),
+    publicationCode,
+  })
+
+  return {
+    publicationCode,
+    classId,
+    mode: publication.mode,
+    isBlocked: publication.mode === 'BLOCKED',
+    label: publication.mode === 'BLOCKED' ? 'Masih ditahan Wali Kelas' : 'Bisa remedial',
+    description:
+      publication.mode === 'BLOCKED'
+        ? 'Wali kelas masih menahan publikasi nilai siswa ini, sehingga remedial belum bisa diterbitkan.'
+        : 'Siswa bisa dipilih untuk remedial.',
+    updatedAt: publication.updatedAt,
+  }
+}
+
+type CreateScoreRemedialRecordParams = {
+  user: AuthUserLike
+  entry: RemedialScoreEntryRow
+  saveAsDraft: boolean
+  remedialScore?: number | null
+  method: ScoreRemedialMethod
+  activityTitle: string | null
+  activityInstructions: string | null
+  activityDueAt: Date | null
+  activityReferenceUrl: string | null
+  activityExamPacketId?: number | null
+  activitySourceExamPacketId?: number | null
+  note: string | null
+}
+
+async function createScoreRemedialRecord(params: CreateScoreRemedialRecordParams) {
+  const homeroomPublication = await resolveRemedialHomeroomPublicationInfo({
+    entry: params.entry,
+  })
+  if (homeroomPublication.isBlocked) {
+    throw new ApiError(403, 'Siswa masih ditahan Wali Kelas dan belum bisa diterbitkan remedial.')
+  }
+
+  const [activityExamPacket, activitySourceExamPacket] = await Promise.all([
+    resolveRemedialExamPacketReference(params.activityExamPacketId ?? null, params.entry, params.user),
+    resolveRemedialExamPacketReference(params.activitySourceExamPacketId ?? null, params.entry, params.user),
+  ])
+
+  const kkmInfo = await resolveKkmForRemedialScoreEntry({
+    studentId: params.entry.studentId,
+    subjectId: params.entry.subjectId,
+    academicYearId: params.entry.academicYearId,
+  })
+  const summary = summarizeRemedialState(Number(params.entry.score), kkmInfo.kkm, params.entry.remedials)
+
+  if (summary.currentEffectiveScore >= kkmInfo.kkm) {
+    throw new ApiError(400, 'Nilai siswa sudah tuntas. Remedial baru tidak diperlukan.')
+  }
+
+  const maxAttempt = params.entry.remedials.reduce(
+    (latest, row) => Math.max(latest, Number(row.attemptNumber || 0)),
+    0,
+  )
+  const normalizedRemedialScore = params.saveAsDraft
+    ? summary.currentEffectiveScore
+    : roundRemedialScore(Number(params.remedialScore))
+  const effectiveScore = params.saveAsDraft
+    ? summary.currentEffectiveScore
+    : resolveRemedialEffectiveScore({
+        originalScore: summary.originalScore,
+        previousEffectiveScore: summary.currentEffectiveScore,
+        remedialScore: normalizedRemedialScore,
+        kkm: kkmInfo.kkm,
+      })
+  const status =
+    params.saveAsDraft
+      ? ScoreRemedialStatus.DRAFT
+      : effectiveScore >= kkmInfo.kkm
+        ? ScoreRemedialStatus.PASSED
+        : ScoreRemedialStatus.STILL_BELOW_KKM
+
+  const remedial = await prisma.studentScoreRemedial.create({
+    data: {
+      scoreEntryId: params.entry.id,
+      attemptNumber: maxAttempt + 1,
+      originalScore: summary.originalScore,
+      previousEffectiveScore: summary.currentEffectiveScore,
+      remedialScore: normalizedRemedialScore,
+      effectiveScore,
+      kkm: kkmInfo.kkm,
+      status,
+      method: params.method,
+      activityTitle: params.activityTitle || activityExamPacket?.title || activitySourceExamPacket?.title || null,
+      activityInstructions: params.activityInstructions,
+      activityDueAt: params.activityDueAt,
+      activityReferenceUrl: params.activityReferenceUrl,
+      activityExamPacketId: activityExamPacket?.id || null,
+      activitySourceExamPacketId: activitySourceExamPacket?.id || null,
+      note: params.note,
+      recordedById: toPositiveInt(params.user?.id) || null,
+    },
+  })
+
+  return {
+    remedial,
+    effectiveScore,
+    kkm: kkmInfo.kkm,
+    status,
+    activityExamPacket,
+    activitySourceExamPacket,
+  }
+}
+
 export const getRemedialEligibleScores = async (req: Request, res: Response) => {
   try {
     const user = (req as any).user as AuthUserLike
@@ -3943,6 +4120,7 @@ export const getRemedialEligibleScores = async (req: Request, res: Response) => 
 
     const formatted = []
     const kkmCache = new Map<string, Awaited<ReturnType<typeof resolveKkmForRemedialScoreEntry>>>()
+    const classPreferencesCache = new Map<number, unknown>()
     const scopedEntries = dedupeRemedialEligibleEntries(entries)
     for (const entry of scopedEntries) {
       const kkmCacheKey = `${entry.studentId}:${entry.subjectId}:${entry.academicYearId}`
@@ -3957,11 +4135,42 @@ export const getRemedialEligibleScores = async (req: Request, res: Response) => 
       }
       const row = formatRemedialScoreEntry(entry, kkmInfo.kkm)
       if (includeAll || !row.isComplete) {
+        const homeroomPublication = await resolveRemedialHomeroomPublicationInfo({
+          entry,
+          fallbackClassId: kkmInfo.classId || classId || null,
+          classPreferencesCache,
+        })
+        const hasActiveRemedialActivity = entry.remedials.some(
+          (remedial) =>
+            remedial.status === ScoreRemedialStatus.DRAFT &&
+            remedial.method !== ScoreRemedialMethod.MANUAL_SCORE,
+        )
+        const canSelectForActivity = !row.isComplete && !homeroomPublication.isBlocked && !hasActiveRemedialActivity
         formatted.push({
           ...row,
           kkmSource: kkmInfo.source,
           classId: kkmInfo.classId,
           classLevel: kkmInfo.classLevel,
+          homeroomPublication,
+          remedialEligibility: {
+            canSelectForActivity,
+            isBlockedByHomeroom: homeroomPublication.isBlocked,
+            hasActiveRemedialActivity,
+            status: row.isComplete
+              ? 'COMPLETE'
+              : homeroomPublication.isBlocked
+                ? 'HOMEROOM_BLOCKED'
+                : hasActiveRemedialActivity
+                  ? 'ACTIVE_REMEDIAL_EXISTS'
+                  : 'READY',
+            label: row.isComplete
+              ? 'Tuntas'
+              : homeroomPublication.isBlocked
+                ? 'Masih ditahan Wali Kelas'
+                : hasActiveRemedialActivity
+                  ? 'Sudah ada remedial aktif'
+                  : 'Bisa remedial',
+          },
         })
       }
     }
@@ -4073,76 +4282,31 @@ export const createScoreRemedial = async (req: Request, res: Response) => {
 
     await assertCanAccessRemedialScoreEntry(user, entry)
 
-    const [activityExamPacket, activitySourceExamPacket] = await Promise.all([
-      resolveRemedialExamPacketReference(activityExamPacketId, entry, user),
-      resolveRemedialExamPacketReference(activitySourceExamPacketId, entry, user),
-    ])
-
-    const kkmInfo = await resolveKkmForRemedialScoreEntry({
-      studentId: entry.studentId,
-      subjectId: entry.subjectId,
-      academicYearId: entry.academicYearId,
-    })
-    const summary = summarizeRemedialState(Number(entry.score), kkmInfo.kkm, entry.remedials)
-
-    if (summary.currentEffectiveScore >= kkmInfo.kkm) {
-      throw new ApiError(400, 'Nilai siswa sudah tuntas. Remedial baru tidak diperlukan.')
-    }
-
-    const maxAttempt = entry.remedials.reduce(
-      (latest, row) => Math.max(latest, Number(row.attemptNumber || 0)),
-      0,
-    )
-    const normalizedRemedialScore = saveAsDraft
-      ? summary.currentEffectiveScore
-      : roundRemedialScore(Number(remedialScore))
-    const effectiveScore = saveAsDraft
-      ? summary.currentEffectiveScore
-      : resolveRemedialEffectiveScore({
-          originalScore: summary.originalScore,
-          previousEffectiveScore: summary.currentEffectiveScore,
-          remedialScore: normalizedRemedialScore,
-          kkm: kkmInfo.kkm,
-        })
-    const status =
-      saveAsDraft
-        ? ScoreRemedialStatus.DRAFT
-        : effectiveScore >= kkmInfo.kkm
-          ? ScoreRemedialStatus.PASSED
-          : ScoreRemedialStatus.STILL_BELOW_KKM
-
-    const remedial = await prisma.studentScoreRemedial.create({
-      data: {
-        scoreEntryId: entry.id,
-        attemptNumber: maxAttempt + 1,
-        originalScore: summary.originalScore,
-        previousEffectiveScore: summary.currentEffectiveScore,
-        remedialScore: normalizedRemedialScore,
-        effectiveScore,
-        kkm: kkmInfo.kkm,
-        status,
-        method,
-        activityTitle: activityTitle || activityExamPacket?.title || activitySourceExamPacket?.title || null,
-        activityInstructions,
-        activityDueAt,
-        activityReferenceUrl,
-        activityExamPacketId: activityExamPacket?.id || null,
-        activitySourceExamPacketId: activitySourceExamPacket?.id || null,
-        note,
-        recordedById: toPositiveInt(user?.id) || null,
-      },
+    const result = await createScoreRemedialRecord({
+      user,
+      entry,
+      saveAsDraft,
+      remedialScore,
+      method,
+      activityTitle,
+      activityInstructions,
+      activityDueAt,
+      activityReferenceUrl,
+      activityExamPacketId,
+      activitySourceExamPacketId,
+      note,
     })
 
     if (saveAsDraft) {
       return ApiResponseHelper.success(
         res,
         {
-          remedial,
-          effectiveScore,
-          kkm: kkmInfo.kkm,
-          status,
-          activityExamPacket,
-          activitySourceExamPacket,
+          remedial: result.remedial,
+          effectiveScore: result.effectiveScore,
+          kkm: result.kkm,
+          status: result.status,
+          activityExamPacket: result.activityExamPacket,
+          activitySourceExamPacket: result.activitySourceExamPacket,
         },
         'Aktivitas remedial berhasil diberikan.',
       )
@@ -4166,10 +4330,10 @@ export const createScoreRemedial = async (req: Request, res: Response) => {
     return ApiResponseHelper.success(
       res,
       {
-        remedial,
-        effectiveScore,
-        kkm: kkmInfo.kkm,
-        status,
+        remedial: result.remedial,
+        effectiveScore: result.effectiveScore,
+        kkm: result.kkm,
+        status: result.status,
         reportSync,
       },
       reportSync.success
@@ -4180,6 +4344,171 @@ export const createScoreRemedial = async (req: Request, res: Response) => {
     console.error('Create score remedial error:', error)
     if (error instanceof ApiError) throw error
     throw new ApiError(500, 'Gagal menyimpan nilai remedial.')
+  }
+}
+
+export const createBulkScoreRemedialActivities = async (req: Request, res: Response) => {
+  try {
+    const user = (req as any).user as AuthUserLike
+    const rawScoreEntryIds: unknown[] = Array.isArray(req.body?.score_entry_ids)
+      ? req.body.score_entry_ids
+      : Array.isArray(req.body?.scoreEntryIds)
+        ? req.body.scoreEntryIds
+        : []
+    const parsedScoreEntryIds = rawScoreEntryIds
+      .map((value: unknown) => toPositiveInt(value))
+      .filter((value): value is number => typeof value === 'number' && value > 0)
+    const scoreEntryIds: number[] = Array.from(
+      new Set(
+        parsedScoreEntryIds,
+      ),
+    ).slice(0, 200)
+    const method = normalizeScoreRemedialMethod(req.body?.method || req.body?.remedialMethod)
+    const activityTitle = normalizeOptionalRemedialText(
+      req.body?.activity_title ?? req.body?.activityTitle,
+      160,
+    )
+    const activityInstructions = normalizeOptionalRemedialText(
+      req.body?.activity_instructions ?? req.body?.activityInstructions,
+      2000,
+    )
+    const activityDueAt = normalizeOptionalRemedialDate(
+      req.body?.activity_due_at ?? req.body?.activityDueAt,
+    )
+    const activityReferenceUrl = normalizeOptionalRemedialText(
+      req.body?.activity_reference_url ?? req.body?.activityReferenceUrl,
+      500,
+    )
+    const activityExamPacketId = toPositiveInt(
+      req.body?.activity_exam_packet_id ?? req.body?.activityExamPacketId,
+    )
+    const activitySourceExamPacketId = toPositiveInt(
+      req.body?.activity_source_exam_packet_id ?? req.body?.activitySourceExamPacketId,
+    )
+    const note = String(req.body?.note || '').trim() || null
+
+    if (scoreEntryIds.length === 0) {
+      throw new ApiError(400, 'Pilih minimal satu siswa untuk remedial.')
+    }
+    if (method === ScoreRemedialMethod.MANUAL_SCORE) {
+      throw new ApiError(400, 'Bulk remedial hanya untuk metode tugas atau soal.')
+    }
+    if (!activityTitle && !activityExamPacketId && !activitySourceExamPacketId) {
+      throw new ApiError(400, 'Isi judul remedial atau pilih paket soal sebelum remedial diterbitkan.')
+    }
+
+    const entries = await prisma.studentScoreEntry.findMany({
+      where: {
+        id: { in: scoreEntryIds },
+      },
+      include: {
+        student: {
+          select: {
+            id: true,
+            name: true,
+            nis: true,
+            nisn: true,
+            classId: true,
+            studentClass: {
+              select: {
+                academicYearId: true,
+              },
+            },
+          },
+        },
+        subject: {
+          select: {
+            id: true,
+            code: true,
+            name: true,
+          },
+        },
+        academicYear: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        remedials: {
+          orderBy: {
+            attemptNumber: 'asc',
+          },
+        },
+      },
+    })
+
+    const entryMap = new Map(entries.map((entry) => [entry.id, entry]))
+    const created: Array<unknown> = []
+    const skipped: Array<{ scoreEntryId: number; reason: string; studentName?: string | null }> = []
+
+    for (const scoreEntryId of scoreEntryIds) {
+      const entry = entryMap.get(scoreEntryId)
+      if (!entry) {
+        skipped.push({ scoreEntryId, reason: 'Sumber nilai tidak ditemukan.' })
+        continue
+      }
+
+      try {
+        await assertCanAccessRemedialScoreEntry(user, entry)
+        const result = await createScoreRemedialRecord({
+          user,
+          entry,
+          saveAsDraft: true,
+          method,
+          activityTitle,
+          activityInstructions,
+          activityDueAt,
+          activityReferenceUrl,
+          activityExamPacketId,
+          activitySourceExamPacketId,
+          note,
+        })
+        created.push({
+          scoreEntryId,
+          studentId: entry.studentId,
+          studentName: entry.student?.name || null,
+          remedial: result.remedial,
+        })
+      } catch (error) {
+        skipped.push({
+          scoreEntryId,
+          studentName: entry.student?.name || null,
+          reason: error instanceof ApiError ? error.message : 'Gagal menerbitkan remedial.',
+        })
+      }
+    }
+
+    if (created.length === 0) {
+      throw new ApiError(400, skipped[0]?.reason || 'Tidak ada remedial yang dapat diterbitkan.')
+    }
+
+    emitGradeRealtimeRefresh({
+      studentIds: entries.map((entry) => entry.studentId),
+      subjectIds: Array.from(new Set(entries.map((entry) => entry.subjectId))),
+      academicYearIds: Array.from(new Set(entries.map((entry) => entry.academicYearId))),
+      semesters: Array.from(new Set(entries.map((entry) => entry.semester))),
+      includeReports: false,
+    })
+
+    return ApiResponseHelper.success(
+      res,
+      {
+        created,
+        skipped,
+        summary: {
+          requested: scoreEntryIds.length,
+          created: created.length,
+          skipped: skipped.length,
+        },
+      },
+      skipped.length > 0
+        ? `Remedial diterbitkan untuk ${created.length} siswa. ${skipped.length} siswa dilewati.`
+        : `Remedial berhasil diterbitkan untuk ${created.length} siswa.`,
+    )
+  } catch (error) {
+    console.error('Create bulk score remedial activities error:', error)
+    if (error instanceof ApiError) throw error
+    throw new ApiError(500, 'Gagal menerbitkan remedial terpilih.')
   }
 }
 

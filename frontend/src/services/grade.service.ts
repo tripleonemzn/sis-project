@@ -387,6 +387,22 @@ export interface RemedialScoreEntry {
   kkmSource?: string;
   classId?: number | null;
   classLevel?: string | null;
+  homeroomPublication?: {
+    publicationCode?: string;
+    classId?: number | null;
+    mode: 'FOLLOW_GLOBAL' | 'BLOCKED' | string;
+    isBlocked: boolean;
+    label: string;
+    description?: string;
+    updatedAt?: string | null;
+  };
+  remedialEligibility?: {
+    canSelectForActivity: boolean;
+    isBlockedByHomeroom: boolean;
+    hasActiveRemedialActivity: boolean;
+    status: 'READY' | 'HOMEROOM_BLOCKED' | 'ACTIVE_REMEDIAL_EXISTS' | 'COMPLETE' | string;
+    label: string;
+  };
   student: {
     id: number;
     name: string;
@@ -612,6 +628,31 @@ export const gradeService = {
       remedial_score: payload.remedialScore,
       method: payload.method,
       save_as_draft: payload.saveAsDraft,
+      activity_title: payload.activityTitle,
+      activity_instructions: payload.activityInstructions,
+      activity_due_at: payload.activityDueAt,
+      activity_reference_url: payload.activityReferenceUrl,
+      activity_exam_packet_id: payload.activityExamPacketId,
+      activity_source_exam_packet_id: payload.activitySourceExamPacketId,
+      note: payload.note,
+    });
+    return response.data;
+  },
+
+  createBulkScoreRemedialActivities: async (payload: {
+    scoreEntryIds: number[];
+    method: Exclude<ScoreRemedialMethod, 'MANUAL_SCORE'> | ScoreRemedialMethod;
+    activityTitle?: string;
+    activityInstructions?: string;
+    activityDueAt?: string;
+    activityReferenceUrl?: string;
+    activityExamPacketId?: number;
+    activitySourceExamPacketId?: number;
+    note?: string;
+  }) => {
+    const response = await api.post('/grades/remedials/bulk-activities', {
+      score_entry_ids: payload.scoreEntryIds,
+      method: payload.method,
       activity_title: payload.activityTitle,
       activity_instructions: payload.activityInstructions,
       activity_due_at: payload.activityDueAt,
