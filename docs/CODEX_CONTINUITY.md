@@ -5,12 +5,12 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-04-30 08:58 WIB
-- Current status: Follow-up spacing dan default QR surat PKL sudah selesai dan live. Ada jarak satu baris antara `Perihal` dan `Kepada Yth`, serta checkbox barcode/QR pada konfigurasi surat kini default aktif.
+- Last updated: 2026-04-30 09:16 WIB
+- Current status: Perbaikan download file materi/tugas mobile dan limit upload 10MB sudah selesai. Download lampiran di mobile tidak lagi diarahkan ke web kosong; aplikasi mengunduh file secara native dan Android menyimpan lewat folder yang dipilih user.
 - Objective/task aktif:
   - Menjaga fitur operasional lintas web/mobile tetap user-friendly dan aman untuk produksi.
 - Batch terakhir selesai:
-  - `Waka Humas - perapihan layout surat PKL`
+  - `Mobile Materi & Tugas - native download dan limit upload`
 - Progress batch ini:
   - `100%`
 - Progress roadmap perangkat ajar dinamis:
@@ -19,20 +19,28 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
-  - Commit: `pending`
-  - Title: `fix(internship): default pkl qr and adjust spacing`
+  - Commit: `51cc258`
+  - Title: `fix(mobile): download learning files natively`
   - Summary:
-    - jarak setelah `Perihal` sebelum `Kepada Yth` ditambah setara satu baris kosong
-    - default `useBarcode` pada konfigurasi surat PKL diubah menjadi aktif
-    - generator backend dan fallback print legacy juga memakai default QR aktif jika payload lama tidak mengirim nilai eksplisit
+    - mobile student `Materi & Tugas` sekarang mengunduh lampiran materi/tugas lewat aplikasi, bukan membuka URL upload di browser
+    - mobile teacher `Materi & Tugas` juga memakai alur download native untuk lampiran
+    - upload materi, tugas, dan submisi tugas dibatasi 10MB dari backend; web/mobile memberi validasi dan label 10MB
+    - dependency mobile `expo-file-system` dikunci ke versi `19.0.21` yang selaras dengan dependency Expo runtime existing
 - Area/file disentuh:
-  - `backend/src/controllers/internship.controller.ts`
-  - `frontend/src/pages/print/PklLetterPrint.tsx`
-  - `frontend/src/pages/teacher/internship/InternshipApprovalPage.tsx`
+  - `backend/src/index.ts`
+  - `backend/src/utils/upload.ts`
+  - `frontend/src/pages/teacher/MaterialsAndAssignmentsPage.tsx`
+  - `mobile-app/app/(app)/learning.tsx`
+  - `mobile-app/app/(app)/teacher/materials.tsx`
+  - `mobile-app/src/lib/files/downloadFileToDevice.ts`
+  - `mobile-app/package.json`
+  - `mobile-app/package-lock.json`
   - `docs/CODEX_CONTINUITY.md`
 - Verifikasi batch ini:
   - `cd backend && npm run build`
   - `cd frontend && npm run build`
+  - `cd mobile-app && npm run typecheck`
+  - `cd mobile-app && npm run audit:parity:check`
   - `git diff --check`
   - `cd backend && npm run service:restart`
   - `cd backend && npm run service:health`
@@ -41,11 +49,11 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 - Publish/live status:
   - Backend sudah restart via PM2 dan health `Backend:200`, `Backend API:200`
   - Web sudah deploy ke `/var/www/html`
-  - Mobile source code tidak berubah; tidak ada OTA baru
+  - Mobile OTA masih perlu publish setelah commit dokumentasi ini
 - Remaining work:
-  - Commit perubahan task dan dokumentasi, push ke `origin/main`, lalu final clean check.
+  - Commit dokumentasi, push ke `origin/main`, publish OTA mobile ke channel tester, lalu final clean check.
 - Residual risk:
-  - Tidak ada perubahan data/API inti. Jika isi surat sangat panjang atau jumlah siswa banyak, browser tetap bisa memecah halaman secara natural.
+  - Pada Android pertama kali download, user perlu memilih folder penyimpanan melalui picker sistem. Setelah izin folder tersimpan, download berikutnya bisa langsung memakai folder tersebut.
 
 ## Status Saat Ini
 
