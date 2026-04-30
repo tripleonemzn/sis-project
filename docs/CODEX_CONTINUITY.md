@@ -5,12 +5,12 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-04-30 13:08 WIB
-- Current status: Fitur remedial selesai 100%. UI web guru mapel sudah refresh snapshot `ReportGrade` langsung setelah remedial disimpan, sehingga nilai akhir/deskripsi di layar ikut sinkron tanpa menunggu reload manual.
+- Last updated: 2026-04-30 13:36 WIB
+- Current status: Polish UI `Input Nilai Siswa` dan tab `Remedial` selesai. Tab/filter web guru mapel sudah dirapikan menjadi satu surface standar, info teknis input nilai yang memenuhi halaman dihapus, tombol `Muat Ulang` remedial dihapus, dropdown `Sumber Nilai` dipindahkan ke header remedial, dan endpoint kandidat remedial sekarang melakukan dedupe per siswa-komponen-slot agar hasil filter kelas tidak membengkak karena entry sumber nilai ganda.
 - Objective/task aktif:
   - Mengembangkan fitur remedial nilai untuk guru mapel dengan sumber nilai spesifik, riwayat percobaan lebih dari 1x, nilai asli tetap utuh, dan nilai efektif remedial dibatasi sampai KKM.
 - Batch terakhir selesai:
-  - `Remedial batch 4 - final polish and live refresh`
+  - `Remedial batch 5 - UI polish and scoped eligible rows`
 - Progress batch remedial saat ini:
   - `100%` untuk fondasi database remedial
   - `100%` untuk API kandidat nilai belum tuntas dan pencatatan remedial
@@ -31,33 +31,33 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
-  - Commit: `b2144cb`
-  - Title: `fix(grades): refresh report snapshot after remedial save`
+  - Commit: `pending`
+  - Title: `fix(grades): polish remedial tab and scope candidates`
   - Summary:
-    - halaman guru mapel `Input Nilai Siswa` sekarang memakai helper refresh snapshot `ReportGrade`
-    - setelah `Simpan Remedial`, UI langsung memuat ulang riwayat remedial, daftar kandidat, dan snapshot nilai rapor kelas/mapel/semester terkait
-    - refresh snapshot dibuat ringan dan scoped pada assignment aktif, tidak menambah polling atau refetch global
-    - audit lintas tampilan menunjukkan siswa, wali kelas, kurikulum, dan mobile membaca nilai akhir melalui `ReportGrade`, sehingga nilai efektif remedial sudah mengalir dari integrasi Batch 3
+    - tab `Input Nilai` dan `Remedial` dipertahankan memakai indikator `border-b-2` standar, dengan filter semester serta kelas-mapel berada di card tab atas
+    - card informasi teknis penilaian pada tab input nilai dihapus agar halaman tidak padat
+    - tombol `Muat Ulang` di tab remedial dihapus; dropdown `Sumber Nilai` dipindah ke sisi kanan header `Remedial Nilai`
+    - endpoint `GET /api/grades/remedials/eligible` kini menormalisasi kandidat per siswa-komponen-slot dan memprioritaskan entry manual/input guru sebelum sumber otomatis, sehingga filter kelas seperti `X AK 1` tidak lagi menampilkan baris duplikat dari sumber nilai ganda
 - Area/file disentuh:
+  - `backend/src/controllers/grade.controller.ts`
   - `frontend/src/pages/teacher/TeacherGradesPage.tsx`
   - `docs/CODEX_CONTINUITY.md`
 - Verifikasi batch ini:
   - `git diff --check`
   - `cd backend && npm run build`
   - `cd frontend && npm run build`
+  - `cd backend && npm run service:restart`
   - `cd backend && npm run service:health`
-  - `cd mobile-app && npm run typecheck`
-  - `cd mobile-app && npm run audit:parity:check`
   - `cd frontend && npm run deploy`
   - `curl -I https://siskgb2.id/teacher/grades`
 - Publish/live status:
   - Web sudah deploy live dan `/teacher/grades` merespons `200`
-  - Backend tidak direstart pada batch final polish karena tidak ada perubahan backend; health tetap `Backend:200`, `Backend API:200`
-  - Mobile OTA tidak dijalankan karena tidak ada perubahan source mobile; typecheck dan parity audit lolos
+  - Backend sudah direload via PM2 dan health tetap `Backend:200`, `Backend API:200`
+  - Mobile OTA tidak dijalankan karena tidak ada perubahan source mobile
 - Remaining work:
-  - Tidak ada sisa batch remedial pada scope yang disepakati.
+  - Tidak ada sisa pada scope polish UI/filter remedial ini.
 - Residual risk:
-  - Jika ada remedial yang sudah dibuat sebelum Batch 3 dan belum pernah tersinkron ulang, data `ReportGrade` lama baru berubah setelah ada aksi simpan/remedial/resync berikutnya pada siswa-mapel-semester tersebut.
+  - Tidak ada risiko runtime baru yang menambah polling/refetch. Perubahan backend hanya mengurangi baris kandidat yang dikirim setelah query scoped yang sudah ada.
 
 ## Status Saat Ini
 

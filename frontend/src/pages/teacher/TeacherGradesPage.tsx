@@ -343,13 +343,6 @@ const preventFormativeWheelMutation = (event: WheelEvent<HTMLInputElement>) => {
   event.preventDefault();
 };
 
-const formatWeightPercent = (weight: number | null | undefined) => {
-  const numeric = Number(weight);
-  if (!Number.isFinite(numeric)) return '0%';
-  if (Number.isInteger(numeric)) return `${numeric}%`;
-  return `${numeric.toFixed(2)}%`;
-};
-
 const resolveComponentReportSlotCode = (component?: GradeComponent): string => {
   const explicit = normalizeSlotCode(component?.reportSlotCode || component?.reportSlot);
   if (explicit) return explicit;
@@ -808,10 +801,6 @@ export const TeacherGradesPage = () => {
     !isFormatifComponent &&
     hasDistinctFinalFormula &&
     selectedComponentSlotCode === finalPrimarySlot;
-  const selectedComponentReportSlotLabel =
-    selectedComponentSlotCode && selectedComponentSlotCode !== 'NONE' ? selectedComponentSlotCode : 'TANPA SLOT';
-  const selectedComponentInputModeLabel =
-    selectedComponentEntryMode === 'NF_SERIES' ? 'Bertahap (banyak butir nilai)' : 'Satu nilai per siswa';
   const formativeComponentObj =
     filteredComponents.find(
       (item) =>
@@ -825,13 +814,6 @@ export const TeacherGradesPage = () => {
   const formativeComponentLabel = resolveReadableComponentLabel(formativeComponentObj, 'Komponen 1');
   const midtermComponentLabel = resolveReadableComponentLabel(midtermComponentObj, 'Komponen 2');
   const finalComponentLabel = resolveReadableComponentLabel(finalComponentObj, 'Komponen 3');
-  const selectedComponentFlowLabel = isFormatifComponent
-    ? 'Formatif Bertahap'
-    : isMidtermComponent
-      ? 'Komponen Tengah Semester'
-      : isFinalComponent
-        ? 'Komponen Akhir Semester/Tahun'
-        : 'Komponen Input Sederhana';
   const remedialSourceOptions = useMemo<RemedialSourceOption[]>(() => {
     const optionMap = new Map<string, string>();
     filteredComponents.forEach((component) => {
@@ -849,13 +831,6 @@ export const TeacherGradesPage = () => {
       complete,
     };
   }, [remedialRows]);
-  const selectedComponentFormulaHint = isFormatifComponent
-    ? `Input bertahap, sistem hitung rata-rata ${resolveReadableComponentLabel(selectedComponentObj, 'komponen')} otomatis.`
-    : isMidtermComponent
-      ? `Nilai rapor dihitung berbobot: ${formativeComponentLabel} ${formatWeightPercent(formativeComponentObj?.weight)} + ${resolveReadableComponentLabel(selectedComponentObj, 'komponen ini')} ${formatWeightPercent(selectedComponentObj?.weight)}.`
-      : isFinalComponent
-        ? `Nilai rapor dihitung berbobot: ${formativeComponentLabel} ${formatWeightPercent(formativeComponentObj?.weight)} + ${midtermComponentLabel} ${formatWeightPercent(midtermComponentObj?.weight)} + ${resolveReadableComponentLabel(selectedComponentObj, 'komponen ini')} ${formatWeightPercent(selectedComponentObj?.weight)}.`
-        : 'Komponen ini memakai satu nilai per siswa.';
   const primaryFormativeComponentId =
     filteredComponents.find((item) => resolveComponentEntryMode(item) === 'NF_SERIES')?.id ?? null;
   const religionOptions = useMemo<ReligionOption[]>(() => {
@@ -891,20 +866,6 @@ export const TeacherGradesPage = () => {
   const activeCompetencyThresholdSet = isReligionSubject
     ? getReligionThresholdSet(competencySettings, selectedReligionKey)
     : competencySettings;
-
-  const getDescription = () => {
-    const componentName = String(selectedComponentObj?.name || selectedComponentObj?.code || 'komponen ini').trim();
-    if (isFormatifComponent) {
-      return `Komponen ${componentName} diinput per butir, rata-rata dihitung otomatis oleh sistem.`;
-    }
-    if (isMidtermComponent) {
-      return `Komponen ${componentName} diinput satu nilai, lalu dipadukan sesuai rumus komponen aktif.`;
-    }
-    if (isFinalComponent) {
-      return `Komponen ${componentName} diinput satu nilai, lalu dipadukan ke nilai rapor akhir.`;
-    }
-    return `Komponen ${componentName} menggunakan input satu nilai per siswa.`;
-  };
 
   const fetchAssignmentsByAcademicYear = async (
     academicYearId: string,
@@ -1860,68 +1821,34 @@ export const TeacherGradesPage = () => {
         </div>
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 px-5 pt-4">
-        <div className="flex flex-wrap gap-5 border-b border-gray-200">
-          {[
-            { key: 'INPUT' as const, label: 'Input Nilai' },
-            { key: 'REMEDIAL' as const, label: 'Remedial' },
-          ].map((tab) => {
-            const isActive = activeTab === tab.key;
-            return (
-              <button
-                key={tab.key}
-                type="button"
-                onClick={() => setActiveTab(tab.key)}
-                className={`inline-flex items-center px-1 pb-3 text-sm font-medium border-b-2 transition-colors ${
-                  isActive
-                    ? 'border-blue-600 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                {tab.label}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Description Box */}
-      {activeTab === 'INPUT' ? (
-        <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
-          <span className="font-semibold">Informasi Penilaian:</span> {getDescription()}
-        </div>
-      ) : null}
-
-      {activeTab === 'INPUT' && selectedComponentObj ? (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-3">
-          <div className="flex flex-wrap items-center gap-2 text-xs">
-            <span className="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-gray-700">
-              <span className="mr-1 text-gray-500">Komponen:</span>
-              <span className="font-semibold">{resolveReadableComponentLabel(selectedComponentObj, '-')}</span>
-            </span>
-            <span className="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-gray-700">
-              <span className="mr-1 text-gray-500">Mode:</span>
-              <span className="font-semibold">{selectedComponentInputModeLabel}</span>
-            </span>
-            <span className="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-gray-700">
-              <span className="mr-1 text-gray-500">Slot:</span>
-              <span className="font-semibold">{selectedComponentReportSlotLabel}</span>
-            </span>
-            <span className="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-gray-700">
-              <span className="mr-1 text-gray-500">Masuk Nilai Akhir:</span>
-              <span className="font-semibold">{selectedComponentObj.includeInFinalScore ? 'Ya' : 'Tidak'}</span>
-            </span>
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100">
+        <div className="px-6 pt-4">
+          <div className="flex flex-wrap gap-6 border-b border-gray-200">
+            {[
+              { key: 'INPUT' as const, label: 'Input Nilai' },
+              { key: 'REMEDIAL' as const, label: 'Remedial' },
+            ].map((tab) => {
+              const isActive = activeTab === tab.key;
+              return (
+                <button
+                  key={tab.key}
+                  type="button"
+                  onClick={() => setActiveTab(tab.key)}
+                  className={`inline-flex items-center px-1 pb-3 text-sm font-medium border-b-2 transition-colors ${
+                    isActive
+                      ? 'border-blue-600 text-blue-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              );
+            })}
           </div>
-          <p className="mt-2 text-xs text-blue-700">
-            {selectedComponentFlowLabel}: {selectedComponentFormulaHint}
-          </p>
         </div>
-      ) : null}
 
-      {/* Filters */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">Filter Data</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+        <div className="px-6 py-5">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-5">
             <div>
                 <label htmlFor="semester" className="block text-sm font-medium text-gray-700 mb-2">Semester</label>
                 <select 
@@ -2006,6 +1933,7 @@ export const TeacherGradesPage = () => {
                     </div>
             </div>
             ) : null}
+          </div>
         </div>
       </div>
 
@@ -2308,15 +2236,28 @@ export const TeacherGradesPage = () => {
                 Pilih sumber nilai, lalu input remedial untuk siswa yang nilainya masih di bawah KKM.
               </p>
             </div>
-            <button
-              type="button"
-              onClick={() => fetchRemedialRows(false)}
-              disabled={remedialLoading || !selectedAcademicYear || !selectedAssignment || !selectedSemester}
-              className="inline-flex items-center justify-center rounded-lg border border-blue-200 px-4 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {remedialLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-              Muat Ulang
-            </button>
+            <div className="w-full lg:w-96">
+              <label htmlFor="remedial-source" className="block text-sm font-medium text-gray-700 mb-2">
+                Sumber Nilai
+              </label>
+              <select
+                id="remedial-source"
+                value={remedialComponentCode}
+                onChange={(event) => setRemedialComponentCode(event.target.value)}
+                disabled={!selectedAcademicYear || !selectedAssignment || !selectedSemester}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+              >
+                <option value="">Semua sumber nilai</option>
+                {remedialSourceOptions.map((option) => (
+                  <option key={option.code} value={option.code}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-xs text-gray-500">
+                Opsi mengikuti komponen nilai aktif pada mapel ini.
+              </p>
+            </div>
           </div>
 
           {!selectedAcademicYear || !selectedAssignment || !selectedSemester ? (
@@ -2325,30 +2266,7 @@ export const TeacherGradesPage = () => {
             </div>
           ) : (
             <>
-              <div className="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-[minmax(240px,360px)_1fr] lg:items-end">
-                <div>
-                  <label htmlFor="remedial-source" className="block text-sm font-medium text-gray-700 mb-2">
-                    Sumber Nilai
-                  </label>
-                  <select
-                    id="remedial-source"
-                    value={remedialComponentCode}
-                    onChange={(event) => setRemedialComponentCode(event.target.value)}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
-                  >
-                    <option value="">Semua sumber nilai</option>
-                    {remedialSourceOptions.map((option) => (
-                      <option key={option.code} value={option.code}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="mt-1 text-xs text-gray-500">
-                    Opsi mengikuti komponen nilai aktif pada mapel ini.
-                  </p>
-                </div>
-
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
+              <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
                   <label className="inline-flex items-center gap-2 text-sm text-gray-700">
                     <input
                       type="checkbox"
@@ -2369,7 +2287,6 @@ export const TeacherGradesPage = () => {
                       Tuntas: {remedialSummary.complete}
                     </span>
                   </div>
-                </div>
               </div>
 
               <div className="mt-5 overflow-x-auto rounded-lg border border-gray-200">

@@ -3402,6 +3402,63 @@ function formatRemedialSourceLabel(entry: {
   return String(entry.componentCode || entry.componentTypeCode || entry.componentType || entry.sourceType || 'Nilai')
 }
 
+function getRemedialEntryScopeKey(entry: RemedialScoreEntryRow): string {
+  return [
+    entry.studentId,
+    entry.subjectId,
+    entry.academicYearId,
+    entry.semester,
+    normalizeComponentCode(entry.componentCode || entry.componentTypeCode || entry.componentType),
+    normalizeReportSlotCode(entry.reportSlotCode || entry.reportSlot),
+  ].join(':')
+}
+
+function getRemedialSourcePriority(entry: RemedialScoreEntryRow): number {
+  const sourceType = normalizeComponentCode(entry.sourceType)
+  if (sourceType === 'MANUAL_GRADE') return 0
+  if (sourceType === 'EXAM_SESSION') return 1
+  if (sourceType === 'ASSIGNMENT_SUBMISSION') return 2
+  return 3
+}
+
+function getRemedialRecordedTime(entry: RemedialScoreEntryRow): number {
+  const timestamp = entry.recordedAt ? new Date(entry.recordedAt).getTime() : 0
+  return Number.isFinite(timestamp) ? timestamp : 0
+}
+
+function pickPreferredRemedialEntry(
+  current: RemedialScoreEntryRow,
+  candidate: RemedialScoreEntryRow,
+): RemedialScoreEntryRow {
+  const currentPriority = getRemedialSourcePriority(current)
+  const candidatePriority = getRemedialSourcePriority(candidate)
+  if (candidatePriority < currentPriority) return candidate
+  if (candidatePriority > currentPriority) return current
+
+  const currentTime = getRemedialRecordedTime(current)
+  const candidateTime = getRemedialRecordedTime(candidate)
+  if (candidateTime > currentTime) return candidate
+  if (candidateTime < currentTime) return current
+
+  return candidate.id > current.id ? candidate : current
+}
+
+function dedupeRemedialEligibleEntries(entries: RemedialScoreEntryRow[]): RemedialScoreEntryRow[] {
+  const byScope = new Map<string, RemedialScoreEntryRow>()
+  entries.forEach((entry) => {
+    const scopeKey = getRemedialEntryScopeKey(entry)
+    const previous = byScope.get(scopeKey)
+    byScope.set(scopeKey, previous ? pickPreferredRemedialEntry(previous, entry) : entry)
+  })
+  return Array.from(byScope.values()).sort((left, right) => {
+    const leftName = String(left.student?.name || '').localeCompare(String(right.student?.name || ''), 'id')
+    if (leftName !== 0) return leftName
+    const leftComponent = String(left.componentCode || '').localeCompare(String(right.componentCode || ''), 'id')
+    if (leftComponent !== 0) return leftComponent
+    return getRemedialRecordedTime(left) - getRemedialRecordedTime(right)
+  })
+}
+
 async function loadRemedialScoreEntry(scoreEntryId: number): Promise<RemedialScoreEntryRow | null> {
   return prisma.studentScoreEntry.findUnique({
     where: { id: scoreEntryId },
@@ -3588,7 +3645,8 @@ export const getRemedialEligibleScores = async (req: Request, res: Response) => 
 
     const formatted = []
     const kkmCache = new Map<string, Awaited<ReturnType<typeof resolveKkmForRemedialScoreEntry>>>()
-    for (const entry of entries) {
+    const scopedEntries = dedupeRemedialEligibleEntries(entries)
+    for (const entry of scopedEntries) {
       const kkmCacheKey = `${entry.studentId}:${entry.subjectId}:${entry.academicYearId}`
       let kkmInfo = kkmCache.get(kkmCacheKey)
       if (!kkmInfo) {
