@@ -5,14 +5,14 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-04-30 10:29 WIB
-- Current status: Batch mobile parity presensi terpadu sudah selesai secara source dan verifikasi lokal. Guru mapel mobile punya tab `Rekap Presensi` dengan detail tanggal per siswa, wali kelas mobile punya rekap detail mingguan/bulanan/semester/tahun, dan principal mobile punya monitoring presensi guru mapel berbasis jadwal.
+- Last updated: 2026-04-30 10:31 WIB
+- Current status: Batch mobile parity presensi terpadu sudah selesai, sudah commit/push, dan sudah publish OTA tester ke channel `pilot-live`. Guru mapel mobile punya tab `Rekap Presensi` dengan detail tanggal per siswa, wali kelas mobile punya rekap detail mingguan/bulanan/semester/tahun, dan principal mobile punya monitoring presensi guru mapel berbasis jadwal.
 - Objective/task aktif:
   - Menyelesaikan peningkatan presensi siswa/guru lintas guru mapel, wali kelas, kurikulum, dan mobile parity.
 - Batch terakhir selesai:
   - `Presensi terpadu batch 3 - mobile parity rekap/detail`
 - Progress batch ini:
-  - `100%` source mobile selesai; OTA akan dipublish setelah commit agar safety gate mobile clean
+  - `100%`
 - Progress presensi terpadu saat ini:
   - `100%` backend audit dan endpoint rekap/detail
   - `100%` web guru mapel rekap detail
@@ -25,8 +25,8 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
-  - Commit: `d4a9055` sebelum batch mobile; commit mobile parity akan dibuat setelah update file ini
-  - Title: `docs: update attendance recap handoff`
+  - Commit: `a962ecc`
+  - Title: `feat(mobile): add attendance recap parity`
   - Summary:
     - subject attendance mendapat audit fields (`createdAt`, `updatedAt`, `createdById`, `updatedById`, optional assignment/schedule link)
     - endpoint baru tersedia untuk detail rekap presensi harian, rekap presensi mapel, dan monitoring presensi guru mapel berbasis jadwal
@@ -66,12 +66,16 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `curl -I https://siskgb2.id/` merespons `200`
   - `cd mobile-app && npm run typecheck`
   - `cd mobile-app && npm run audit:parity:check`
+  - `cd mobile-app && npm run check:ota:testers`
+  - `cd mobile-app && npm run update:testers -- "Rekap presensi mobile diperbarui. Silakan perbarui untuk menikmati fitur terbaru."`
 - Publish/live status:
   - Backend sudah restart via PM2 dan health `Backend:200`, `Backend API:200`
   - Web sudah deploy ke `/var/www/html`
-  - Mobile OTA belum dipublish pada saat handoff ini karena safety gate mewajibkan worktree clean; publish OTA dilanjutkan setelah commit mobile parity
+  - Mobile OTA sudah publish ke channel `pilot-live`
+  - OTA update group ID: `ad37835b-a11e-40b6-8057-ffe9291c08c3`
+  - Android update ID: `019ddc70-72b3-7d7a-acdb-d5ae7e9a9ff1`
+  - Push notify update berhasil: recipients `40`, sent `40`, failed `0`, stale `0`
 - Remaining work:
-  - Commit/push batch mobile parity, lalu publish OTA tester channel `pilot-live`.
   - Sanity test manual dengan akun guru/wakakur di browser untuk memastikan data jadwal/presensi real tampil sesuai ekspektasi.
 - Residual risk:
   - Jika satu kelas-mapel punya lebih dari satu sesi pada hari yang sama, data lama tanpa `scheduleEntryId` masih dicocokkan fallback per tanggal+kelas+mapel. Data baru sudah mendukung link jadwal opsional, tetapi UI input belum memilih sesi spesifik.
