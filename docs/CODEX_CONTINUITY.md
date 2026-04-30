@@ -5,14 +5,19 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-04-30 11:16 WIB
-- Current status: Perbaikan UI/UX presensi dan status `DISPENSATION`/`Dispen` sudah selesai, commit/push, live web/backend, dan OTA mobile tester sudah publish ke channel `pilot-live`.
+- Last updated: 2026-04-30 12:20 WIB
+- Current status: Batch 1 fitur remedial sudah selesai pada pondasi backend, migration sudah apply, backend sudah restart, dan health check normal.
 - Objective/task aktif:
-  - Menyelesaikan peningkatan presensi siswa/guru lintas guru mapel, wali kelas, kurikulum, dan mobile parity.
+  - Mengembangkan fitur remedial nilai untuk guru mapel dengan sumber nilai spesifik, riwayat percobaan lebih dari 1x, nilai asli tetap utuh, dan nilai efektif remedial dibatasi sampai KKM.
 - Batch terakhir selesai:
-  - `Presensi UI/UX dan status Dispen - source + verifikasi lokal`
-- Progress batch ini:
-  - `100%`
+  - `Remedial batch 1 - backend foundation`
+- Progress batch remedial saat ini:
+  - `100%` untuk fondasi database remedial
+  - `100%` untuk API kandidat nilai belum tuntas dan pencatatan remedial
+  - `0%` untuk UI guru mapel
+  - `0%` untuk integrasi nilai efektif remedial ke perhitungan rapor/leger
+- Progress fitur remedial keseluruhan:
+  - `35%`
 - Progress presensi terpadu saat ini:
   - `100%` backend audit dan endpoint rekap/detail
   - `100%` web guru mapel rekap detail
@@ -26,71 +31,38 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
-  - Commit: `8353256`
-  - Title: `feat(attendance): add dispensation status and recap drilldown`
+  - Commit: `pending`
+  - Title: `feat(grades): add remedial score foundation`
   - Summary:
-    - subject attendance mendapat audit fields (`createdAt`, `updatedAt`, `createdById`, `updatedById`, optional assignment/schedule link)
-    - endpoint baru tersedia untuk detail rekap presensi harian, rekap presensi mapel, dan monitoring presensi guru mapel berbasis jadwal
-    - penyimpanan presensi mapel tidak lagi menghapus seluruh record lalu membuat ulang jika update, sehingga record lebih stabil
-    - data presensi mapel lama dibackfill memakai tanggal presensi agar tidak otomatis dianggap input susulan
-    - web guru mapel mendapat tab `Rekap Presensi` dengan periode mingguan/bulanan/semester/tahun dan detail tanggal per siswa
-    - web wali kelas mendapat detail tanggal S/I/A/T pada rekap dengan periode mingguan/bulanan/semester/tahun
-    - web kurikulum/admin mendapat monitoring guru mapel: jadwal, sudah diisi, belum diisi, input susulan, dan diedit
-    - mobile guru mapel mendapat tab `Input Presensi` dan `Rekap Presensi` dengan filter periode dan detail tanggal per siswa
-    - mobile wali kelas memakai rekap detail baru dengan periode mingguan/bulanan/semester/tahun dan detail tanggal S/I/A/T
-    - mobile principal mendapat monitoring presensi guru mapel dengan filter periode/status dan ringkasan jadwal, sudah, belum, susulan, diedit
-    - status `DISPENSATION` ditambahkan untuk kebutuhan Dispen/OSIS/kepanitiaan; dihitung sebagai hadir pada persentase
-    - tombol `Semua Hadir` pada input presensi web guru mapel dihapus karena default input sudah hadir
-    - filter rekap web guru mapel dipindahkan sejajar dengan tab dan label dibuat inline agar tidak memakan space
-    - angka rekap web guru mapel dan wali kelas kini bisa diklik untuk membuka detail tanggal sesuai status yang dipilih
+    - model `StudentScoreRemedial` ditambahkan dan menempel ke `StudentScoreEntry` agar remedial selalu terkait ke sumber nilai spesifik
+    - enum `ScoreRemedialStatus` ditambahkan untuk status percobaan remedial
+    - endpoint `GET /api/grades/remedials/eligible` tersedia untuk daftar nilai yang belum tuntas berdasarkan mapel/tahun/semester/kelas/siswa
+    - endpoint `GET /api/grades/remedials` tersedia untuk melihat riwayat remedial satu sumber nilai
+    - endpoint `POST /api/grades/remedials` tersedia untuk mencatat percobaan remedial baru
+    - nilai asli tidak ditimpa; nilai efektif remedial dihitung dari nilai terbaik tetapi dibatasi maksimum KKM
+    - endpoint kandidat diberi limit maksimal 500 row dan cache KKM per request untuk menghindari query membesar tanpa batas
 - Area/file disentuh:
   - `backend/prisma/schema.prisma`
-  - `backend/prisma/migrations/20260430105500_add_attendance_dispensation_status/migration.sql`
-  - `backend/prisma/migrations/20260430103000_add_subject_attendance_audit/migration.sql`
-  - `backend/prisma/migrations/20260430104500_backfill_subject_attendance_audit_timestamps/migration.sql`
-  - `backend/src/controllers/attendance.controller.ts`
-  - `backend/src/routes/attendance.routes.ts`
-  - `frontend/src/services/attendance.service.ts`
-  - `frontend/src/pages/teacher/TeacherAttendancePage.tsx`
-  - `frontend/src/pages/teacher/homeroom/HomeroomAttendancePage.tsx`
-  - `frontend/src/pages/student/StudentAttendancePage.tsx`
-  - `frontend/src/pages/admin/academic/AttendanceRecapPage.tsx`
-  - `mobile-app/src/features/attendance/types.ts`
-  - `mobile-app/src/features/attendance/attendanceApi.ts`
-  - `mobile-app/app/(app)/teacher/attendance.tsx`
-  - `mobile-app/app/(app)/teacher/homeroom-attendance.tsx`
-  - `mobile-app/app/(app)/attendance.tsx`
-  - `mobile-app/app/(app)/parent/attendance.tsx`
-  - `mobile-app/app/(app)/student/class-attendance.tsx`
-  - `mobile-app/app/(app)/principal/attendance.tsx`
+  - `backend/prisma/migrations/20260430121000_add_student_score_remedials/migration.sql`
+  - `backend/src/controllers/grade.controller.ts`
+  - `backend/src/routes/grade.routes.ts`
   - `docs/CODEX_CONTINUITY.md`
 - Verifikasi batch ini:
-  - `cd backend && npm run build`
   - `cd backend && npx prisma generate`
   - `cd backend && npx prisma migrate deploy`
-  - `cd frontend && npm run build`
+  - `cd backend && npm run build`
   - `git diff --check`
   - `cd backend && npm run service:restart`
   - `cd backend && npm run service:health`
-  - `cd frontend && npm run deploy`
-  - `curl -I https://siskgb2.id/` merespons `200`
-  - `cd mobile-app && npm run typecheck`
-  - `cd mobile-app && npm run audit:parity:check`
-  - `git diff --check`
-  - `cd mobile-app && npm run check:ota:testers`
-  - `cd mobile-app && npm run update:testers -- "Rekap presensi mobile diperbarui. Silakan perbarui untuk menikmati fitur terbaru."`
 - Publish/live status:
-  - Batch sebelumnya: backend/web/mobile sudah live
   - Backend sudah restart dan health `Backend:200`, `Backend API:200`
-  - Web sudah deploy ke `/var/www/html` dan `https://siskgb2.id/` merespons `200`
-  - Mobile OTA sudah publish ke channel `pilot-live`
-  - OTA update group ID: `2b750981-4d8c-4597-87a5-851df4cc931b`
-  - Android update ID: `019ddc99-c69b-7f3e-ac29-11b9f433332e`
-  - Push notify update berhasil: recipients `50`, sent `50`, failed `0`, stale `0`
+  - Web deploy tidak dijalankan karena batch ini belum menyentuh frontend UI
+  - Mobile OTA tidak dijalankan karena batch ini belum menyentuh mobile
 - Remaining work:
-  - Sanity test manual dengan akun guru/wakakur di browser untuk memastikan data jadwal/presensi real tampil sesuai ekspektasi.
+  - Batch 2: buat UI guru mapel untuk memilih sumber nilai remedial, melihat kandidat belum tuntas, menginput remedial berulang, dan melihat riwayat percobaan.
+  - Batch 3: integrasikan nilai efektif remedial ke perhitungan rapor/leger secara aman dan audit tampilan siswa/walas/mobile bila diperlukan.
 - Residual risk:
-  - Jika satu kelas-mapel punya lebih dari satu sesi pada hari yang sama, data lama tanpa `scheduleEntryId` masih dicocokkan fallback per tanggal+kelas+mapel. Data baru sudah mendukung link jadwal opsional, tetapi UI input belum memilih sesi spesifik.
+  - Remedial sudah bisa disimpan di backend, tetapi belum memengaruhi nilai rapor/leger sampai batch integrasi berikutnya agar perubahan perhitungan nilai tidak masuk tanpa UI/audit lengkap.
 
 ## Status Saat Ini
 

@@ -1346,7 +1346,7 @@ model StudentGrade {
 }
 
 model StudentScoreEntry {
-  id                Int                  @id @default(autoincrement())
+  id                Int                    @id @default(autoincrement())
   studentId         Int
   subjectId         Int
   academicYearId    Int
@@ -1354,25 +1354,49 @@ model StudentScoreEntry {
   componentCode     String
   componentType     GradeComponentType?
   componentTypeCode String?
-  reportSlot        ReportComponentSlot  @default(NONE)
-  reportSlotCode    String               @default("NONE")
+  reportSlot        ReportComponentSlot    @default(NONE)
+  reportSlotCode    String                 @default("NONE")
   score             Float
   rawScore          Float?
   maxScore          Float?
   sourceType        ScoreEntrySourceType
-  sourceKey         String               @unique
+  sourceKey         String                 @unique
   metadata          Json?
-  recordedAt        DateTime             @default(now())
-  createdAt         DateTime             @default(now())
-  updatedAt         DateTime             @updatedAt
-  student           User                 @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  subject           Subject              @relation(fields: [subjectId], references: [id], onDelete: Cascade)
-  academicYear      AcademicYear         @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+  recordedAt        DateTime               @default(now())
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+  student           User                   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  subject           Subject                @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  academicYear      AcademicYear           @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+  remedials         StudentScoreRemedial[]
 
   @@index([studentId, subjectId, academicYearId, semester])
   @@index([academicYearId, semester, reportSlot])
   @@index([academicYearId, componentCode])
   @@map("student_score_entries")
+}
+
+model StudentScoreRemedial {
+  id                     Int                 @id @default(autoincrement())
+  scoreEntryId           Int
+  attemptNumber          Int
+  originalScore          Float
+  previousEffectiveScore Float?
+  remedialScore          Float
+  effectiveScore         Float
+  kkm                    Int
+  status                 ScoreRemedialStatus @default(RECORDED)
+  note                   String?
+  recordedById           Int?
+  recordedAt             DateTime            @default(now())
+  createdAt              DateTime            @default(now())
+  updatedAt              DateTime            @updatedAt
+  scoreEntry             StudentScoreEntry   @relation(fields: [scoreEntryId], references: [id], onDelete: Cascade)
+
+  @@unique([scoreEntryId, attemptNumber])
+  @@index([scoreEntryId, status])
+  @@index([recordedById, recordedAt])
+  @@map("student_score_remedials")
 }
 
 model ReportDate {
@@ -3440,6 +3464,14 @@ enum ScoreEntrySourceType {
   ASSIGNMENT_SUBMISSION
   IMPORT
   MIGRATION
+}
+
+enum ScoreRemedialStatus {
+  DRAFT
+  RECORDED
+  PASSED
+  STILL_BELOW_KKM
+  CANCELLED
 }
 
 enum ApprovalStatus {

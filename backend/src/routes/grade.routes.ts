@@ -28,6 +28,25 @@ router.put(
   asyncHandler(gradeController.updateHomeroomResultPublication)
 );
 
+// REMEDIAL NILAI
+router.get(
+  '/remedials/eligible',
+  roleMiddleware(['ADMIN', 'TEACHER']),
+  asyncHandler(gradeController.getRemedialEligibleScores)
+);
+
+router.get(
+  '/remedials',
+  roleMiddleware(['ADMIN', 'TEACHER']),
+  asyncHandler(gradeController.getScoreRemedials)
+);
+
+router.post(
+  '/remedials',
+  roleMiddleware(['ADMIN', 'TEACHER']),
+  asyncHandler(gradeController.createScoreRemedial)
+);
+
 // STUDENT GRADES (Input Nilai per Komponen)
 router.get(
   '/student-overview',

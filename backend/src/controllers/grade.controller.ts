@@ -1,5 +1,14 @@
 import { Request, Response } from 'express'
-import { Semester, GradeComponentType, GradeEntryMode, Prisma, ReportComponentSlot, ExamSessionStatus, ExamType } from '@prisma/client'
+import {
+  Semester,
+  GradeComponentType,
+  GradeEntryMode,
+  Prisma,
+  ReportComponentSlot,
+  ExamSessionStatus,
+  ExamType,
+  ScoreRemedialStatus,
+} from '@prisma/client'
 import prisma from '../utils/prisma'
 import { ApiResponseHelper } from '../utils/ApiResponse'
 import { ApiError } from '../utils/api'
@@ -3200,6 +3209,506 @@ const syncReportGradeSafely = async (
     };
   }
 };
+
+type RemedialScoreEntryRow = Prisma.StudentScoreEntryGetPayload<{
+  include: {
+    student: {
+      select: {
+        id: true
+        name: true
+        nis: true
+        nisn: true
+        classId: true
+        studentClass: { select: { academicYearId: true } }
+      }
+    }
+    subject: { select: { id: true; code: true; name: true } }
+    academicYear: { select: { id: true; name: true } }
+    remedials: { orderBy: { attemptNumber: 'asc' } }
+  }
+}>
+
+const REMEDIAL_COUNTED_STATUSES = new Set<ScoreRemedialStatus>([
+  ScoreRemedialStatus.RECORDED,
+  ScoreRemedialStatus.PASSED,
+  ScoreRemedialStatus.STILL_BELOW_KKM,
+])
+
+function roundRemedialScore(value: number): number {
+  if (!Number.isFinite(value)) return 0
+  return Number(Math.max(0, Math.min(100, value)).toFixed(2))
+}
+
+function resolveRemedialEffectiveScore(params: {
+  originalScore: number
+  previousEffectiveScore?: number | null
+  remedialScore: number
+  kkm: number
+}): number {
+  const originalScore = roundRemedialScore(params.originalScore)
+  const previousEffectiveScore = roundRemedialScore(
+    Number.isFinite(Number(params.previousEffectiveScore))
+      ? Number(params.previousEffectiveScore)
+      : originalScore,
+  )
+  const remedialScore = roundRemedialScore(params.remedialScore)
+  const kkm = roundRemedialScore(params.kkm)
+  return roundRemedialScore(Math.max(originalScore, previousEffectiveScore, Math.min(remedialScore, kkm)))
+}
+
+function summarizeRemedialState(
+  score: number,
+  kkm: number,
+  remedials: Array<{
+    attemptNumber: number
+    status: ScoreRemedialStatus
+    effectiveScore: number
+    remedialScore: number
+    recordedAt: Date
+  }>,
+) {
+  const counted = remedials
+    .filter((row) => REMEDIAL_COUNTED_STATUSES.has(row.status))
+    .sort((a, b) => Number(a.attemptNumber) - Number(b.attemptNumber))
+  const originalScore = roundRemedialScore(Number(score))
+  const currentEffectiveScore = roundRemedialScore(
+    counted.reduce(
+      (best, row) => Math.max(best, Number(row.effectiveScore || 0)),
+      originalScore,
+    ),
+  )
+  const latestAttempt = counted[counted.length - 1] || null
+  return {
+    originalScore,
+    currentEffectiveScore,
+    latestAttempt,
+    attemptCount: counted.length,
+    isComplete: currentEffectiveScore >= Number(kkm || 75),
+  }
+}
+
+async function resolveKkmForRemedialScoreEntry(params: {
+  studentId: number
+  subjectId: number
+  academicYearId: number
+}) {
+  const classId = await resolveStudentClassId(params.studentId, params.academicYearId)
+  let classLevel: string | null = null
+
+  if (classId) {
+    const classRow = await prisma.class.findUnique({
+      where: { id: classId },
+      select: { level: true },
+    })
+    classLevel = classRow?.level || null
+
+    const assignment = await prisma.teacherAssignment.findFirst({
+      where: {
+        classId,
+        subjectId: params.subjectId,
+        academicYearId: params.academicYearId,
+      },
+      select: { kkm: true },
+    })
+    if (assignment) {
+      return {
+        kkm: Number(assignment.kkm || 75),
+        classId,
+        classLevel,
+        source: 'TEACHER_ASSIGNMENT' as const,
+      }
+    }
+  }
+
+  if (classLevel) {
+    const subjectKkm = await prisma.subjectKKM.findFirst({
+      where: {
+        subjectId: params.subjectId,
+        academicYearId: params.academicYearId,
+        classLevel,
+      },
+      select: { kkm: true },
+    })
+    if (subjectKkm) {
+      return {
+        kkm: Number(subjectKkm.kkm || 75),
+        classId,
+        classLevel,
+        source: 'SUBJECT_KKM' as const,
+      }
+    }
+  }
+
+  return {
+    kkm: 75,
+    classId,
+    classLevel,
+    source: 'DEFAULT' as const,
+  }
+}
+
+function formatRemedialSourceLabel(entry: {
+  componentCode?: string | null
+  componentTypeCode?: string | null
+  componentType?: GradeComponentType | null
+  sourceType?: string | null
+  sourceKey?: string | null
+  metadata?: Prisma.JsonValue | null
+}) {
+  const metadata = entry.metadata && typeof entry.metadata === 'object' && !Array.isArray(entry.metadata)
+    ? entry.metadata as Record<string, unknown>
+    : {}
+  const field = String(metadata.field || '').trim()
+  const order = Number(metadata.order || 0)
+  if (/^nf\d+$/i.test(field)) return `Formatif ${order || field.replace(/\D/g, '')}`
+  if (field === 'score') return String(entry.componentCode || entry.componentTypeCode || entry.componentType || 'Nilai')
+  return String(entry.componentCode || entry.componentTypeCode || entry.componentType || entry.sourceType || 'Nilai')
+}
+
+async function loadRemedialScoreEntry(scoreEntryId: number): Promise<RemedialScoreEntryRow | null> {
+  return prisma.studentScoreEntry.findUnique({
+    where: { id: scoreEntryId },
+    include: {
+      student: {
+        select: {
+          id: true,
+          name: true,
+          nis: true,
+          nisn: true,
+          classId: true,
+          studentClass: {
+            select: {
+              academicYearId: true,
+            },
+          },
+        },
+      },
+      subject: {
+        select: {
+          id: true,
+          code: true,
+          name: true,
+        },
+      },
+      academicYear: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
+      remedials: {
+        orderBy: {
+          attemptNumber: 'asc',
+        },
+      },
+    },
+  })
+}
+
+async function assertCanAccessRemedialScoreEntry(user: AuthUserLike, entry: {
+  studentId: number
+  subjectId: number
+  academicYearId: number
+}) {
+  if (!isTeacherUser(user)) return
+  await ensureTeacherCanAccessGradeContext({
+    user,
+    studentId: entry.studentId,
+    subjectId: entry.subjectId,
+    academicYearId: entry.academicYearId,
+  })
+}
+
+function formatRemedialScoreEntry(entry: RemedialScoreEntryRow, kkm: number) {
+  const summary = summarizeRemedialState(Number(entry.score), kkm, entry.remedials)
+  return {
+    id: entry.id,
+    scoreEntryId: entry.id,
+    studentId: entry.studentId,
+    subjectId: entry.subjectId,
+    academicYearId: entry.academicYearId,
+    semester: entry.semester,
+    componentCode: entry.componentCode,
+    componentType: entry.componentType,
+    componentTypeCode: entry.componentTypeCode,
+    reportSlot: entry.reportSlot,
+    reportSlotCode: entry.reportSlotCode,
+    sourceType: entry.sourceType,
+    sourceKey: entry.sourceKey,
+    sourceLabel: formatRemedialSourceLabel(entry),
+    originalScore: summary.originalScore,
+    currentEffectiveScore: summary.currentEffectiveScore,
+    kkm,
+    isComplete: summary.isComplete,
+    attemptCount: summary.attemptCount,
+    latestAttempt: summary.latestAttempt,
+    student: entry.student,
+    subject: entry.subject,
+    academicYear: entry.academicYear,
+    remedials: entry.remedials,
+  }
+}
+
+export const getRemedialEligibleScores = async (req: Request, res: Response) => {
+  try {
+    const user = (req as any).user as AuthUserLike
+    const subjectId = toPositiveInt(req.query.subject_id || req.query.subjectId)
+    const academicYearId = toPositiveInt(req.query.academic_year_id || req.query.academicYearId)
+    const classId = toPositiveInt(req.query.class_id || req.query.classId)
+    const studentId = toPositiveInt(req.query.student_id || req.query.studentId)
+    const semester = parseStudentReportSemester(req.query.semester)
+    const componentCode = normalizeComponentCode(req.query.component_code || req.query.componentCode)
+    const includeAll = String(req.query.include_all || req.query.includeAll || '').toLowerCase() === 'true'
+    const limit = Math.min(Math.max(toPositiveInt(req.query.limit) || 300, 1), 500)
+
+    if (!subjectId || !academicYearId || !semester) {
+      throw new ApiError(400, 'subject_id, academic_year_id, dan semester wajib diisi.')
+    }
+
+    if (!classId && !studentId) {
+      throw new ApiError(400, 'class_id atau student_id wajib diisi.')
+    }
+
+    if (isTeacherUser(user)) {
+      await ensureTeacherCanAccessGradeContext({
+        user,
+        subjectId,
+        academicYearId,
+        classId,
+        studentId,
+      })
+    }
+
+    let studentIds: number[] = []
+    if (studentId) {
+      studentIds = [studentId]
+    } else if (classId) {
+      const classScope = await resolveHistoricalStudentScope({
+        academicYearId,
+        classId,
+      })
+      studentIds = classScope.studentIds
+    }
+
+    if (studentIds.length === 0) {
+      return ApiResponseHelper.success(res, [], 'Daftar nilai remedial berhasil diambil.')
+    }
+
+    const entries = await prisma.studentScoreEntry.findMany({
+      where: {
+        studentId: { in: studentIds },
+        subjectId,
+        academicYearId,
+        semester,
+        ...(componentCode ? { componentCode } : {}),
+        NOT: {
+          sourceKey: {
+            startsWith: FORMATIVE_SLOT_COUNT_SOURCE_PREFIX,
+          },
+        },
+      },
+      include: {
+        student: {
+          select: {
+            id: true,
+            name: true,
+            nis: true,
+            nisn: true,
+            classId: true,
+            studentClass: {
+              select: {
+                academicYearId: true,
+              },
+            },
+          },
+        },
+        subject: {
+          select: {
+            id: true,
+            code: true,
+            name: true,
+          },
+        },
+        academicYear: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        remedials: {
+          orderBy: {
+            attemptNumber: 'asc',
+          },
+        },
+      },
+      orderBy: [
+        { student: { name: 'asc' } },
+        { componentCode: 'asc' },
+        { recordedAt: 'asc' },
+      ],
+      take: limit,
+    })
+
+    const formatted = []
+    const kkmCache = new Map<string, Awaited<ReturnType<typeof resolveKkmForRemedialScoreEntry>>>()
+    for (const entry of entries) {
+      const kkmCacheKey = `${entry.studentId}:${entry.subjectId}:${entry.academicYearId}`
+      let kkmInfo = kkmCache.get(kkmCacheKey)
+      if (!kkmInfo) {
+        kkmInfo = await resolveKkmForRemedialScoreEntry({
+          studentId: entry.studentId,
+          subjectId: entry.subjectId,
+          academicYearId: entry.academicYearId,
+        })
+        kkmCache.set(kkmCacheKey, kkmInfo)
+      }
+      const row = formatRemedialScoreEntry(entry, kkmInfo.kkm)
+      if (includeAll || !row.isComplete) {
+        formatted.push({
+          ...row,
+          kkmSource: kkmInfo.source,
+          classId: kkmInfo.classId,
+          classLevel: kkmInfo.classLevel,
+        })
+      }
+    }
+
+    return ApiResponseHelper.success(res, formatted, 'Daftar nilai remedial berhasil diambil.')
+  } catch (error) {
+    console.error('Get remedial eligible scores error:', error)
+    if (error instanceof ApiError) throw error
+    throw new ApiError(500, 'Gagal mengambil daftar nilai remedial.')
+  }
+}
+
+export const getScoreRemedials = async (req: Request, res: Response) => {
+  try {
+    const user = (req as any).user as AuthUserLike
+    const scoreEntryId = toPositiveInt(req.query.score_entry_id || req.query.scoreEntryId)
+
+    if (!scoreEntryId) {
+      throw new ApiError(400, 'score_entry_id wajib diisi.')
+    }
+
+    const entry = await loadRemedialScoreEntry(scoreEntryId)
+    if (!entry) {
+      throw new ApiError(404, 'Sumber nilai tidak ditemukan.')
+    }
+
+    await assertCanAccessRemedialScoreEntry(user, entry)
+
+    const kkmInfo = await resolveKkmForRemedialScoreEntry({
+      studentId: entry.studentId,
+      subjectId: entry.subjectId,
+      academicYearId: entry.academicYearId,
+    })
+
+    return ApiResponseHelper.success(
+      res,
+      {
+        ...formatRemedialScoreEntry(entry, kkmInfo.kkm),
+        kkmSource: kkmInfo.source,
+        classId: kkmInfo.classId,
+        classLevel: kkmInfo.classLevel,
+      },
+      'Riwayat remedial berhasil diambil.',
+    )
+  } catch (error) {
+    console.error('Get score remedials error:', error)
+    if (error instanceof ApiError) throw error
+    throw new ApiError(500, 'Gagal mengambil riwayat remedial.')
+  }
+}
+
+export const createScoreRemedial = async (req: Request, res: Response) => {
+  try {
+    const user = (req as any).user as AuthUserLike
+    const scoreEntryId = toPositiveInt(req.body?.score_entry_id || req.body?.scoreEntryId)
+    const remedialScore = parseOptionalScoreValue(
+      req.body?.remedial_score ?? req.body?.remedialScore,
+      'Nilai remedial',
+    )
+    const note = String(req.body?.note || '').trim() || null
+
+    if (!scoreEntryId) {
+      throw new ApiError(400, 'score_entry_id wajib diisi.')
+    }
+    if (remedialScore === undefined || remedialScore === null) {
+      throw new ApiError(400, 'Nilai remedial wajib diisi.')
+    }
+
+    const entry = await loadRemedialScoreEntry(scoreEntryId)
+    if (!entry) {
+      throw new ApiError(404, 'Sumber nilai tidak ditemukan.')
+    }
+
+    await assertCanAccessRemedialScoreEntry(user, entry)
+
+    const kkmInfo = await resolveKkmForRemedialScoreEntry({
+      studentId: entry.studentId,
+      subjectId: entry.subjectId,
+      academicYearId: entry.academicYearId,
+    })
+    const summary = summarizeRemedialState(Number(entry.score), kkmInfo.kkm, entry.remedials)
+
+    if (summary.currentEffectiveScore >= kkmInfo.kkm) {
+      throw new ApiError(400, 'Nilai siswa sudah tuntas. Remedial baru tidak diperlukan.')
+    }
+
+    const maxAttempt = entry.remedials.reduce(
+      (latest, row) => Math.max(latest, Number(row.attemptNumber || 0)),
+      0,
+    )
+    const effectiveScore = resolveRemedialEffectiveScore({
+      originalScore: summary.originalScore,
+      previousEffectiveScore: summary.currentEffectiveScore,
+      remedialScore,
+      kkm: kkmInfo.kkm,
+    })
+    const status =
+      effectiveScore >= kkmInfo.kkm
+        ? ScoreRemedialStatus.PASSED
+        : ScoreRemedialStatus.STILL_BELOW_KKM
+
+    const remedial = await prisma.studentScoreRemedial.create({
+      data: {
+        scoreEntryId: entry.id,
+        attemptNumber: maxAttempt + 1,
+        originalScore: summary.originalScore,
+        previousEffectiveScore: summary.currentEffectiveScore,
+        remedialScore: roundRemedialScore(remedialScore),
+        effectiveScore,
+        kkm: kkmInfo.kkm,
+        status,
+        note,
+        recordedById: toPositiveInt(user?.id) || null,
+      },
+    })
+
+    emitGradeRealtimeRefresh({
+      studentIds: [entry.studentId],
+      subjectIds: [entry.subjectId],
+      academicYearIds: [entry.academicYearId],
+      semesters: [entry.semester],
+      includeReports: false,
+    })
+
+    return ApiResponseHelper.success(
+      res,
+      {
+        remedial,
+        effectiveScore,
+        kkm: kkmInfo.kkm,
+        status,
+      },
+      'Nilai remedial berhasil disimpan.',
+    )
+  } catch (error) {
+    console.error('Create score remedial error:', error)
+    if (error instanceof ApiError) throw error
+    throw new ApiError(500, 'Gagal menyimpan nilai remedial.')
+  }
+}
 
 export const resyncStudentReligionReportDescriptions = async (studentId: number) => {
   const normalizedStudentId = Number(studentId || 0);
