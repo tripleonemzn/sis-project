@@ -5,12 +5,12 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-04-30 17:20 WIB
-- Current status: Batch remedial berbasis paket soal sudah bisa dikerjakan siswa dan live untuk web/backend/mobile. Guru mapel dapat memberi aktivitas remedial student-scoped dari popup remedial, siswa dapat membuka tombol `Kerjakan`/`Kerjakan Soal Remedial`, jawaban tersimpan di row remedial siswa, nilai remedial dihitung saat submit, dan nilai efektif tetap dibatasi sampai KKM. Alur ini tidak memakai jadwal ujian reguler kelas sehingga aktivitas remedial tidak bocor ke siswa lain.
+- Last updated: 2026-04-30 17:32 WIB
+- Current status: Batch remedial berbasis paket soal sudah bisa dikerjakan siswa dan live untuk web/backend/mobile. Popup input remedial guru mapel juga sudah dirapikan: helper text yang memenuhi ruang dihapus, tombol `Buat Paket Baru` sejajar dengan dropdown paket soal, field instruksi/tautan tugas tidak lagi tampil, dan tombol aksi menjadi `Terbitkan Remedial ke Siswa` agar tujuannya lebih jelas. Alur remedial tetap student-scoped dan tidak memakai jadwal ujian reguler kelas.
 - Objective/task aktif:
   - Mengembangkan fitur remedial nilai untuk guru mapel dengan sumber nilai spesifik, riwayat percobaan lebih dari 1x, nilai asli tetap utuh, dan nilai efektif remedial dibatasi sampai KKM.
 - Batch terakhir selesai:
-  - `Remedial batch 10 - student takes remedial question set`
+  - `Remedial batch 11 - remedial input modal UI cleanup`
 - Progress batch remedial saat ini:
   - `100%` untuk fondasi database remedial
   - `100%` untuk API kandidat nilai belum tuntas dan pencatatan remedial
@@ -31,45 +31,23 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
-  - Commit: `dd079a0`
-  - Title: `feat(grades): let students take remedial question sets`
+  - Commit: `53db216`
+  - Title: `fix(grades): simplify remedial input modal`
   - Summary:
-    - `student_score_remedials` menyimpan jawaban, waktu mulai, dan waktu submit aktivitas paket soal remedial
-    - endpoint student-scoped baru tersedia untuk mulai dan submit aktivitas remedial berbasis paket soal
-    - web siswa memakai surface pengerjaan ujian existing dalam mode remedial tanpa fullscreen/proctoring reguler
-    - mobile siswa menampilkan aksi `Kerjakan Soal Remedial` yang membuka route pengerjaan remedial sesuai source of truth web
-    - submit final menghitung nilai remedial, memperbarui status, menyinkronkan `ReportGrade`, dan mengirim refresh realtime scoped
+    - popup input remedial guru mapel lebih ringkas dan tidak menampilkan helper text/field yang tidak diperlukan
+    - dropdown paket soal dan tombol `Buat Paket Baru` dibuat sejajar dalam satu baris pada desktop
+    - validasi dan toast remedial disesuaikan dengan UI baru yang hanya memakai judul remedial atau paket soal
+    - tombol `Berikan Aktivitas` diganti menjadi `Terbitkan Remedial ke Siswa`
 - Area/file disentuh:
-  - `backend/prisma/schema.prisma`
-  - `backend/prisma/migrations/20260430172500_add_score_remedial_activity_attempt_fields/migration.sql`
-  - `backend/src/controllers/grade.controller.ts`
-  - `backend/src/routes/grade.routes.ts`
-  - `frontend/src/App.tsx`
-  - `frontend/src/pages/student/StudentExamTakePage.tsx`
-  - `frontend/src/pages/student/StudentLearningPage.tsx`
-  - `frontend/src/services/grade.service.ts`
-  - `mobile-app/app/(app)/learning.tsx`
-  - `mobile-app/src/features/learning/types.ts`
+  - `frontend/src/pages/teacher/TeacherGradesPage.tsx`
   - `docs/CODEX_CONTINUITY.md`
 - Verifikasi batch ini:
-  - `cd backend && npx prisma format`
-  - `cd backend && npx prisma generate`
-  - `cd backend && npx prisma migrate deploy`
   - `git diff --check`
-  - `cd backend && npm run build`
   - `cd frontend && npm run build`
-  - `cd mobile-app && npm run typecheck`
-  - `cd mobile-app && npm run audit:parity:check`
-  - `cd backend && npm run service:restart`
-  - `cd backend && npm run service:health`
   - `cd frontend && npm run deploy`
-  - `cd mobile-app && npm run check:ota:testers`
-  - `cd mobile-app && npm run update:testers -- "Penyempurnaan remedial: siswa kini dapat mengerjakan paket soal remedial yang diberikan guru. Silakan perbarui untuk menikmati fitur terbaru."`
 - Publish/live status:
   - Web sudah deploy live
-  - Backend sudah direload via PM2 dan health tetap `Backend:200`, `Backend API:200`
-  - Mobile OTA sudah publish ke channel `pilot-live`, runtime `0.2.2`, update group `0298fa2f-7e23-4ca1-8aa2-ec1159b9622a`
-  - Push notify OTA berhasil terkirim: `recipients=65`, `sent=65`, `failed=0`, `stale=0`
+  - Tidak ada perubahan backend atau mobile pada batch UI ini
 - Remaining work:
   - Tidak ada sisa wajib pada batch remedial ini. Jika user ingin pengalaman native penuh di mobile, batch berikutnya bisa membuat layar CBT remedial native, tetapi saat ini mobile sudah punya aksi aman untuk membuka pengerjaan remedial dari aplikasi.
 - Residual risk:
