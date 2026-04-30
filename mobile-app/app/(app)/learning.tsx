@@ -8,8 +8,9 @@ import { AppLoadingScreen } from '../../src/components/AppLoadingScreen';
 import { QueryStateView } from '../../src/components/QueryStateView';
 import { OfflineCacheNotice } from '../../src/components/OfflineCacheNotice';
 import { useAuth } from '../../src/features/auth/AuthProvider';
+import MobileMenuTabBar from '../../src/components/MobileMenuTabBar';
 import { learningApi } from '../../src/features/learning/learningApi';
-import { AssignmentWithSubmission, LearningMaterial } from '../../src/features/learning/types';
+import { AssignmentWithSubmission, LearningMaterial, LearningRemedialActivity } from '../../src/features/learning/types';
 import { useLearningQuery } from '../../src/features/learning/useLearningQuery';
 import { downloadFileToDevice } from '../../src/lib/files/downloadFileToDevice';
 import { resolvePublicAssetUrl } from '../../src/lib/media/resolvePublicAssetUrl';
@@ -17,7 +18,7 @@ import { notifyError, notifyInfo, notifySuccess } from '../../src/lib/ui/feedbac
 import { getStandardPagePadding } from '../../src/lib/ui/pageLayout';
 import { useAppTextScale } from '../../src/theme/AppTextScaleProvider';
 
-type TabKey = 'materials' | 'assignments';
+type TabKey = 'materials' | 'assignments' | 'remedials';
 const LEARNING_UPLOAD_MAX_BYTES = 10 * 1024 * 1024;
 
 function formatDate(dateString: string) {
@@ -30,6 +31,18 @@ function formatDate(dateString: string) {
     hour: '2-digit',
     minute: '2-digit',
   });
+}
+
+function formatOptionalDate(dateString?: string | null) {
+  if (!dateString) return '-';
+  return formatDate(dateString);
+}
+
+function formatScore(value: number | null | undefined) {
+  if (value === null || value === undefined) return '-';
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return '-';
+  return Number.isInteger(parsed) ? String(parsed) : parsed.toFixed(2);
 }
 
 type OpenAttachmentHandler = (fileUrl?: string | null, fileName?: string | null) => Promise<void>;
@@ -206,6 +219,83 @@ function AssignmentCard({
   );
 }
 
+function RemedialCard({
+  item,
+  onOpenAttachment,
+}: {
+  item: LearningRemedialActivity;
+  onOpenAttachment: OpenAttachmentHandler;
+}) {
+  const { scaleFont, scaleLineHeight } = useAppTextScale();
+  const isComplete = Number(item.effectiveScore || 0) >= Number(item.kkm || 0);
+
+  return (
+    <View
+      style={{
+        backgroundColor: '#fff',
+        borderWidth: 1,
+        borderColor: '#e2e8f0',
+        borderRadius: 12,
+        padding: 12,
+        marginBottom: 10,
+      }}
+    >
+      <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, marginBottom: 8 }}>
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontSize: scaleFont(14), lineHeight: scaleLineHeight(21), fontWeight: '700', color: '#0f172a' }}>
+            {item.activityTitle || `Remedial ${item.sourceLabel}`}
+          </Text>
+          <Text style={{ fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), color: '#64748b', marginTop: 3 }}>
+            {item.subject.name} ({item.subject.code}) • {item.teacher?.name || '-'}
+          </Text>
+        </View>
+        <Text
+          style={{
+            fontSize: scaleFont(11),
+            fontWeight: '700',
+            color: isComplete ? '#15803d' : '#b45309',
+            backgroundColor: isComplete ? '#dcfce7' : '#fffbeb',
+            borderWidth: 1,
+            borderColor: isComplete ? '#86efac' : '#fde68a',
+            borderRadius: 999,
+            paddingHorizontal: 8,
+            paddingVertical: 3,
+          }}
+        >
+          {item.statusLabel}
+        </Text>
+      </View>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+        <Text style={{ backgroundColor: '#eff6ff', color: '#1d4ed8', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 4, fontSize: scaleFont(11), fontWeight: '700' }}>
+          {item.methodLabel}
+        </Text>
+        <Text style={{ backgroundColor: '#f8fafc', color: '#475569', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 4, fontSize: scaleFont(11), fontWeight: '700' }}>
+          Percobaan {item.attemptNumber}
+        </Text>
+        <Text style={{ backgroundColor: '#f8fafc', color: '#475569', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 4, fontSize: scaleFont(11), fontWeight: '700' }}>
+          {item.sourceLabel}
+        </Text>
+      </View>
+      <Text style={{ fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), color: '#334155', marginBottom: 8 }}>
+        {item.activityInstructions || 'Instruksi remedial belum ditambahkan guru.'}
+      </Text>
+      <Text style={{ fontSize: scaleFont(11), lineHeight: scaleLineHeight(16), color: '#64748b', marginBottom: 2 }}>
+        Tenggat: {formatOptionalDate(item.activityDueAt)}
+      </Text>
+      <Text style={{ fontSize: scaleFont(11), lineHeight: scaleLineHeight(16), color: '#64748b', marginBottom: 8 }}>
+        Nilai: asli {formatScore(item.originalScore)} • remedial {formatScore(item.remedialScore)} • efektif {formatScore(item.effectiveScore)} / KKM {item.kkm}
+      </Text>
+      {item.activityReferenceUrl ? (
+        <AttachmentAction
+          title="Buka Tautan Remedial"
+          detail={item.activityReferenceUrl}
+          onPress={() => void onOpenAttachment(item.activityReferenceUrl)}
+        />
+      ) : null}
+    </View>
+  );
+}
+
 export default function LearningScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -308,6 +398,18 @@ export default function LearningScreen() {
     );
   }, [learningQuery.data?.assignments, search]);
 
+  const filteredRemedials = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return learningQuery.data?.remedials || [];
+    return (learningQuery.data?.remedials || []).filter(
+      (item) =>
+        (item.activityTitle || '').toLowerCase().includes(q) ||
+        (item.activityInstructions || '').toLowerCase().includes(q) ||
+        item.subject.name.toLowerCase().includes(q) ||
+        item.sourceLabel.toLowerCase().includes(q),
+    );
+  }, [learningQuery.data?.remedials, search]);
+
   if (isLoading) return <AppLoadingScreen message="Memuat pembelajaran..." />;
   if (!isAuthenticated) return <Redirect href="/welcome" />;
 
@@ -334,43 +436,22 @@ export default function LearningScreen() {
       <Text style={{ fontSize: scaleFont(20), lineHeight: scaleLineHeight(28), fontWeight: '700', marginBottom: 6 }}>Materi & Tugas</Text>
       <Text style={{ color: '#64748b', fontSize: fontSizes.body, lineHeight: scaleLineHeight(20), marginBottom: 12 }}>Akses materi pelajaran dan pengumpulan tugas Anda.</Text>
 
-      <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 10 }}>
-        <View style={{ flex: 1, paddingHorizontal: 4 }}>
-          <Pressable
-            onPress={() => setActiveTab('materials')}
-            style={{
-              borderWidth: 1,
-              borderColor: activeTab === 'materials' ? '#1d4ed8' : '#cbd5e1',
-              backgroundColor: activeTab === 'materials' ? '#eff6ff' : '#fff',
-              borderRadius: 9,
-              paddingVertical: 10,
-              alignItems: 'center',
-            }}
-          >
-            <Text style={{ color: activeTab === 'materials' ? '#1d4ed8' : '#334155', fontWeight: '700', fontSize: fontSizes.label }}>Materi</Text>
-          </Pressable>
-        </View>
-        <View style={{ flex: 1, paddingHorizontal: 4 }}>
-          <Pressable
-            onPress={() => setActiveTab('assignments')}
-            style={{
-              borderWidth: 1,
-              borderColor: activeTab === 'assignments' ? '#1d4ed8' : '#cbd5e1',
-              backgroundColor: activeTab === 'assignments' ? '#eff6ff' : '#fff',
-              borderRadius: 9,
-              paddingVertical: 10,
-              alignItems: 'center',
-            }}
-          >
-            <Text style={{ color: activeTab === 'assignments' ? '#1d4ed8' : '#334155', fontWeight: '700', fontSize: fontSizes.label }}>Tugas</Text>
-          </Pressable>
-        </View>
+      <View style={{ marginBottom: 10 }}>
+        <MobileMenuTabBar
+          items={[
+            { key: 'materials', label: 'Materi', iconName: 'book-open' },
+            { key: 'assignments', label: 'Tugas', iconName: 'clipboard' },
+            { key: 'remedials', label: 'Remedial', iconName: 'check-circle' },
+          ]}
+          activeKey={activeTab}
+          onChange={(key) => setActiveTab(key as TabKey)}
+        />
       </View>
 
       <TextInput
         value={search}
         onChangeText={setSearch}
-        placeholder={activeTab === 'materials' ? 'Cari materi...' : 'Cari tugas...'}
+        placeholder={activeTab === 'materials' ? 'Cari materi...' : activeTab === 'assignments' ? 'Cari tugas...' : 'Cari remedial...'}
         placeholderTextColor="#94a3b8"
         style={{
           borderWidth: 1,
@@ -414,7 +495,8 @@ export default function LearningScreen() {
               <Text style={{ color: '#64748b', fontSize: fontSizes.body, lineHeight: scaleLineHeight(20) }}>Belum ada materi untuk filter saat ini.</Text>
             </View>
           )
-        ) : filteredAssignments.length > 0 ? (
+        ) : activeTab === 'assignments' ? (
+          filteredAssignments.length > 0 ? (
           <View>
             {filteredAssignments.map((item) => (
               <AssignmentCard
@@ -429,7 +511,7 @@ export default function LearningScreen() {
               />
             ))}
           </View>
-        ) : (
+          ) : (
           <View
             style={{
               borderWidth: 1,
@@ -442,6 +524,27 @@ export default function LearningScreen() {
           >
             <Text style={{ fontWeight: '700', marginBottom: 4, color: '#0f172a' }}>Tidak ada tugas</Text>
             <Text style={{ color: '#64748b', fontSize: fontSizes.body, lineHeight: scaleLineHeight(20) }}>Belum ada tugas untuk filter saat ini.</Text>
+          </View>
+          )
+        ) : filteredRemedials.length > 0 ? (
+          <View>
+            {filteredRemedials.map((item) => (
+              <RemedialCard key={item.id} item={item} onOpenAttachment={openLearningAttachment} />
+            ))}
+          </View>
+        ) : (
+          <View
+            style={{
+              borderWidth: 1,
+              borderColor: '#cbd5e1',
+              borderStyle: 'dashed',
+              borderRadius: 10,
+              padding: 16,
+              backgroundColor: '#fff',
+            }}
+          >
+            <Text style={{ fontWeight: '700', marginBottom: 4, color: '#0f172a' }}>Tidak ada remedial</Text>
+            <Text style={{ color: '#64748b', fontSize: fontSizes.body, lineHeight: scaleLineHeight(20) }}>Belum ada aktivitas remedial untuk filter saat ini.</Text>
           </View>
         )
       ) : null}

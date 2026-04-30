@@ -308,6 +308,40 @@ export interface ScoreRemedialAttempt {
   recordedById?: number | null;
 }
 
+export interface StudentRemedialActivity {
+  id: number;
+  scoreEntryId: number;
+  attemptNumber: number;
+  method: ScoreRemedialMethod;
+  methodLabel: string;
+  activityTitle?: string | null;
+  activityInstructions?: string | null;
+  activityDueAt?: string | null;
+  activityReferenceUrl?: string | null;
+  sourceLabel: string;
+  originalScore: number;
+  remedialScore: number;
+  effectiveScore: number;
+  kkm: number;
+  status: ScoreRemedialStatus;
+  statusLabel: string;
+  recordedAt: string;
+  semester: 'ODD' | 'EVEN';
+  subject: {
+    id: number;
+    code: string;
+    name: string;
+  };
+  teacher: {
+    id: number;
+    name: string;
+  } | null;
+  academicYear: {
+    id: number;
+    name: string;
+  };
+}
+
 export interface RemedialScoreEntry {
   id: number;
   scoreEntryId: number;
@@ -524,6 +558,19 @@ export const gradeService = {
       throw new Error('Riwayat remedial tidak tersedia.');
     }
     return response.data.data as RemedialScoreEntry;
+  },
+
+  getStudentRemedialActivities: async (params?: {
+    semester?: 'ODD' | 'EVEN';
+    limit?: number;
+  }): Promise<StudentRemedialActivity[]> => {
+    const response = await api.get('/grades/remedials/student-activities', {
+      params: {
+        ...(params?.semester ? { semester: params.semester } : {}),
+        limit: params?.limit || 100,
+      },
+    });
+    return Array.isArray(response.data?.data) ? response.data.data as StudentRemedialActivity[] : [];
   },
 
   createScoreRemedial: async (payload: {

@@ -3862,6 +3862,170 @@ export const createScoreRemedial = async (req: Request, res: Response) => {
   }
 }
 
+function formatRemedialMethodLabel(method: ScoreRemedialMethod) {
+  if (method === ScoreRemedialMethod.ASSIGNMENT) return 'Tugas remedial'
+  if (method === ScoreRemedialMethod.QUESTION_SET) return 'Soal/quiz remedial'
+  return 'Input nilai manual'
+}
+
+function formatRemedialStatusLabel(status: ScoreRemedialStatus) {
+  if (status === ScoreRemedialStatus.PASSED) return 'Tuntas'
+  if (status === ScoreRemedialStatus.STILL_BELOW_KKM) return 'Masih remedial'
+  if (status === ScoreRemedialStatus.DRAFT) return 'Draft'
+  if (status === ScoreRemedialStatus.CANCELLED) return 'Dibatalkan'
+  return 'Tercatat'
+}
+
+export const getStudentRemedialActivities = async (req: Request, res: Response) => {
+  try {
+    const user = (req as any).user as AuthUserLike
+    const studentId = Number(user?.id || 0)
+
+    if (String(user?.role || '').toUpperCase() !== 'STUDENT' || !Number.isFinite(studentId) || studentId <= 0) {
+      throw new ApiError(403, 'Fitur ini hanya tersedia untuk siswa.')
+    }
+
+    const activeYear = await prisma.academicYear.findFirst({
+      where: { isActive: true },
+      select: { id: true, name: true },
+    })
+
+    if (!activeYear) {
+      throw new ApiError(404, 'Tahun ajaran aktif tidak ditemukan.')
+    }
+
+    const semester = parseStudentReportSemester(req.query.semester)
+    const limit = Math.min(Math.max(toPositiveInt(req.query.limit) || 100, 1), 150)
+    const student = await getHistoricalStudentSnapshotForAcademicYear(studentId, activeYear.id)
+
+    const rows = await prisma.studentScoreRemedial.findMany({
+      where: {
+        method: {
+          in: [ScoreRemedialMethod.ASSIGNMENT, ScoreRemedialMethod.QUESTION_SET],
+        },
+        status: {
+          not: ScoreRemedialStatus.CANCELLED,
+        },
+        OR: [
+          { activityTitle: { not: null } },
+          { activityInstructions: { not: null } },
+          { activityReferenceUrl: { not: null } },
+        ],
+        scoreEntry: {
+          studentId,
+          academicYearId: activeYear.id,
+          ...(semester ? { semester } : {}),
+        },
+      },
+      include: {
+        scoreEntry: {
+          select: {
+            id: true,
+            studentId: true,
+            subjectId: true,
+            academicYearId: true,
+            semester: true,
+            componentCode: true,
+            componentType: true,
+            componentTypeCode: true,
+            reportSlot: true,
+            reportSlotCode: true,
+            sourceType: true,
+            sourceKey: true,
+            metadata: true,
+            score: true,
+            subject: {
+              select: {
+                id: true,
+                code: true,
+                name: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: [{ activityDueAt: 'asc' }, { recordedAt: 'desc' }],
+      take: limit,
+    })
+
+    const subjectIds = uniqPositiveNumbers(rows.map((row) => row.scoreEntry.subjectId))
+    const recordedByIds = uniqPositiveNumbers(rows.map((row) => row.recordedById))
+    const classId = Number(student?.studentClass?.id || 0)
+
+    const [assignments, recordedByUsers] = await Promise.all([
+      subjectIds.length > 0 && classId > 0
+        ? prisma.teacherAssignment.findMany({
+            where: {
+              academicYearId: activeYear.id,
+              classId,
+              subjectId: { in: subjectIds },
+            },
+            select: {
+              subjectId: true,
+              teacher: {
+                select: {
+                  id: true,
+                  name: true,
+                },
+              },
+            },
+          })
+        : Promise.resolve([]),
+      recordedByIds.length > 0
+        ? prisma.user.findMany({
+            where: { id: { in: recordedByIds } },
+            select: { id: true, name: true },
+          })
+        : Promise.resolve([]),
+    ])
+
+    const teacherBySubject = new Map<number, { id: number; name: string }>()
+    assignments.forEach((row) => {
+      if (!teacherBySubject.has(row.subjectId)) teacherBySubject.set(row.subjectId, row.teacher)
+    })
+    const recordedByName = new Map(recordedByUsers.map((row) => [row.id, row.name]))
+
+    const formatted = rows.map((row) => {
+      const scoreEntry = row.scoreEntry
+      const assignmentTeacher = teacherBySubject.get(scoreEntry.subjectId) || null
+      const recordedById = Number(row.recordedById || 0)
+      const recordedBy = recordedById > 0 && recordedByName.has(recordedById)
+        ? { id: recordedById, name: recordedByName.get(recordedById) || '-' }
+        : assignmentTeacher
+
+      return {
+        id: row.id,
+        scoreEntryId: row.scoreEntryId,
+        attemptNumber: row.attemptNumber,
+        method: row.method,
+        methodLabel: formatRemedialMethodLabel(row.method),
+        activityTitle: row.activityTitle,
+        activityInstructions: row.activityInstructions,
+        activityDueAt: row.activityDueAt,
+        activityReferenceUrl: row.activityReferenceUrl,
+        sourceLabel: formatRemedialSourceLabel(scoreEntry),
+        originalScore: roundRemedialScore(Number(row.originalScore)),
+        remedialScore: roundRemedialScore(Number(row.remedialScore)),
+        effectiveScore: roundRemedialScore(Number(row.effectiveScore)),
+        kkm: row.kkm,
+        status: row.status,
+        statusLabel: formatRemedialStatusLabel(row.status),
+        recordedAt: row.recordedAt,
+        semester: scoreEntry.semester,
+        subject: scoreEntry.subject,
+        teacher: recordedBy,
+        academicYear: activeYear,
+      }
+    })
+
+    return ApiResponseHelper.success(res, formatted, 'Aktivitas remedial siswa berhasil diambil.')
+  } catch (error) {
+    console.error('Get student remedial activities error:', error)
+    if (error instanceof ApiError) throw error
+    throw new ApiError(500, 'Gagal mengambil aktivitas remedial siswa.')
+  }
+}
+
 export const resyncStudentReligionReportDescriptions = async (studentId: number) => {
   const normalizedStudentId = Number(studentId || 0);
   if (!Number.isFinite(normalizedStudentId) || normalizedStudentId <= 0) {

@@ -47,6 +47,12 @@ router.post(
   asyncHandler(gradeController.createScoreRemedial)
 );
 
+router.get(
+  '/remedials/student-activities',
+  roleMiddleware(['STUDENT']),
+  asyncHandler(gradeController.getStudentRemedialActivities)
+);
+
 // STUDENT GRADES (Input Nilai per Komponen)
 router.get(
   '/student-overview',

@@ -56,3 +56,37 @@ export type LearningSubmission = {
 export type AssignmentWithSubmission = LearningAssignment & {
   submission?: LearningSubmission | null;
 };
+
+export type LearningRemedialActivity = {
+  id: number;
+  scoreEntryId: number;
+  attemptNumber: number;
+  method: 'MANUAL_SCORE' | 'ASSIGNMENT' | 'QUESTION_SET' | string;
+  methodLabel: string;
+  activityTitle?: string | null;
+  activityInstructions?: string | null;
+  activityDueAt?: string | null;
+  activityReferenceUrl?: string | null;
+  sourceLabel: string;
+  originalScore: number;
+  remedialScore: number;
+  effectiveScore: number;
+  kkm: number;
+  status: string;
+  statusLabel: string;
+  recordedAt: string;
+  semester: 'ODD' | 'EVEN';
+  subject: {
+    id: number;
+    name: string;
+    code: string;
+  };
+  teacher: {
+    id: number;
+    name: string;
+  } | null;
+  academicYear: {
+    id: number;
+    name: string;
+  };
+};

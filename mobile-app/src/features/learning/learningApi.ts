@@ -1,5 +1,5 @@
 import { apiClient } from '../../lib/api/client';
-import { LearningAssignment, LearningMaterial, LearningSubmission } from './types';
+import { LearningAssignment, LearningMaterial, LearningRemedialActivity, LearningSubmission } from './types';
 
 type MaterialsResponse = {
   statusCode: number;
@@ -49,6 +49,13 @@ type SubmissionMutationResponse = {
   data: LearningSubmission;
 };
 
+type RemedialActivitiesResponse = {
+  statusCode: number;
+  success: boolean;
+  message: string;
+  data: LearningRemedialActivity[];
+};
+
 type ReactNativeFilePart = {
   uri: string;
   name: string;
@@ -73,6 +80,14 @@ export const learningApi = {
       },
     });
     return response.data.data.assignments || [];
+  },
+  async getRemedialActivities() {
+    const response = await apiClient.get<RemedialActivitiesResponse>('/grades/remedials/student-activities', {
+      params: {
+        limit: 100,
+      },
+    });
+    return response.data.data || [];
   },
   async getMySubmissions(studentId: number) {
     const response = await apiClient.get<SubmissionsResponse>('/submissions', {

@@ -5,6 +5,7 @@ import { authService } from '../../services/auth.service';
 import { toast } from 'react-hot-toast';
 import { 
   BookOpen, 
+  ClipboardCheck,
   ClipboardList, 
   Search, 
   Filter, 
@@ -20,6 +21,7 @@ import {
 import clsx from 'clsx';
 import { useSearchParams, useOutletContext } from 'react-router-dom';
 import { UnderlineTabBar } from '../../components/navigation/UnderlineTabBar';
+import { gradeService, type StudentRemedialActivity } from '../../services/grade.service';
 
 interface Material {
   id: string;
@@ -85,22 +87,48 @@ type AssignmentSubmissionLookup = NonNullable<Assignment['submission']> & {
   assignment: { id: string };
 };
 
+type LearningTabKey = 'materials' | 'assignments' | 'remedials';
+
 const LEARNING_TABS = [
   { id: 'materials', label: 'Materi Pembelajaran', icon: BookOpen },
   { id: 'assignments', label: 'Tugas & PR', icon: ClipboardList },
+  { id: 'remedials', label: 'Remedial', icon: ClipboardCheck },
 ];
+
+function formatLearningDate(value?: string | null) {
+  if (!value) return '-';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return '-';
+  return parsed.toLocaleDateString('id-ID', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function formatLearningScore(value: number | null | undefined) {
+  if (value === null || value === undefined) return '-';
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return '-';
+  return Number.isInteger(parsed) ? String(parsed) : parsed.toFixed(2);
+}
 
 export default function StudentLearningPage() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const [activeTab, setActiveTab] = useState<'materials' | 'assignments'>(
-    (searchParams.get('tab') as 'materials' | 'assignments') || 'materials'
+  const [activeTab, setActiveTab] = useState<LearningTabKey>(
+    (searchParams.get('tab') as LearningTabKey) || 'materials'
   );
   
   const [loading, setLoading] = useState(true);
   const [materials, setMaterials] = useState<Material[]>([]);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
+  const [remedialActivities, setRemedialActivities] = useState<StudentRemedialActivity[]>([]);
   const [filteredMaterials, setFilteredMaterials] = useState<Material[]>([]);
   const [filteredAssignments, setFilteredAssignments] = useState<Assignment[]>([]);
+  const [filteredRemedialActivities, setFilteredRemedialActivities] = useState<StudentRemedialActivity[]>([]);
   
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSubject, setSelectedSubject] = useState('');
@@ -140,11 +168,12 @@ export default function StudentLearningPage() {
 
       const classId = user.studentClass.id;
 
-      // Fetch Materials, Assignments, and Submissions
-      const [materialsRes, assignmentsRes, submissionsRes] = await Promise.all([
+      // Fetch Materials, Assignments, Submissions, and student-scoped remedial activities.
+      const [materialsRes, assignmentsRes, submissionsRes, remedials] = await Promise.all([
         api.get(`/materials?classId=${classId}&isPublished=true&limit=100`),
         api.get(`/assignments?classId=${classId}&isPublished=true&limit=100`),
-        api.get(`/submissions?studentId=${user.id}&limit=1000`)
+        api.get(`/submissions?studentId=${user.id}&limit=1000`),
+        gradeService.getStudentRemedialActivities({ limit: 100 }),
       ]);
 
       if (materialsRes.data.success) {
@@ -164,6 +193,8 @@ export default function StudentLearningPage() {
         setAssignments(assignmentsWithStatus);
       }
 
+      setRemedialActivities(remedials);
+
       // Extract unique subjects for filter
       const allItems: Array<Material | Assignment> = [
         ...(materialsRes.data.data.materials || []),
@@ -171,7 +202,10 @@ export default function StudentLearningPage() {
       ];
       const uniqueSubjects = Array.from(
         new Map(
-          allItems.map((item) => [item.subject.id, { id: item.subject.id, name: item.subject.name }]),
+          [
+            ...allItems.map((item) => [String(item.subject.id), { id: String(item.subject.id), name: item.subject.name }] as const),
+            ...remedials.map((item) => [String(item.subject.id), { id: String(item.subject.id), name: item.subject.name }] as const),
+          ],
         ).values(),
       );
       
@@ -225,13 +259,35 @@ export default function StudentLearningPage() {
     setFilteredAssignments(filtered);
   }, [assignments, searchQuery, selectedSubject]);
 
+  const filterRemedialActivities = useCallback(() => {
+    let filtered = [...remedialActivities];
+
+    if (selectedSubject) {
+      filtered = filtered.filter((item) => String(item.subject.id) === selectedSubject);
+    }
+
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter((item) =>
+        (item.activityTitle || '').toLowerCase().includes(query) ||
+        (item.activityInstructions || '').toLowerCase().includes(query) ||
+        item.subject.name.toLowerCase().includes(query) ||
+        item.sourceLabel.toLowerCase().includes(query)
+      );
+    }
+
+    setFilteredRemedialActivities(filtered);
+  }, [remedialActivities, searchQuery, selectedSubject]);
+
   useEffect(() => {
     if (activeTab === 'materials') {
       filterMaterials();
-    } else {
+    } else if (activeTab === 'assignments') {
       filterAssignments();
+    } else {
+      filterRemedialActivities();
     }
-  }, [activeTab, filterAssignments, filterMaterials]);
+  }, [activeTab, filterAssignments, filterMaterials, filterRemedialActivities]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -323,7 +379,7 @@ export default function StudentLearningPage() {
       <UnderlineTabBar
         items={LEARNING_TABS}
         activeId={activeTab}
-        onChange={(id) => setActiveTab(id as 'materials' | 'assignments')}
+        onChange={(id) => setActiveTab(id as LearningTabKey)}
         ariaLabel="Tab materi dan tugas siswa"
       />
 
@@ -333,7 +389,7 @@ export default function StudentLearningPage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
           <input
             type="text"
-            placeholder={`Cari ${activeTab === 'materials' ? 'materi' : 'tugas'}...`}
+            placeholder={`Cari ${activeTab === 'materials' ? 'materi' : activeTab === 'assignments' ? 'tugas' : 'remedial'}...`}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -452,7 +508,7 @@ export default function StudentLearningPage() {
             </div>
           )}
         </section>
-      ) : (
+      ) : activeTab === 'assignments' ? (
         <section className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm">
           <div className="border-b border-gray-100 px-5 py-4">
             <h2 className="text-section-title text-gray-900">Daftar Tugas & PR</h2>
@@ -558,6 +614,102 @@ export default function StudentLearningPage() {
                               </>
                             )}
                           </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      ) : (
+        <section className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm">
+          <div className="border-b border-gray-100 px-5 py-4">
+            <h2 className="text-section-title text-gray-900">Aktivitas Remedial</h2>
+            <p className="mt-1 text-sm text-gray-500">
+              {filteredRemedialActivities.length} aktivitas remedial tersedia khusus untuk Anda.
+            </p>
+          </div>
+          {filteredRemedialActivities.length === 0 ? (
+            <div className="m-5 rounded-xl border border-dashed border-gray-300 bg-white py-12 text-center">
+              <ClipboardCheck className="mx-auto h-12 w-12 text-gray-400" />
+              <h3 className="mt-2 text-sm font-medium text-gray-900">Tidak ada remedial</h3>
+              <p className="mt-1 text-sm text-gray-500">Belum ada aktivitas remedial yang diberikan.</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="min-w-[1040px] w-full text-left">
+                <thead className="bg-gray-50">
+                  <tr className="border-b border-gray-200">
+                    <th className="w-14 px-5 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">No</th>
+                    <th className="px-5 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">Aktivitas</th>
+                    <th className="w-56 px-5 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">Mata Pelajaran</th>
+                    <th className="w-44 px-5 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">Sumber Nilai</th>
+                    <th className="w-44 px-5 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">Tenggat</th>
+                    <th className="w-48 px-5 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">Status Nilai</th>
+                    <th className="w-36 px-5 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {filteredRemedialActivities.map((activity, index) => (
+                    <tr key={activity.id} className="align-top transition-colors hover:bg-gray-50">
+                      <td className="px-5 py-4 text-sm text-gray-500">{index + 1}</td>
+                      <td className="px-5 py-4">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="inline-flex rounded-full border border-blue-100 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">
+                            {activity.methodLabel}
+                          </span>
+                          <span className="text-xs text-gray-500">Percobaan {activity.attemptNumber}</span>
+                        </div>
+                        <p className="mt-2 text-sm font-semibold text-gray-900">
+                          {activity.activityTitle || `Remedial ${activity.sourceLabel}`}
+                        </p>
+                        <p className="mt-1 whitespace-pre-line text-sm text-gray-500">
+                          {activity.activityInstructions || 'Instruksi remedial belum ditambahkan guru.'}
+                        </p>
+                        <p className="mt-2 text-xs text-gray-400">
+                          Guru: {activity.teacher?.name || '-'} • Dibuat {formatLearningDate(activity.recordedAt)}
+                        </p>
+                      </td>
+                      <td className="px-5 py-4">
+                        <span className="inline-flex rounded-full border border-purple-100 bg-purple-50 px-2.5 py-1 text-xs font-semibold text-purple-700">
+                          {activity.subject.name}
+                        </span>
+                        <p className="mt-1 font-mono text-xs text-gray-500">{activity.subject.code}</p>
+                      </td>
+                      <td className="px-5 py-4 text-sm text-gray-700">{activity.sourceLabel}</td>
+                      <td className="px-5 py-4 text-sm text-gray-700">{formatLearningDate(activity.activityDueAt)}</td>
+                      <td className="px-5 py-4">
+                        <span
+                          className={clsx(
+                            'inline-flex rounded-full px-2.5 py-1 text-xs font-semibold',
+                            activity.effectiveScore >= activity.kkm
+                              ? 'bg-emerald-100 text-emerald-700'
+                              : 'bg-amber-100 text-amber-700',
+                          )}
+                        >
+                          {activity.statusLabel}
+                        </span>
+                        <p className="mt-2 text-xs text-gray-500">
+                          Asli {formatLearningScore(activity.originalScore)} • Remedial {formatLearningScore(activity.remedialScore)} • Efektif {formatLearningScore(activity.effectiveScore)} / KKM {activity.kkm}
+                        </p>
+                      </td>
+                      <td className="px-5 py-4">
+                        <div className="flex justify-end">
+                          {activity.activityReferenceUrl ? (
+                            <a
+                              href={activity.activityReferenceUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-blue-700"
+                            >
+                              <Download size={14} />
+                              Buka
+                            </a>
+                          ) : (
+                            <span className="text-sm text-gray-400">-</span>
+                          )}
                         </div>
                       </td>
                     </tr>

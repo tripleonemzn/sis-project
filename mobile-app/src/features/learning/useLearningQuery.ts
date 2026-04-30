@@ -3,11 +3,18 @@ import { AuthUser } from '../auth/types';
 import { CACHE_MAX_SNAPSHOTS_PER_FEATURE, CACHE_TTL_MS } from '../../config/cache';
 import { offlineCache } from '../../lib/storage/offlineCache';
 import { learningApi } from './learningApi';
-import { AssignmentWithSubmission, LearningAssignment, LearningMaterial, LearningSubmission } from './types';
+import {
+  AssignmentWithSubmission,
+  LearningAssignment,
+  LearningMaterial,
+  LearningRemedialActivity,
+  LearningSubmission,
+} from './types';
 
 type LearningQueryData = {
   materials: LearningMaterial[];
   assignments: AssignmentWithSubmission[];
+  remedials: LearningRemedialActivity[];
   fromCache: boolean;
   cachedAt: string | null;
 };
@@ -16,6 +23,7 @@ type LearningPayload = {
   materials: LearningMaterial[];
   assignments: LearningAssignment[];
   submissions: LearningSubmission[];
+  remedials: LearningRemedialActivity[];
 };
 
 type Params = {
@@ -46,12 +54,13 @@ export function useLearningQuery({ enabled, user }: Params) {
     queryFn: async (): Promise<LearningQueryData> => {
       const cacheKey = `mobile_cache_learning_${user!.id}`;
       try {
-        const [materials, assignments, submissions] = await Promise.all([
+        const [materials, assignments, submissions, remedials] = await Promise.all([
           learningApi.getMaterials(),
           learningApi.getAssignments(),
           learningApi.getMySubmissions(user!.id),
+          learningApi.getRemedialActivities(),
         ]);
-        const payload: LearningPayload = { materials, assignments, submissions };
+        const payload: LearningPayload = { materials, assignments, submissions, remedials };
         const cache = await offlineCache.set(cacheKey, payload);
         await offlineCache.prunePrefix(
           `mobile_cache_learning_${user!.id}`,
@@ -60,6 +69,7 @@ export function useLearningQuery({ enabled, user }: Params) {
         return {
           materials,
           assignments: mapAssignmentWithSubmission(assignments, submissions),
+          remedials,
           fromCache: false,
           cachedAt: cache.updatedAt,
         };
@@ -72,6 +82,7 @@ export function useLearningQuery({ enabled, user }: Params) {
               cache.data.assignments || [],
               cache.data.submissions || [],
             ),
+            remedials: cache.data.remedials || [],
             fromCache: true,
             cachedAt: cache.updatedAt,
           };
