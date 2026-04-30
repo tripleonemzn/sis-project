@@ -1688,12 +1688,10 @@ export const TeacherGradesPage = () => {
     if (
       remedialMethodInput !== 'MANUAL_SCORE' &&
       !activityTitle &&
-      !activityInstructions &&
-      !activityReferenceUrl &&
       !activityExamPacketId &&
       !activitySourceExamPacketId
     ) {
-      toast.error('Isi judul, instruksi, tautan, atau pilih paket soal untuk metode tugas/soal remedial.');
+      toast.error('Isi judul remedial atau pilih paket soal untuk metode tugas/soal remedial.');
       return;
     }
 
@@ -1746,8 +1744,8 @@ export const TeacherGradesPage = () => {
     const activityExamPacketId = Number(remedialActivityExamPacketIdInput || 0);
     const activitySourceExamPacketId = Number(remedialActivitySourceExamPacketIdInput || 0);
 
-    if (!activityTitle && !activityInstructions && !activityReferenceUrl && !activityExamPacketId && !activitySourceExamPacketId) {
-      toast.error('Isi instruksi, tautan, atau pilih paket soal sebelum aktivitas diberikan.');
+    if (!activityTitle && !activityExamPacketId && !activitySourceExamPacketId) {
+      toast.error('Isi judul remedial atau pilih paket soal sebelum remedial diterbitkan.');
       return;
     }
 
@@ -1765,7 +1763,7 @@ export const TeacherGradesPage = () => {
         activitySourceExamPacketId: activitySourceExamPacketId || undefined,
         note: remedialNoteInput.trim() || undefined,
       });
-      toast.success('Aktivitas remedial berhasil diberikan ke siswa.');
+      toast.success('Remedial berhasil diterbitkan ke siswa.');
       setRemedialActivityTitleInput('');
       setRemedialActivityInstructionsInput('');
       setRemedialActivityDueAtInput('');
@@ -2697,9 +2695,6 @@ export const TeacherGradesPage = () => {
                         <option value="ASSIGNMENT">Tugas remedial</option>
                         <option value="QUESTION_SET">Soal/quiz remedial</option>
                       </select>
-                      <p className="mt-1 text-xs text-blue-800">
-                        Jika memakai tugas/soal, isi instruksi atau tautan agar riwayat percobaan jelas.
-                      </p>
                     </div>
                   </div>
 
@@ -2734,7 +2729,7 @@ export const TeacherGradesPage = () => {
                       </div>
                       {remedialMethodInput === 'QUESTION_SET' ? (
                         <div className="mt-4 rounded-lg border border-indigo-100 bg-indigo-50 p-3">
-                          <div className="flex flex-col gap-3 md:flex-row md:items-end">
+                          <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
                             <div className="flex-1">
                               <label htmlFor="remedial-exam-packet" className="block text-sm font-medium text-gray-700 mb-2">
                                 Paket Soal Remedial
@@ -2762,45 +2757,16 @@ export const TeacherGradesPage = () => {
                                   </option>
                                 ))}
                               </select>
-                              <p className="mt-1 text-xs text-indigo-800">
-                                Bisa memakai paket ujian yang sudah pernah diujikan, atau paket baru yang dibuat dari bank soal.
-                              </p>
                             </div>
                             <a
                               href="/teacher/exams/create"
-                              className="inline-flex items-center justify-center rounded-lg border border-indigo-200 bg-white px-4 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-100"
+                              className="inline-flex h-[42px] items-center justify-center rounded-lg border border-indigo-200 bg-white px-4 text-sm font-medium text-indigo-700 hover:bg-indigo-100"
                             >
                               Buat Paket Baru
                             </a>
                           </div>
                         </div>
                       ) : null}
-                      <div className="mt-4">
-                        <label htmlFor="remedial-activity-instructions" className="block text-sm font-medium text-gray-700 mb-2">
-                          Instruksi untuk Siswa
-                        </label>
-                        <textarea
-                          id="remedial-activity-instructions"
-                          rows={3}
-                          value={remedialActivityInstructionsInput}
-                          onChange={(event) => setRemedialActivityInstructionsInput(event.target.value)}
-                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
-                          placeholder="Tulis instruksi tugas/soal remedial yang diberikan."
-                        />
-                      </div>
-                      <div className="mt-4">
-                        <label htmlFor="remedial-activity-link" className="block text-sm font-medium text-gray-700 mb-2">
-                          Tautan Tugas/Soal
-                        </label>
-                        <input
-                          id="remedial-activity-link"
-                          type="url"
-                          value={remedialActivityReferenceUrlInput}
-                          onChange={(event) => setRemedialActivityReferenceUrlInput(event.target.value)}
-                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
-                          placeholder="Opsional, misalnya link Google Form / dokumen soal."
-                        />
-                      </div>
                     </div>
                   ) : null}
 
@@ -2840,7 +2806,7 @@ export const TeacherGradesPage = () => {
                       className="inline-flex items-center gap-2 px-4 py-2 border border-blue-200 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-70"
                     >
                       {remedialSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <ClipboardList className="w-4 h-4" />}
-                      Berikan Aktivitas
+                      Terbitkan Remedial ke Siswa
                     </button>
                   ) : null}
                   <button
