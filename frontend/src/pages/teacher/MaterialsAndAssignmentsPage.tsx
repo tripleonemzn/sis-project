@@ -104,6 +104,15 @@ function getErrorMessage(error: unknown, fallback: string) {
   return fallback;
 }
 
+const LEARNING_ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024;
+
+function validateLearningAttachment(file: File | null) {
+  if (!file) return true;
+  if (file.size <= LEARNING_ATTACHMENT_MAX_BYTES) return true;
+  toast.error('Ukuran file materi/tugas maksimal 10MB');
+  return false;
+}
+
 export default function MaterialsAndAssignmentsPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -391,6 +400,10 @@ export default function MaterialsAndAssignmentsPage() {
       return;
     }
 
+    if (!validateLearningAttachment(materialForm.file)) {
+      return;
+    }
+
     setUploading(true);
     try {
       const submitData = new FormData();
@@ -545,6 +558,10 @@ export default function MaterialsAndAssignmentsPage() {
 
     if (!activeAcademicYearId) {
       toast.error('Tahun ajaran aktif tidak ditemukan');
+      return;
+    }
+
+    if (!validateLearningAttachment(assignmentForm.file)) {
       return;
     }
 
@@ -1051,16 +1068,20 @@ export default function MaterialsAndAssignmentsPage() {
               <div>
                 <label htmlFor="material_file" className="block text-sm font-medium text-gray-700 mb-2">
                   <Upload className="w-4 h-4 inline mr-1" />
-                  Upload File (Opsional)
+                  Upload File (Opsional, max 10MB)
                 </label>
                 <input
                   id="material_file"
                   name="material_file"
                   type="file"
                   onChange={(e) => {
-                    if (e.target.files?.[0]) {
-                      setMaterialForm(prev => ({ ...prev, file: e.target.files![0] }));
+                    const file = e.target.files?.[0] || null;
+                    if (!file) return;
+                    if (!validateLearningAttachment(file)) {
+                      e.currentTarget.value = '';
+                      return;
                     }
+                    setMaterialForm(prev => ({ ...prev, file }));
                   }}
                   className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
                 />
@@ -1208,16 +1229,20 @@ export default function MaterialsAndAssignmentsPage() {
               <div>
                 <label htmlFor="assignment_file" className="block text-sm font-medium text-gray-700 mb-2">
                   <Upload className="w-4 h-4 inline mr-1" />
-                  Upload File Pendukung (Opsional)
+                  Upload File Pendukung (Opsional, max 10MB)
                 </label>
                 <input
                   id="assignment_file"
                   name="assignment_file"
                   type="file"
                   onChange={(e) => {
-                    if (e.target.files?.[0]) {
-                      setAssignmentForm(prev => ({ ...prev, file: e.target.files![0] }));
+                    const file = e.target.files?.[0] || null;
+                    if (!file) return;
+                    if (!validateLearningAttachment(file)) {
+                      e.currentTarget.value = '';
+                      return;
                     }
+                    setAssignmentForm(prev => ({ ...prev, file }));
                   }}
                   className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
                 />

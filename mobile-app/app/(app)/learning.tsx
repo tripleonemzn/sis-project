@@ -11,12 +11,14 @@ import { useAuth } from '../../src/features/auth/AuthProvider';
 import { learningApi } from '../../src/features/learning/learningApi';
 import { AssignmentWithSubmission, LearningMaterial } from '../../src/features/learning/types';
 import { useLearningQuery } from '../../src/features/learning/useLearningQuery';
+import { downloadFileToDevice } from '../../src/lib/files/downloadFileToDevice';
 import { resolvePublicAssetUrl } from '../../src/lib/media/resolvePublicAssetUrl';
-import { notifyError, notifyInfo } from '../../src/lib/ui/feedback';
+import { notifyError, notifyInfo, notifySuccess } from '../../src/lib/ui/feedback';
 import { getStandardPagePadding } from '../../src/lib/ui/pageLayout';
 import { useAppTextScale } from '../../src/theme/AppTextScaleProvider';
 
 type TabKey = 'materials' | 'assignments';
+const LEARNING_UPLOAD_MAX_BYTES = 10 * 1024 * 1024;
 
 function formatDate(dateString: string) {
   const date = new Date(dateString);
@@ -30,7 +32,7 @@ function formatDate(dateString: string) {
   });
 }
 
-type OpenAttachmentHandler = (fileUrl?: string | null) => Promise<void>;
+type OpenAttachmentHandler = (fileUrl?: string | null, fileName?: string | null) => Promise<void>;
 
 function AttachmentAction({
   title,
@@ -87,7 +89,7 @@ function MaterialCard({ item, onOpenAttachment }: { item: LearningMaterial; onOp
             <AttachmentAction
               title="Unduh Lampiran"
               detail={item.fileName || 'Lampiran materi'}
-              onPress={() => void onOpenAttachment(item.fileUrl)}
+              onPress={() => void onOpenAttachment(item.fileUrl, item.fileName)}
             />
           </View>
         ) : null}
@@ -182,7 +184,7 @@ function AssignmentCard({
           <AttachmentAction
             title="Unduh Lampiran Tugas"
             detail={item.fileName || 'Lampiran tugas'}
-            onPress={() => void onOpenAttachment(item.fileUrl)}
+            onPress={() => void onOpenAttachment(item.fileUrl, item.fileName)}
           />
         </View>
       ) : null}
@@ -246,6 +248,10 @@ export default function LearningScreen() {
     });
     if (result.canceled || result.assets.length === 0) return;
     const asset = result.assets[0];
+    if ((asset.size || 0) > LEARNING_UPLOAD_MAX_BYTES) {
+      notifyError('Ukuran file maksimal 10 MB.');
+      return;
+    }
     setSelectedFile({
       uri: asset.uri,
       name: asset.name,
@@ -253,16 +259,30 @@ export default function LearningScreen() {
     });
   };
 
-  const openLearningAttachment = async (fileUrl?: string | null) => {
+  const openLearningAttachment = async (fileUrl?: string | null, fileName?: string | null) => {
     const targetUrl = resolvePublicAssetUrl(fileUrl);
     if (!targetUrl) {
       notifyInfo('Lampiran belum tersedia.');
       return;
     }
+    if (!targetUrl.includes('/uploads/')) {
+      try {
+        await Linking.openURL(targetUrl);
+      } catch {
+        notifyError('Link belum bisa dibuka dari aplikasi.');
+      }
+      return;
+    }
     try {
-      await Linking.openURL(targetUrl);
+      notifyInfo('Mengunduh lampiran...', { title: 'Download' });
+      const result = await downloadFileToDevice({ url: targetUrl, fileName });
+      if (result.status === 'cancelled') {
+        notifyInfo('Download dibatalkan.');
+        return;
+      }
+      notifySuccess(`File tersimpan: ${result.fileName}`);
     } catch {
-      notifyError('Lampiran belum bisa dibuka dari aplikasi.');
+      notifyError('Lampiran belum bisa diunduh dari aplikasi.');
     }
   };
 
@@ -496,6 +516,9 @@ export default function LearningScreen() {
               </Pressable>
             </View>
           </View>
+          <Text style={{ color: '#64748b', fontSize: scaleFont(11), lineHeight: scaleLineHeight(16), marginBottom: 10 }}>
+            Ukuran file maksimal 10 MB.
+          </Text>
           {selectedFile ? (
             <View
               style={{

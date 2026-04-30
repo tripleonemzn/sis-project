@@ -27,11 +27,12 @@ import { teacherMaterialsApi } from '../../../src/features/teacherMaterials/teac
 import { TeacherAssignmentItem, TeacherMaterial } from '../../../src/features/teacherMaterials/types';
 import { useTeacherMaterialsQuery } from '../../../src/features/teacherMaterials/useTeacherMaterialsQuery';
 import { getStandardPagePadding } from '../../../src/lib/ui/pageLayout';
-import { notifyApiError, notifyInfo, notifySuccess } from '../../../src/lib/ui/feedback';
-import { openWebModuleRoute } from '../../../src/lib/navigation/webModuleRoute';
+import { notifyApiError, notifyError, notifyInfo, notifySuccess } from '../../../src/lib/ui/feedback';
+import { downloadFileToDevice } from '../../../src/lib/files/downloadFileToDevice';
 import { useAppTextScale } from '../../../src/theme/AppTextScaleProvider';
 
 type TabKey = 'materials' | 'assignments';
+const TEACHER_MATERIAL_UPLOAD_MAX_BYTES = 10 * 1024 * 1024;
 type CopySource = {
   type: 'material' | 'assignment';
   id: number;
@@ -143,19 +144,25 @@ export default function TeacherMaterialsScreen() {
   }, []);
 
   const openAttachment = useCallback(
-    (fileUrl?: string | null) => {
+    async (fileUrl?: string | null, fileName?: string | null) => {
       const targetUrl = getPublicFileUrl(fileUrl);
       if (!targetUrl) {
         notifyInfo('File lampiran belum tersedia.', { title: 'Info Lampiran' });
         return;
       }
-      openWebModuleRoute(router, {
-        moduleKey: 'teacher-materials',
-        webPath: targetUrl,
-        label: 'Lampiran Materi & Tugas',
-      });
+      try {
+        notifyInfo('Mengunduh lampiran...', { title: 'Download' });
+        const result = await downloadFileToDevice({ url: targetUrl, fileName });
+        if (result.status === 'cancelled') {
+          notifyInfo('Download dibatalkan.');
+          return;
+        }
+        notifySuccess(`File tersimpan: ${result.fileName}`);
+      } catch {
+        notifyError('Lampiran belum bisa diunduh dari aplikasi.');
+      }
     },
-    [getPublicFileUrl, router],
+    [getPublicFileUrl],
   );
 
   const materialAssignmentSelectionId = useMemo(() => {
@@ -499,6 +506,10 @@ export default function TeacherMaterialsScreen() {
     const result = await DocumentPicker.getDocumentAsync({ multiple: false, copyToCacheDirectory: true });
     if (result.canceled || result.assets.length === 0) return;
     const file = result.assets[0];
+    if ((file.size || 0) > TEACHER_MATERIAL_UPLOAD_MAX_BYTES) {
+      notifyError('Ukuran file maksimal 10 MB.');
+      return;
+    }
     setMaterialFile({ uri: file.uri, name: file.name, mimeType: file.mimeType || undefined });
   };
 
@@ -506,6 +517,10 @@ export default function TeacherMaterialsScreen() {
     const result = await DocumentPicker.getDocumentAsync({ multiple: false, copyToCacheDirectory: true });
     if (result.canceled || result.assets.length === 0) return;
     const file = result.assets[0];
+    if ((file.size || 0) > TEACHER_MATERIAL_UPLOAD_MAX_BYTES) {
+      notifyError('Ukuran file maksimal 10 MB.');
+      return;
+    }
     setAssignmentFile({ uri: file.uri, name: file.name, mimeType: file.mimeType || undefined });
   };
 
@@ -724,6 +739,10 @@ export default function TeacherMaterialsScreen() {
                     </Pressable>
                   </View>
                 </View>
+
+                <Text style={{ color: '#64748b', fontSize: scaleFont(11), lineHeight: scaleLineHeight(16), marginBottom: 8 }}>
+                  Ukuran file maksimal 10 MB.
+                </Text>
 
                 {materialFile ? (
                   <Text style={{ color: '#64748b', fontSize: scaleFont(11), lineHeight: scaleLineHeight(16), marginBottom: 8 }} numberOfLines={2}>
@@ -960,6 +979,10 @@ export default function TeacherMaterialsScreen() {
                   </View>
                 </View>
 
+                <Text style={{ color: '#64748b', fontSize: scaleFont(11), lineHeight: scaleLineHeight(16), marginBottom: 8 }}>
+                  Ukuran file maksimal 10 MB.
+                </Text>
+
                 {assignmentFile ? (
                   <Text style={{ color: '#64748b', fontSize: scaleFont(11), lineHeight: scaleLineHeight(16), marginBottom: 8 }} numberOfLines={2}>
                     File: {assignmentFile.name || assignmentFile.uri}
@@ -1144,7 +1167,7 @@ export default function TeacherMaterialsScreen() {
                         </View>
                         <View style={{ width: '33.333%', paddingHorizontal: 4 }}>
                           <Pressable
-                            onPress={() => void openAttachment(item.fileUrl)}
+                            onPress={() => void openAttachment(item.fileUrl, item.fileName)}
                             disabled={!item.fileUrl}
                             style={{
                               borderWidth: 1,
@@ -1331,7 +1354,7 @@ export default function TeacherMaterialsScreen() {
                       </View>
                       <View style={{ width: '33.333%', paddingHorizontal: 4 }}>
                         <Pressable
-                          onPress={() => void openAttachment(item.fileUrl)}
+                          onPress={() => void openAttachment(item.fileUrl, item.fileName)}
                           disabled={!item.fileUrl}
                           style={{
                             borderWidth: 1,

@@ -33,12 +33,12 @@ export const assignmentUpload = multer({
 
 export const materialUpload = multer({
   storage: createStorage('materials'),
-  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
 });
 
 export const submissionUpload = multer({
   storage: createStorage('submissions'),
-  limits: { fileSize: 20 * 1024 * 1024 }, // 20MB
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
 });
 
 export const questionImageUpload = multer({

@@ -165,13 +165,18 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
       const isQuestionVideoUploadPath = String(req.originalUrl || req.url || '').includes('/api/upload/question-video');
       const isSlideshowUploadPath = String(req.originalUrl || req.url || '').includes('/api/gallery/slides/upload');
       const isProfileEducationUploadPath = String(req.originalUrl || req.url || '').includes('/api/upload/profile-education/document');
+      const isLearningUploadPath = /^\/api\/(?:materials|assignments|submissions)(?:\/|$)/.test(
+        String(req.originalUrl || req.url || ''),
+      );
       const limitHint = isQuestionVideoUploadPath
         ? `Ukuran video soal terlalu besar (maksimal ${normalizedQuestionVideoLimitMb}MB). Untuk video lebih besar gunakan link YouTube.`
         : isSlideshowUploadPath
           ? 'Ukuran file slideshow terlalu besar (maksimal 1MB)'
           : isProfileEducationUploadPath
             ? 'Ukuran dokumen riwayat pendidikan terlalu besar (maksimal 1MB)'
-          : 'Ukuran file terlalu besar (maksimal 5MB)';
+            : isLearningUploadPath
+              ? 'Ukuran file materi/tugas terlalu besar (maksimal 10MB)'
+              : 'Ukuran file terlalu besar';
       return res.status(400).json({
         success: false,
         statusCode: 400,
