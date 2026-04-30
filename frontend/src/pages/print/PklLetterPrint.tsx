@@ -334,7 +334,7 @@ Kepala SMK Karya Guna Bhakti 2 Kota Bekasi mengajukan permohonan siswa/i kami un
           </div>
 
           {/* Alamat Tujuan */}
-          <div className="mb-8">
+          <div className="mb-8 ml-[76px]">
             <div>Kepada Yth,</div>
             <div className="font-bold uppercase">Pimpinan / HRD {companyName || internship?.companyName || '(Nama Perusahaan Belum Terisi)'}</div>
             {recipientName && (
@@ -344,7 +344,7 @@ Kepala SMK Karya Guna Bhakti 2 Kota Bekasi mengajukan permohonan siswa/i kami un
           </div>
 
           {/* Body Surat */}
-          <div className="space-y-4 text-justify">
+          <div className="ml-[76px] space-y-4 text-justify">
             <p>Dengan hormat,</p>
             <div className="whitespace-pre-wrap">
               {openingText}
@@ -352,7 +352,7 @@ Kepala SMK Karya Guna Bhakti 2 Kota Bekasi mengajukan permohonan siswa/i kami un
           </div>
 
           {/* Tabel Siswa */}
-          <div className="my-6">
+          <div className="my-6 ml-[76px]">
             <table className="w-full border-collapse border border-black text-center">
               <thead>
                 <tr className="bg-gray-50">
@@ -393,7 +393,7 @@ Kepala SMK Karya Guna Bhakti 2 Kota Bekasi mengajukan permohonan siswa/i kami un
           </div>
 
           {/* Rencana Pelaksanaan */}
-          <div className="mb-6 font-bold">
+          <div className="mb-6 ml-[76px] font-bold">
             <p>Rencana Pelaksanaan PKL: {
               startDate && startDate !== '' 
                 ? formatDateDisplay(startDate) 
@@ -406,7 +406,7 @@ Kepala SMK Karya Guna Bhakti 2 Kota Bekasi mengajukan permohonan siswa/i kami un
           </div>
 
           {/* Penutup */}
-          <div className="text-justify mb-12">
+          <div className="mb-12 ml-[76px] text-justify">
             <div className="whitespace-pre-wrap">{closingText}</div>
           </div>
 

@@ -5,8 +5,8 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-04-30 08:01 WIB
-- Current status: Follow-up alignment surat PKL sudah selesai dan live. Isi surat mulai dari `Kepada Yth` sampai penutup kini sejajar dengan blok nomor surat, dan blok tanda tangan kepala sekolah tetap di posisi kanan tetapi teks/QR dibuat rata tengah.
+- Last updated: 2026-04-30 08:49 WIB
+- Current status: Follow-up alignment isi surat PKL sudah selesai dan live. Isi surat mulai dari `Kepada Yth` sampai penutup kini disejajarkan dengan awal isi nomor surat `B.108/...`, bukan dengan label `Nomor`.
 - Objective/task aktif:
   - Menjaga fitur operasional lintas web/mobile tetap user-friendly dan aman untuk produksi.
 - Batch terakhir selesai:
@@ -20,10 +20,9 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
   - Commit: `pending`
-  - Title: `fix(internship): align pkl letter body and signature`
+  - Title: `fix(internship): align pkl body with letter number`
   - Summary:
-    - body surat PKL tidak lagi menjorok ke kanan setelah blok nomor surat
-    - tanda tangan kepala sekolah tetap di area kanan, tetapi teks `Hormat Kami`, jabatan, QR, nama, dan NUPTK dibuat rata tengah
+    - body surat PKL digeser ke titik awal isi nomor surat, yaitu setelah label dan titik dua
     - fallback print legacy `/print/pkl/:id` ikut disamakan
 - Area/file disentuh:
   - `backend/src/controllers/internship.controller.ts`

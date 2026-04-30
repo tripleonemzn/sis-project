@@ -885,7 +885,7 @@ const generateLetterHTML = async (
           </div>
         </div>
 
-        <div style="margin-left: 0;">
+        <div style="margin-left: 76px;">
           <div style="margin-bottom: 20px;">
             Kepada Yth,<br/>
             <strong style="text-transform: uppercase;">Pimpinan / HRD ${effectiveCompanyName}</strong><br/>
