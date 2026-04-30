@@ -1393,6 +1393,9 @@ model StudentScoreRemedial {
   activityReferenceUrl       String?
   activityExamPacketId       Int?
   activitySourceExamPacketId Int?
+  activityAnswers            Json?
+  activityStartedAt          DateTime?
+  activitySubmittedAt        DateTime?
   note                       String?
   recordedById               Int?
   recordedAt                 DateTime            @default(now())
@@ -1405,6 +1408,7 @@ model StudentScoreRemedial {
   @@index([recordedById, recordedAt])
   @@index([activityExamPacketId])
   @@index([activitySourceExamPacketId])
+  @@index([activitySubmittedAt])
   @@map("student_score_remedials")
 }
 

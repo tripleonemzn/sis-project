@@ -316,6 +316,8 @@ export interface ScoreRemedialAttempt {
   activitySourceExamPacketId?: number | null;
   activityExamPacket?: ScoreRemedialExamPacketRef | null;
   activitySourceExamPacket?: ScoreRemedialExamPacketRef | null;
+  activityStartedAt?: string | null;
+  activitySubmittedAt?: string | null;
   note?: string | null;
   recordedAt: string;
   recordedById?: number | null;
@@ -335,6 +337,8 @@ export interface StudentRemedialActivity {
   activitySourceExamPacketId?: number | null;
   activityExamPacket?: ScoreRemedialExamPacketRef | null;
   activitySourceExamPacket?: ScoreRemedialExamPacketRef | null;
+  activityStartedAt?: string | null;
+  activitySubmittedAt?: string | null;
   sourceLabel: string;
   originalScore: number;
   remedialScore: number;

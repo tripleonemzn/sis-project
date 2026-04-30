@@ -14,6 +14,7 @@ import { AssignmentWithSubmission, LearningMaterial, LearningRemedialActivity } 
 import { useLearningQuery } from '../../src/features/learning/useLearningQuery';
 import { downloadFileToDevice } from '../../src/lib/files/downloadFileToDevice';
 import { resolvePublicAssetUrl } from '../../src/lib/media/resolvePublicAssetUrl';
+import { ENV } from '../../src/config/env';
 import { notifyError, notifyInfo, notifySuccess } from '../../src/lib/ui/feedback';
 import { getStandardPagePadding } from '../../src/lib/ui/pageLayout';
 import { useAppTextScale } from '../../src/theme/AppTextScaleProvider';
@@ -43,6 +44,11 @@ function formatScore(value: number | null | undefined) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return '-';
   return Number.isInteger(parsed) ? String(parsed) : parsed.toFixed(2);
+}
+
+function resolveWebRoute(pathname: string) {
+  const base = ENV.API_BASE_URL.replace(/\/api\/?$/, '').replace(/\/+$/, '');
+  return `${base}${pathname.startsWith('/') ? pathname : `/${pathname}`}`;
 }
 
 type OpenAttachmentHandler = (fileUrl?: string | null, fileName?: string | null) => Promise<void>;
@@ -290,7 +296,13 @@ function RemedialCard({
       <Text style={{ fontSize: scaleFont(11), lineHeight: scaleLineHeight(16), color: '#64748b', marginBottom: 8 }}>
         Nilai: asli {formatScore(item.originalScore)} • remedial {formatScore(item.remedialScore)} • efektif {formatScore(item.effectiveScore)} / KKM {item.kkm}
       </Text>
-      {item.activityReferenceUrl ? (
+      {item.activityExamPacket ? (
+        <AttachmentAction
+          title="Kerjakan Soal Remedial"
+          detail={item.activityExamPacket.title}
+          onPress={() => void Linking.openURL(resolveWebRoute(`/student/remedials/${item.id}/take`))}
+        />
+      ) : item.activityReferenceUrl ? (
         <AttachmentAction
           title="Buka Tautan Remedial"
           detail={item.activityReferenceUrl}

@@ -447,7 +447,8 @@ function resolveRestoredQuestionIndex(params: {
   return 0
 }
 
-function resolveExamTakeBaseRoute(pathname: string): '/student/exams' | '/candidate/exams' | '/public/exams' {
+function resolveExamTakeBaseRoute(pathname: string): '/student/exams' | '/student/learning' | '/candidate/exams' | '/public/exams' {
+  if (pathname.startsWith('/student/remedials')) return '/student/learning'
   if (pathname.startsWith('/candidate')) return '/candidate/exams'
   if (pathname.startsWith('/public')) return '/public/exams'
   return '/student/exams'
@@ -457,15 +458,23 @@ export default function StudentExamTakePage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const location = useLocation()
+  const isRemedialMode = location.pathname.startsWith('/student/remedials')
   const baseExamRoute = useMemo(() => resolveExamTakeBaseRoute(location.pathname), [location.pathname])
   const examTakeLabel = useMemo(() => {
+    if (isRemedialMode) return 'Remedial'
     if (location.pathname.startsWith('/candidate')) return 'Tes Seleksi'
     if (location.pathname.startsWith('/public')) return 'Tes BKK'
     return 'Ujian'
-  }, [location.pathname])
+  }, [isRemedialMode, location.pathname])
   const requiresFullscreen = useMemo(
-    () => supportsDocumentFullscreen() && !isLikelyMobileDevice(),
-    [],
+    () => !isRemedialMode && supportsDocumentFullscreen() && !isLikelyMobileDevice(),
+    [isRemedialMode],
+  )
+  const answerEndpoint = useMemo(
+    () => isRemedialMode
+      ? `/grades/remedials/student-activities/${id}/answers`
+      : `/exams/${id}/answers`,
+    [id, isRemedialMode],
   )
   
   // Exam data
@@ -567,7 +576,7 @@ export default function StudentExamTakePage() {
   }, [])
 
   useStudentExamWarningRealtime({
-    enabled: Boolean(id && user?.id && !submitting),
+    enabled: Boolean(!isRemedialMode && id && user?.id && !submitting),
     scheduleId: Number.isFinite(Number(id)) ? Number(id) : null,
     studentId: Number.isFinite(Number(user?.id)) ? Number(user?.id) : null,
     onWarning: handleIncomingProctorWarning,
@@ -872,7 +881,7 @@ export default function StudentExamTakePage() {
       }
 
       try {
-        const response = await api.post(`/exams/${id}/answers`, {
+        const response = await api.post(answerEndpoint, {
           student_id: user.id,
           answers: formattedAnswers,
           finish: false,
@@ -896,7 +905,7 @@ export default function StudentExamTakePage() {
         hasDirtyProgressRef.current = true
       }
     },
-    [id, user, exam, submitting, buildFormattedAnswers, buildSyncFingerprint, handleIncomingProctorTermination],
+    [id, user, exam, submitting, answerEndpoint, buildFormattedAnswers, buildSyncFingerprint, handleIncomingProctorTermination],
   )
 
   const queueProgressSync = useCallback(
@@ -981,7 +990,7 @@ export default function StudentExamTakePage() {
 
     try {
       await api.post(
-        `/exams/${id}/answers`,
+        answerEndpoint,
         {
           student_id: user?.id,
           answers: formattedAnswers,
@@ -999,7 +1008,7 @@ export default function StudentExamTakePage() {
       } catch {
         // Ignore sessionStorage failures during forced navigation.
       }
-      const returnRoute = sessionStorage.getItem('last_exam_route') || baseExamRoute
+      const returnRoute = isRemedialMode ? baseExamRoute : sessionStorage.getItem('last_exam_route') || baseExamRoute
       navigate(returnRoute, { replace: true })
     } catch (error: unknown) {
       console.error('Error auto-submitting:', error)
@@ -1007,11 +1016,11 @@ export default function StudentExamTakePage() {
       await ensureExitFullscreen()
       await new Promise((resolve) => setTimeout(resolve, 120))
       await ensureExitFullscreen()
-      const returnRoute = sessionStorage.getItem('last_exam_route') || baseExamRoute
+      const returnRoute = isRemedialMode ? baseExamRoute : sessionStorage.getItem('last_exam_route') || baseExamRoute
       navigate(returnRoute, { replace: true })
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [submitting, answers, id, navigate, buildFormattedAnswers])
+  }, [submitting, answers, id, navigate, answerEndpoint, isRemedialMode, baseExamRoute, buildFormattedAnswers])
 
   // Auto-submit when time runs out
   useEffect(() => {
@@ -1040,7 +1049,9 @@ export default function StudentExamTakePage() {
       // Use the startExam endpoint which includes validation
       // Add timestamp to prevent caching + force fresh data
       const response = await api.get(
-        `/exams/${id}/start?student_id=${user.id}&_t=${Date.now()}`,
+        isRemedialMode
+          ? `/grades/remedials/student-activities/${id}/start?_t=${Date.now()}`
+          : `/exams/${id}/start?student_id=${user.id}&_t=${Date.now()}`,
         { 
           headers: { 
             'Cache-Control': 'no-cache, no-store, must-revalidate',
@@ -1069,7 +1080,7 @@ export default function StudentExamTakePage() {
 	           } catch {
 	             // Ignore sessionStorage failures during redirect.
 	           }
-	           const returnRoute = sessionStorage.getItem('last_exam_route') || baseExamRoute
+	           const returnRoute = isRemedialMode ? baseExamRoute : sessionStorage.getItem('last_exam_route') || baseExamRoute
            navigate(returnRoute, { replace: true })
            return
         }
@@ -1792,7 +1803,7 @@ export default function StudentExamTakePage() {
       const formattedAnswers = buildFormattedAnswers(answers)
 
       const response = await api.post(
-        `/exams/${id}/answers`,
+        answerEndpoint,
         {
           student_id: user?.id,
           answers: formattedAnswers,
@@ -1818,7 +1829,7 @@ export default function StudentExamTakePage() {
           // Ignore sessionStorage failures during submit navigation.
         }
         
-        const returnRoute = sessionStorage.getItem('last_exam_route') || baseExamRoute
+        const returnRoute = isRemedialMode ? baseExamRoute : sessionStorage.getItem('last_exam_route') || baseExamRoute
         navigate(returnRoute, { replace: true })
       }
     } catch (error: unknown) {

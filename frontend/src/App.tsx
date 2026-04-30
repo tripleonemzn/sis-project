@@ -518,6 +518,7 @@ function App() {
             <Route path="exams/:legacyProgramCode" element={<StudentExamsPage />} />
             <Route path="exams/program/:programCode" element={<StudentExamsPage />} />
             <Route path="exams/:id/take" element={<StudentExamTakePage />} />
+            <Route path="remedials/:id/take" element={<StudentExamTakePage />} />
             <Route path="permissions" element={<StudentPermissionsPage />} />
             <Route path="schedule" element={<StudentSchedulePage />} />
             <Route path="learning" element={<StudentLearningPage />} />

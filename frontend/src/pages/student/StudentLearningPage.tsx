@@ -10,6 +10,7 @@ import {
   Search, 
   Filter, 
   Download, 
+  PlayCircle,
   Calendar,
   CheckCircle,
   Clock,
@@ -702,7 +703,15 @@ export default function StudentLearningPage() {
                       </td>
                       <td className="px-5 py-4">
                         <div className="flex justify-end">
-                          {activity.activityReferenceUrl ? (
+                          {activity.activityExamPacket ? (
+                            <a
+                              href={`/student/remedials/${activity.id}/take`}
+                              className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-indigo-700"
+                            >
+                              <PlayCircle size={14} />
+                              Kerjakan
+                            </a>
+                          ) : activity.activityReferenceUrl ? (
                             <a
                               href={activity.activityReferenceUrl}
                               target="_blank"

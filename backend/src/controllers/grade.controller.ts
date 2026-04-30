@@ -3277,6 +3277,209 @@ function roundRemedialScore(value: number): number {
   return Number(Math.max(0, Math.min(100, value)).toFixed(2))
 }
 
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  return value as Record<string, unknown>
+}
+
+function normalizeRemedialQuestionType(question: Record<string, unknown>): string {
+  return String(question.type || question.question_type || 'MULTIPLE_CHOICE').trim().toUpperCase()
+}
+
+function normalizeRemedialOptionIds(raw: unknown): string[] {
+  if (Array.isArray(raw)) {
+    return raw.map((item) => String(item || '').trim()).filter(Boolean)
+  }
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim()
+    if (!trimmed) return []
+    if (trimmed.includes(',')) return trimmed.split(',').map((item) => item.trim()).filter(Boolean)
+    return [trimmed]
+  }
+  if (raw === null || raw === undefined) return []
+  const normalized = String(raw).trim()
+  return normalized ? [normalized] : []
+}
+
+function setEquals(left: string[], right: string[]): boolean {
+  if (left.length !== right.length) return false
+  const leftSorted = [...left].sort()
+  const rightSorted = [...right].sort()
+  return leftSorted.every((value, index) => value === rightSorted[index])
+}
+
+function getRemedialCorrectOptionIds(question: Record<string, unknown>): string[] {
+  const options = Array.isArray(question.options) ? question.options : []
+  const fromOptions = options
+    .filter((option) => Boolean(asRecord(option)?.isCorrect))
+    .map((option) => String(asRecord(option)?.id || '').trim())
+    .filter(Boolean)
+  if (fromOptions.length > 0) return fromOptions
+
+  const rawAnswerKey = String(question.answerKey || question.correct_answer || question.correctAnswer || '').trim()
+  if (!rawAnswerKey) return []
+  return rawAnswerKey.split(',').map((item) => item.trim()).filter(Boolean)
+}
+
+function normalizeRemedialMatrixAnswer(raw: unknown): Record<string, string> {
+  const source = asRecord(raw)
+  if (!source) return {}
+  return Object.entries(source).reduce<Record<string, string>>((acc, [key, value]) => {
+    const rowId = String(key || '').trim()
+    const columnId = String(value || '').trim()
+    if (rowId && columnId) acc[rowId] = columnId
+    return acc
+  }, {})
+}
+
+function getRemedialMatrixRows(question: Record<string, unknown>): Array<Record<string, unknown>> {
+  return Array.isArray(question.matrixRows)
+    ? question.matrixRows.map((row) => asRecord(row)).filter((row): row is Record<string, unknown> => Boolean(row))
+    : []
+}
+
+function getRemedialCorrectMatrixAnswer(question: Record<string, unknown>): Record<string, string> {
+  return getRemedialMatrixRows(question).reduce<Record<string, string>>((acc, row) => {
+    const rowId = String(row.id || '').trim()
+    const columnId = String(row.correctOptionId || row.correctColumnId || '').trim()
+    if (rowId && columnId) acc[rowId] = columnId
+    return acc
+  }, {})
+}
+
+function isRemedialQuestionAnswered(question: Record<string, unknown>, rawAnswer: unknown): boolean {
+  const type = normalizeRemedialQuestionType(question)
+  if (type === 'ESSAY') return typeof rawAnswer === 'string' && rawAnswer.trim().length > 0
+  if (type === 'MATRIX_SINGLE_CHOICE') {
+    const rows = getRemedialMatrixRows(question)
+    if (rows.length === 0) return false
+    const answerMap = normalizeRemedialMatrixAnswer(rawAnswer)
+    return rows.some((row) => Boolean(answerMap[String(row.id || '').trim()]))
+  }
+  return normalizeRemedialOptionIds(rawAnswer).length > 0
+}
+
+function clampRemedialScoreFraction(value: number): number {
+  if (!Number.isFinite(value) || value <= 0) return 0
+  if (value >= 1) return 1
+  return value
+}
+
+function evaluateRemedialQuestionScoreFraction(question: Record<string, unknown>, rawAnswer: unknown): number | null {
+  const type = normalizeRemedialQuestionType(question)
+  if (type === 'ESSAY') return null
+
+  if (type === 'MATRIX_SINGLE_CHOICE') {
+    const correctAnswerMap = getRemedialCorrectMatrixAnswer(question)
+    const requiredRowIds = Object.keys(correctAnswerMap)
+    if (requiredRowIds.length === 0) return null
+    const answerMap = normalizeRemedialMatrixAnswer(rawAnswer)
+    const answeredRowIds = requiredRowIds.filter((rowId) => Boolean(answerMap[rowId]))
+    if (answeredRowIds.length === 0) return null
+    const correctRowCount = requiredRowIds.reduce(
+      (count, rowId) => count + (answerMap[rowId] === correctAnswerMap[rowId] ? 1 : 0),
+      0,
+    )
+    return clampRemedialScoreFraction(correctRowCount / requiredRowIds.length)
+  }
+
+  const correctOptionIds = Array.from(new Set(getRemedialCorrectOptionIds(question)))
+  if (correctOptionIds.length === 0) return null
+  const selectedOptionIds = Array.from(new Set(normalizeRemedialOptionIds(rawAnswer)))
+  if (selectedOptionIds.length === 0) return null
+
+  if (type === 'COMPLEX_MULTIPLE_CHOICE') {
+    const correctSet = new Set(correctOptionIds)
+    const selectedCorrect = selectedOptionIds.filter((optionId) => correctSet.has(optionId)).length
+    const selectedWrong = selectedOptionIds.filter((optionId) => !correctSet.has(optionId)).length
+    return clampRemedialScoreFraction((selectedCorrect - selectedWrong) / correctOptionIds.length)
+  }
+
+  return setEquals(selectedOptionIds, correctOptionIds) ? 1 : 0
+}
+
+function calculateRemedialQuestionSetScore(questions: Record<string, unknown>[], answers: Record<string, unknown>): number {
+  let totalScore = 0
+  let maxScore = 0
+  questions.forEach((question) => {
+    const points = Number(question.score || question.points || 1)
+    const safePoints = Number.isFinite(points) && points > 0 ? points : 1
+    maxScore += safePoints
+    const questionId = String(question.id || '').trim()
+    const scoreFraction = questionId
+      ? evaluateRemedialQuestionScoreFraction(question, answers[questionId])
+      : null
+    if (scoreFraction !== null && scoreFraction > 0) {
+      totalScore += safePoints * scoreFraction
+    }
+  })
+  if (maxScore <= 0) return 0
+  return roundRemedialScore((totalScore / maxScore) * 100)
+}
+
+function sanitizeRemedialQuestionForStudent(rawQuestion: unknown): Record<string, unknown> | null {
+  const source = asRecord(rawQuestion)
+  if (!source) return null
+  const cleaned: Record<string, unknown> = { ...source }
+  delete cleaned.blueprint
+  delete cleaned.questionCard
+  delete cleaned.reviewFeedback
+  delete cleaned.correct_answer
+  delete cleaned.correctAnswer
+  delete cleaned.answerKey
+  delete cleaned.answer_key
+  delete cleaned.explanation
+  delete cleaned.scoringGuideline
+  delete cleaned.answerRationale
+
+  if (Array.isArray(source.options)) {
+    cleaned.options = source.options.map((option) => {
+      const optionRecord = asRecord(option)
+      if (!optionRecord) return option
+      const safeOption = { ...optionRecord }
+      delete safeOption.isCorrect
+      delete safeOption.is_correct
+      delete safeOption.correct
+      delete safeOption.answer
+      delete safeOption.answerKey
+      return safeOption
+    })
+  }
+
+  if (Array.isArray(source.matrixRows)) {
+    cleaned.matrixRows = source.matrixRows.map((row) => {
+      const rowRecord = asRecord(row)
+      if (!rowRecord) return row
+      const safeRow = { ...rowRecord }
+      delete safeRow.correctOptionId
+      delete safeRow.correctColumnId
+      delete safeRow.answerKey
+      return safeRow
+    })
+  }
+
+  return cleaned
+}
+
+function sanitizeRemedialPacketQuestions(rawQuestions: unknown): Record<string, unknown>[] {
+  const list = Array.isArray(rawQuestions) ? rawQuestions : []
+  return list
+    .map((question) => sanitizeRemedialQuestionForStudent(question))
+    .filter((question): question is Record<string, unknown> => Boolean(question))
+}
+
+function sanitizeRemedialActivityAnswers(rawAnswers: unknown): Record<string, unknown> {
+  const source = asRecord(rawAnswers)
+  if (!source) return {}
+  return Object.entries(source).reduce<Record<string, unknown>>((acc, [key, value]) => {
+    const questionId = String(key || '').trim()
+    if (!questionId || questionId.startsWith('__')) return acc
+    if (value === undefined) return acc
+    acc[questionId] = value as Prisma.InputJsonValue
+    return acc
+  }, {})
+}
+
 function normalizeScoreRemedialMethod(value: unknown): ScoreRemedialMethod {
   const normalized = String(value || '').trim().toUpperCase()
   if (normalized === ScoreRemedialMethod.ASSIGNMENT) return ScoreRemedialMethod.ASSIGNMENT
@@ -4144,6 +4347,8 @@ export const getStudentRemedialActivities = async (req: Request, res: Response) 
         activitySourceExamPacketId: row.activitySourceExamPacketId,
         activityExamPacket: row.activityExamPacketId ? packetById.get(row.activityExamPacketId) || null : null,
         activitySourceExamPacket: row.activitySourceExamPacketId ? packetById.get(row.activitySourceExamPacketId) || null : null,
+        activityStartedAt: row.activityStartedAt,
+        activitySubmittedAt: row.activitySubmittedAt,
         sourceLabel: formatRemedialSourceLabel(scoreEntry),
         originalScore: roundRemedialScore(Number(row.originalScore)),
         remedialScore: roundRemedialScore(Number(row.remedialScore)),
@@ -4164,6 +4369,311 @@ export const getStudentRemedialActivities = async (req: Request, res: Response) 
     console.error('Get student remedial activities error:', error)
     if (error instanceof ApiError) throw error
     throw new ApiError(500, 'Gagal mengambil aktivitas remedial siswa.')
+  }
+}
+
+async function loadStudentOwnedRemedialActivity(activityId: number, studentId: number) {
+  if (!Number.isFinite(activityId) || activityId <= 0 || !Number.isFinite(studentId) || studentId <= 0) {
+    return null
+  }
+
+  const activeYear = await prisma.academicYear.findFirst({
+    where: { isActive: true },
+    select: { id: true, name: true },
+  })
+  if (!activeYear) {
+    throw new ApiError(404, 'Tahun ajaran aktif tidak ditemukan.')
+  }
+
+  return prisma.studentScoreRemedial.findFirst({
+    where: {
+      id: activityId,
+      method: ScoreRemedialMethod.QUESTION_SET,
+      status: { not: ScoreRemedialStatus.CANCELLED },
+      scoreEntry: {
+        studentId,
+        academicYearId: activeYear.id,
+      },
+    },
+    include: {
+      scoreEntry: {
+        select: {
+          id: true,
+          studentId: true,
+          subjectId: true,
+          academicYearId: true,
+          semester: true,
+          componentCode: true,
+          componentType: true,
+          componentTypeCode: true,
+          reportSlot: true,
+          reportSlotCode: true,
+          sourceType: true,
+          sourceKey: true,
+          metadata: true,
+          score: true,
+          subject: { select: { id: true, code: true, name: true } },
+          academicYear: { select: { id: true, name: true } },
+        },
+      },
+    },
+  })
+}
+
+async function loadRemedialActivityPacket(activity: Awaited<ReturnType<typeof loadStudentOwnedRemedialActivity>>) {
+  if (!activity) return null
+  const packetId = Number(activity.activityExamPacketId || activity.activitySourceExamPacketId || 0)
+  if (!Number.isFinite(packetId) || packetId <= 0) return null
+  return prisma.examPacket.findFirst({
+    where: {
+      id: packetId,
+      subjectId: activity.scoreEntry.subjectId,
+      academicYearId: activity.scoreEntry.academicYearId,
+      semester: activity.scoreEntry.semester,
+    },
+    select: {
+      id: true,
+      title: true,
+      description: true,
+      duration: true,
+      instructions: true,
+      kkm: true,
+      type: true,
+      programCode: true,
+      subjectId: true,
+      academicYearId: true,
+      semester: true,
+      questions: true,
+      subject: { select: { id: true, name: true, code: true } },
+    },
+  })
+}
+
+function buildRemedialActivityExamPayload(params: {
+  activity: NonNullable<Awaited<ReturnType<typeof loadStudentOwnedRemedialActivity>>>
+  packet: NonNullable<Awaited<ReturnType<typeof loadRemedialActivityPacket>>>
+}) {
+  const { activity, packet } = params
+  const startedAt = activity.activityStartedAt || activity.recordedAt || new Date()
+  const submittedAt = activity.activitySubmittedAt || null
+  const durationMinutes = Math.max(1, Number(packet.duration || 60))
+  const endTime = submittedAt || new Date(startedAt.getTime() + durationMinutes * 60 * 1000)
+  const answers = sanitizeRemedialActivityAnswers(activity.activityAnswers)
+  const status = submittedAt ? 'COMPLETED' : 'IN_PROGRESS'
+
+  return {
+    packet: {
+      id: activity.id,
+      packetId: packet.id,
+      title: activity.activityTitle || packet.title,
+      description: packet.description,
+      type: packet.type,
+      programCode: packet.programCode,
+      duration: durationMinutes,
+      start_time: startedAt,
+      end_time: endTime,
+      subject: packet.subject,
+      instructions: activity.activityInstructions || packet.instructions,
+      questions: sanitizeRemedialPacketQuestions(packet.questions),
+      isRemedial: true,
+      remedialActivityId: activity.id,
+      sourceLabel: formatRemedialSourceLabel(activity.scoreEntry),
+    },
+    session: {
+      id: activity.id,
+      status,
+      answers,
+      startTime: startedAt,
+      endTime,
+      submitTime: submittedAt,
+      score: submittedAt ? roundRemedialScore(Number(activity.remedialScore || 0)) : null,
+    },
+  }
+}
+
+export const startStudentRemedialActivity = async (req: Request, res: Response) => {
+  try {
+    const user = (req as any).user as AuthUserLike
+    const studentId = Number(user?.id || 0)
+    const activityId = toPositiveInt(req.params.id)
+
+    if (String(user?.role || '').toUpperCase() !== 'STUDENT' || !Number.isFinite(studentId) || studentId <= 0) {
+      throw new ApiError(403, 'Fitur ini hanya tersedia untuk siswa.')
+    }
+    if (!activityId) {
+      throw new ApiError(400, 'Aktivitas remedial tidak valid.')
+    }
+
+    let activity = await loadStudentOwnedRemedialActivity(activityId, studentId)
+    if (!activity) {
+      throw new ApiError(404, 'Aktivitas remedial tidak ditemukan.')
+    }
+
+    const packet = await loadRemedialActivityPacket(activity)
+    if (!packet) {
+      throw new ApiError(404, 'Paket soal remedial tidak ditemukan.')
+    }
+
+    if (activity.activityDueAt && !activity.activitySubmittedAt && new Date(activity.activityDueAt).getTime() < Date.now()) {
+      throw new ApiError(400, 'Tenggat remedial sudah berakhir.')
+    }
+
+    if (!activity.activityStartedAt) {
+      activity = await prisma.studentScoreRemedial.update({
+        where: { id: activity.id },
+        data: {
+          activityStartedAt: new Date(),
+          activityAnswers: sanitizeRemedialActivityAnswers(activity.activityAnswers) as Prisma.InputJsonValue,
+        },
+        include: {
+          scoreEntry: {
+            select: {
+              id: true,
+              studentId: true,
+              subjectId: true,
+              academicYearId: true,
+              semester: true,
+              componentCode: true,
+              componentType: true,
+              componentTypeCode: true,
+              reportSlot: true,
+              reportSlotCode: true,
+              sourceType: true,
+              sourceKey: true,
+              metadata: true,
+              score: true,
+              subject: { select: { id: true, code: true, name: true } },
+              academicYear: { select: { id: true, name: true } },
+            },
+          },
+        },
+      })
+    }
+
+    return ApiResponseHelper.success(
+      res,
+      buildRemedialActivityExamPayload({ activity, packet }),
+      'Aktivitas remedial berhasil dibuka.',
+    )
+  } catch (error) {
+    console.error('Start student remedial activity error:', error)
+    if (error instanceof ApiError) throw error
+    throw new ApiError(500, 'Gagal membuka aktivitas remedial.')
+  }
+}
+
+export const submitStudentRemedialActivityAnswers = async (req: Request, res: Response) => {
+  try {
+    const user = (req as any).user as AuthUserLike
+    const studentId = Number(user?.id || 0)
+    const activityId = toPositiveInt(req.params.id)
+    const finish = Boolean(req.body?.finish || req.body?.is_final_submit)
+
+    if (String(user?.role || '').toUpperCase() !== 'STUDENT' || !Number.isFinite(studentId) || studentId <= 0) {
+      throw new ApiError(403, 'Fitur ini hanya tersedia untuk siswa.')
+    }
+    if (!activityId) {
+      throw new ApiError(400, 'Aktivitas remedial tidak valid.')
+    }
+
+    const activity = await loadStudentOwnedRemedialActivity(activityId, studentId)
+    if (!activity) {
+      throw new ApiError(404, 'Aktivitas remedial tidak ditemukan.')
+    }
+    if (activity.activitySubmittedAt) {
+      return ApiResponseHelper.success(res, { status: 'COMPLETED', score: activity.remedialScore }, 'Remedial sudah dikumpulkan.')
+    }
+
+    const packet = await loadRemedialActivityPacket(activity)
+    if (!packet) {
+      throw new ApiError(404, 'Paket soal remedial tidak ditemukan.')
+    }
+    if (activity.activityDueAt && new Date(activity.activityDueAt).getTime() < Date.now()) {
+      throw new ApiError(400, 'Tenggat remedial sudah berakhir.')
+    }
+
+    const previousAnswers = sanitizeRemedialActivityAnswers(activity.activityAnswers)
+    const incomingAnswers = sanitizeRemedialActivityAnswers(req.body?.answers)
+    const nextAnswers = { ...previousAnswers, ...incomingAnswers }
+    const packetQuestions = Array.isArray(packet.questions)
+      ? (packet.questions as Record<string, unknown>[])
+      : []
+
+    if (finish) {
+      const unansweredCount = packetQuestions.filter((question) => {
+        const questionId = String(question.id || '').trim()
+        return !questionId || !isRemedialQuestionAnswered(question, nextAnswers[questionId])
+      }).length
+      if (unansweredCount > 0) {
+        throw new ApiError(400, `Masih ada ${unansweredCount} soal belum dijawab. Jawab semua soal sebelum mengumpulkan remedial.`)
+      }
+    }
+
+    const now = new Date()
+    if (!finish) {
+      const updated = await prisma.studentScoreRemedial.update({
+        where: { id: activity.id },
+        data: {
+          activityStartedAt: activity.activityStartedAt || now,
+          activityAnswers: nextAnswers as Prisma.InputJsonValue,
+        },
+      })
+      return ApiResponseHelper.success(res, updated, 'Jawaban remedial tersimpan.')
+    }
+
+    const remedialScore = calculateRemedialQuestionSetScore(packetQuestions, nextAnswers)
+    const effectiveScore = resolveRemedialEffectiveScore({
+      originalScore: Number(activity.originalScore),
+      previousEffectiveScore: Number(activity.previousEffectiveScore ?? activity.originalScore),
+      remedialScore,
+      kkm: Number(activity.kkm || 75),
+    })
+    const status = effectiveScore >= Number(activity.kkm || 75)
+      ? ScoreRemedialStatus.PASSED
+      : ScoreRemedialStatus.STILL_BELOW_KKM
+
+    const updated = await prisma.studentScoreRemedial.update({
+      where: { id: activity.id },
+      data: {
+        activityStartedAt: activity.activityStartedAt || now,
+        activitySubmittedAt: now,
+        activityAnswers: nextAnswers as Prisma.InputJsonValue,
+        remedialScore,
+        effectiveScore,
+        status,
+      },
+    })
+
+    const reportSync = await syncReportGradeSafely(
+      activity.scoreEntry.studentId,
+      activity.scoreEntry.subjectId,
+      activity.scoreEntry.academicYearId,
+      activity.scoreEntry.semester,
+    )
+
+    emitGradeRealtimeRefresh({
+      studentIds: [activity.scoreEntry.studentId],
+      subjectIds: [activity.scoreEntry.subjectId],
+      academicYearIds: [activity.scoreEntry.academicYearId],
+      semesters: [activity.scoreEntry.semester],
+      includeReports: reportSync.success,
+    })
+
+    return ApiResponseHelper.success(
+      res,
+      {
+        ...updated,
+        score: remedialScore,
+        effectiveScore,
+        status,
+        reportSync,
+      },
+      'Jawaban remedial berhasil dikumpulkan.',
+    )
+  } catch (error) {
+    console.error('Submit student remedial activity error:', error)
+    if (error instanceof ApiError) throw error
+    throw new ApiError(500, 'Gagal menyimpan jawaban remedial.')
   }
 }
 

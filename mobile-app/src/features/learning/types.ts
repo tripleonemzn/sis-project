@@ -85,6 +85,8 @@ export type LearningRemedialActivity = {
     duration?: number | null;
     publishedQuestionCount?: number | null;
   } | null;
+  activityStartedAt?: string | null;
+  activitySubmittedAt?: string | null;
   sourceLabel: string;
   originalScore: number;
   remedialScore: number;
