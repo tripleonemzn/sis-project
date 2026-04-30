@@ -5,12 +5,12 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-04-30 10:31 WIB
-- Current status: Batch mobile parity presensi terpadu sudah selesai, sudah commit/push, dan sudah publish OTA tester ke channel `pilot-live`. Guru mapel mobile punya tab `Rekap Presensi` dengan detail tanggal per siswa, wali kelas mobile punya rekap detail mingguan/bulanan/semester/tahun, dan principal mobile punya monitoring presensi guru mapel berbasis jadwal.
+- Last updated: 2026-04-30 11:12 WIB
+- Current status: Perbaikan UI/UX presensi sedang diselesaikan. Status baru `DISPENSATION`/`Dispen` sudah ditambahkan sebagai status resmi presensi, tetap dihitung hadir untuk persentase, dan UI web guru mapel/wali kelas sudah mendukung klik angka rekap untuk melihat tanggal detail per status.
 - Objective/task aktif:
   - Menyelesaikan peningkatan presensi siswa/guru lintas guru mapel, wali kelas, kurikulum, dan mobile parity.
 - Batch terakhir selesai:
-  - `Presensi terpadu batch 3 - mobile parity rekap/detail`
+  - `Presensi UI/UX dan status Dispen - source + verifikasi lokal`
 - Progress batch ini:
   - `100%`
 - Progress presensi terpadu saat ini:
@@ -19,14 +19,15 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` web wali kelas detail tanggal rekap
   - `100%` web kurikulum/admin monitoring guru mapel
   - `100%` mobile parity untuk rekap/detail baru
+  - `90%` status `Dispen` dan UI rekap klik angka; sisa publish live/OTA setelah commit
 - Progress roadmap perangkat ajar dinamis:
   - `100%` untuk rumusan arsitektur generik
   - `100%` untuk implementasi teknis scope aktif engine generik
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
-  - Commit: `a962ecc`
-  - Title: `feat(mobile): add attendance recap parity`
+  - Commit terakhir sebelum batch ini: `11680ab`
+  - Title: `docs: add multi-pc coordination policy`
   - Summary:
     - subject attendance mendapat audit fields (`createdAt`, `updatedAt`, `createdById`, `updatedById`, optional assignment/schedule link)
     - endpoint baru tersedia untuk detail rekap presensi harian, rekap presensi mapel, dan monitoring presensi guru mapel berbasis jadwal
@@ -38,8 +39,13 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
     - mobile guru mapel mendapat tab `Input Presensi` dan `Rekap Presensi` dengan filter periode dan detail tanggal per siswa
     - mobile wali kelas memakai rekap detail baru dengan periode mingguan/bulanan/semester/tahun dan detail tanggal S/I/A/T
     - mobile principal mendapat monitoring presensi guru mapel dengan filter periode/status dan ringkasan jadwal, sudah, belum, susulan, diedit
+    - status `DISPENSATION` ditambahkan untuk kebutuhan Dispen/OSIS/kepanitiaan; dihitung sebagai hadir pada persentase
+    - tombol `Semua Hadir` pada input presensi web guru mapel dihapus karena default input sudah hadir
+    - filter rekap web guru mapel dipindahkan sejajar dengan tab dan label dibuat inline agar tidak memakan space
+    - angka rekap web guru mapel dan wali kelas kini bisa diklik untuk membuka detail tanggal sesuai status yang dipilih
 - Area/file disentuh:
   - `backend/prisma/schema.prisma`
+  - `backend/prisma/migrations/20260430105500_add_attendance_dispensation_status/migration.sql`
   - `backend/prisma/migrations/20260430103000_add_subject_attendance_audit/migration.sql`
   - `backend/prisma/migrations/20260430104500_backfill_subject_attendance_audit_timestamps/migration.sql`
   - `backend/src/controllers/attendance.controller.ts`
@@ -47,11 +53,15 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `frontend/src/services/attendance.service.ts`
   - `frontend/src/pages/teacher/TeacherAttendancePage.tsx`
   - `frontend/src/pages/teacher/homeroom/HomeroomAttendancePage.tsx`
+  - `frontend/src/pages/student/StudentAttendancePage.tsx`
   - `frontend/src/pages/admin/academic/AttendanceRecapPage.tsx`
   - `mobile-app/src/features/attendance/types.ts`
   - `mobile-app/src/features/attendance/attendanceApi.ts`
   - `mobile-app/app/(app)/teacher/attendance.tsx`
   - `mobile-app/app/(app)/teacher/homeroom-attendance.tsx`
+  - `mobile-app/app/(app)/attendance.tsx`
+  - `mobile-app/app/(app)/parent/attendance.tsx`
+  - `mobile-app/app/(app)/student/class-attendance.tsx`
   - `mobile-app/app/(app)/principal/attendance.tsx`
   - `docs/CODEX_CONTINUITY.md`
 - Verifikasi batch ini:
@@ -66,16 +76,14 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `curl -I https://siskgb2.id/` merespons `200`
   - `cd mobile-app && npm run typecheck`
   - `cd mobile-app && npm run audit:parity:check`
+  - `git diff --check`
   - `cd mobile-app && npm run check:ota:testers`
   - `cd mobile-app && npm run update:testers -- "Rekap presensi mobile diperbarui. Silakan perbarui untuk menikmati fitur terbaru."`
 - Publish/live status:
-  - Backend sudah restart via PM2 dan health `Backend:200`, `Backend API:200`
-  - Web sudah deploy ke `/var/www/html`
-  - Mobile OTA sudah publish ke channel `pilot-live`
-  - OTA update group ID: `ad37835b-a11e-40b6-8057-ffe9291c08c3`
-  - Android update ID: `019ddc70-72b3-7d7a-acdb-d5ae7e9a9ff1`
-  - Push notify update berhasil: recipients `40`, sent `40`, failed `0`, stale `0`
+  - Batch sebelumnya: backend/web/mobile sudah live
+  - Batch Dispen saat handoff ini: source sudah diverifikasi lokal; restart/deploy/OTA dilanjutkan setelah commit agar safety gate clean
 - Remaining work:
+  - Commit/push batch Dispen, restart backend, deploy frontend, publish OTA mobile tester.
   - Sanity test manual dengan akun guru/wakakur di browser untuk memastikan data jadwal/presensi real tampil sesuai ekspektasi.
 - Residual risk:
   - Jika satu kelas-mapel punya lebih dari satu sesi pada hari yang sama, data lama tanpa `scheduleEntryId` masih dicocokkan fallback per tanggal+kelas+mapel. Data baru sudah mendukung link jadwal opsional, tetapi UI input belum memilih sesi spesifik.

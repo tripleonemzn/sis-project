@@ -26,6 +26,7 @@ const STATUS_LABELS = {
   PRESENT: { label: 'Hadir', color: 'bg-green-100 text-green-700', icon: CheckCircle },
   SICK: { label: 'Sakit', color: 'bg-blue-100 text-blue-700', icon: AlertCircle },
   PERMISSION: { label: 'Izin', color: 'bg-yellow-100 text-yellow-700', icon: FileText },
+  DISPENSATION: { label: 'Dispen', color: 'bg-cyan-100 text-cyan-700', icon: Shield },
   ALPHA: { label: 'Alpha', color: 'bg-red-100 text-red-700', icon: XCircle },
   ABSENT: { label: 'Alpha', color: 'bg-red-100 text-red-700', icon: XCircle },
   LATE: { label: 'Terlambat', color: 'bg-orange-100 text-orange-700', icon: Clock },

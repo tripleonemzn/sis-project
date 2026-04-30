@@ -1,4 +1,4 @@
-export type StudentAttendanceStatus = 'PRESENT' | 'SICK' | 'PERMISSION' | 'ABSENT' | 'ALPHA' | 'LATE';
+export type StudentAttendanceStatus = 'PRESENT' | 'SICK' | 'PERMISSION' | 'DISPENSATION' | 'ABSENT' | 'ALPHA' | 'LATE';
 
 export type StudentAttendanceHistory = {
   id: number;
@@ -293,7 +293,7 @@ export type DailyPresenceOperationalParticipant = {
   additionalDuties?: string[];
 };
 
-export type TeacherAttendanceStatus = 'PRESENT' | 'ABSENT' | 'SICK' | 'PERMISSION' | 'LATE';
+export type TeacherAttendanceStatus = 'PRESENT' | 'ABSENT' | 'SICK' | 'PERMISSION' | 'DISPENSATION' | 'LATE';
 export type AttendanceRecapPeriod = 'YEAR' | 'SEMESTER' | 'MONTH' | 'WEEK';
 export type TeacherAttendanceMonitorStatus = 'SUBMITTED' | 'MISSING' | 'LATE_INPUT' | 'EDITED';
 
@@ -347,6 +347,7 @@ export type AttendanceSummaryCounts = {
   late: number;
   sick: number;
   permission: number;
+  dispensation: number;
   absent: number;
   total: number;
   percentage: number;

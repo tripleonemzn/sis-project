@@ -1,6 +1,6 @@
 import api from './api';
 
-export type AttendanceStatus = 'PRESENT' | 'ABSENT' | 'SICK' | 'PERMISSION' | 'LATE';
+export type AttendanceStatus = 'PRESENT' | 'ABSENT' | 'SICK' | 'PERMISSION' | 'DISPENSATION' | 'LATE';
 export type AttendanceRecapPeriod = 'YEAR' | 'SEMESTER' | 'MONTH' | 'WEEK';
 export type TeacherAttendanceMonitorStatus = 'SUBMITTED' | 'MISSING' | 'LATE_INPUT' | 'EDITED';
 
@@ -32,6 +32,7 @@ export interface DailyAttendanceRecapStudent {
   late: number;
   sick: number;
   permission: number;
+  dispensation: number;
   absent: number;
   total: number;
   percentage: number;
@@ -90,6 +91,7 @@ export interface AttendanceDetailStudent {
     late: number;
     sick: number;
     permission: number;
+    dispensation: number;
     absent: number;
     total: number;
     percentage: number;

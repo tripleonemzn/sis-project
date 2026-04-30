@@ -45,6 +45,7 @@ const STATUS_OPTIONS: StatusConfig[] = [
   { value: 'PRESENT', label: 'Hadir', shortLabel: 'H', iconName: 'check-circle', bg: '#dcfce7', border: '#86efac', text: '#166534' },
   { value: 'SICK', label: 'Sakit', shortLabel: 'S', iconName: 'plus-circle', bg: '#dbeafe', border: '#93c5fd', text: '#1d4ed8' },
   { value: 'PERMISSION', label: 'Izin', shortLabel: 'I', iconName: 'file-text', bg: '#ffedd5', border: '#fdba74', text: '#9a3412' },
+  { value: 'DISPENSATION', label: 'Dispen', shortLabel: 'D', iconName: 'clipboard', bg: '#cffafe', border: '#67e8f9', text: '#0e7490' },
   { value: 'ABSENT', label: 'Alpha', shortLabel: 'A', iconName: 'x-circle', bg: '#fee2e2', border: '#fca5a5', text: '#991b1b' },
   { value: 'LATE', label: 'Telat', shortLabel: 'T', iconName: 'clock', bg: '#fef3c7', border: '#fcd34d', text: '#92400e' },
 ];
@@ -241,12 +242,13 @@ export default function TeacherAttendanceScreen() {
 
   const stats = useMemo(() => {
     const students = detailQuery.data?.class.students || [];
-    const result = { present: 0, sick: 0, permission: 0, absent: 0, late: 0, total: students.length };
+    const result = { present: 0, sick: 0, permission: 0, dispensation: 0, absent: 0, late: 0, total: students.length };
     for (const student of students) {
       const status = draft[student.id] || 'PRESENT';
       if (status === 'PRESENT') result.present += 1;
       if (status === 'SICK') result.sick += 1;
       if (status === 'PERMISSION') result.permission += 1;
+      if (status === 'DISPENSATION') result.dispensation += 1;
       if (status === 'ABSENT') result.absent += 1;
       if (status === 'LATE') result.late += 1;
     }
@@ -274,18 +276,19 @@ export default function TeacherAttendanceScreen() {
   const selectedRecapStudent =
     filteredRecapStudents.find((row) => row.student.id === selectedRecapStudentId) || null;
   const recapSummary = useMemo(() => {
-    if (!filteredRecapStudents.length) return { present: 0, sick: 0, permission: 0, absent: 0, late: 0, percentage: 0 };
+    if (!filteredRecapStudents.length) return { present: 0, sick: 0, permission: 0, dispensation: 0, absent: 0, late: 0, percentage: 0 };
     const totals = filteredRecapStudents.reduce(
       (acc, row) => {
         acc.present += row.summary.present;
         acc.sick += row.summary.sick;
         acc.permission += row.summary.permission;
+        acc.dispensation += row.summary.dispensation;
         acc.absent += row.summary.absent;
         acc.late += row.summary.late;
         acc.percentage += row.summary.percentage;
         return acc;
       },
-      { present: 0, sick: 0, permission: 0, absent: 0, late: 0, percentage: 0 },
+      { present: 0, sick: 0, permission: 0, dispensation: 0, absent: 0, late: 0, percentage: 0 },
     );
     totals.percentage = totals.percentage / filteredRecapStudents.length;
     return totals;
@@ -521,10 +524,11 @@ export default function TeacherAttendanceScreen() {
                       { label: 'Hadir', value: stats.present },
                       { label: 'Sakit', value: stats.sick },
                       { label: 'Izin', value: stats.permission },
+                      { label: 'Dispen', value: stats.dispensation },
                       { label: 'Alpha', value: stats.absent },
                       { label: 'Telat', value: stats.late },
                     ].map((item) => (
-                      <View key={item.label} style={{ width: '20%', paddingHorizontal: 3 }}>
+                      <View key={item.label} style={{ width: '16.6667%', paddingHorizontal: 3 }}>
                         <View
                           style={{
                             backgroundColor: 'rgba(255,255,255,0.12)',
@@ -569,7 +573,7 @@ export default function TeacherAttendanceScreen() {
 
                     <View style={{ flexDirection: 'row', marginHorizontal: -3, marginBottom: 10 }}>
                       {STATUS_OPTIONS.map((statusOption) => (
-                        <View key={statusOption.value} style={{ width: '20%', paddingHorizontal: 3 }}>
+                        <View key={statusOption.value} style={{ width: '16.6667%', paddingHorizontal: 3 }}>
                           <Pressable
                             onPress={() => markAll(statusOption.value)}
                             style={{
@@ -660,7 +664,7 @@ export default function TeacherAttendanceScreen() {
                               {STATUS_OPTIONS.map((option) => {
                                 const selected = (draft[student.id] || 'PRESENT') === option.value;
                                 return (
-                                  <View key={option.value} style={{ width: '20%', paddingHorizontal: 3 }}>
+                                  <View key={option.value} style={{ width: '16.6667%', paddingHorizontal: 3 }}>
                                     <Pressable
                                       accessibilityLabel={option.label}
                                       onPress={() => handleStatusChange(student.id, option.value)}
@@ -874,10 +878,11 @@ export default function TeacherAttendanceScreen() {
                         { label: 'Hadir', value: recapSummary.present },
                         { label: 'Sakit', value: recapSummary.sick },
                         { label: 'Izin', value: recapSummary.permission },
+                        { label: 'Dispen', value: recapSummary.dispensation },
                         { label: 'Alpha', value: recapSummary.absent },
                         { label: 'Telat', value: recapSummary.late },
                       ].map((item) => (
-                        <View key={item.label} style={{ width: '20%', paddingHorizontal: 3, marginBottom: 6 }}>
+                        <View key={item.label} style={{ width: '16.6667%', paddingHorizontal: 3, marginBottom: 6 }}>
                           <View
                             style={{
                               backgroundColor: 'rgba(255,255,255,0.12)',
@@ -950,9 +955,10 @@ export default function TeacherAttendanceScreen() {
                                   { label: 'Telat', value: row.summary.late, color: '#92400e' },
                                   { label: 'Sakit', value: row.summary.sick, color: '#1d4ed8' },
                                   { label: 'Izin', value: row.summary.permission, color: '#a16207' },
+                                  { label: 'Dispen', value: row.summary.dispensation, color: '#0e7490' },
                                   { label: 'Alpha', value: row.summary.absent, color: '#b91c1c' },
                                 ].map((item) => (
-                                  <View key={item.label} style={{ width: '20%', paddingHorizontal: 3 }}>
+                                  <View key={item.label} style={{ width: '16.6667%', paddingHorizontal: 3 }}>
                                     <View
                                       style={{
                                         backgroundColor: '#f8fbff',

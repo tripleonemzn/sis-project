@@ -49,6 +49,7 @@ const STATUS_OPTIONS: StatusConfig[] = [
   { value: 'PRESENT', label: 'Hadir', shortLabel: 'H', bg: '#dcfce7', border: '#86efac', text: '#166534' },
   { value: 'SICK', label: 'Sakit', shortLabel: 'S', bg: '#dbeafe', border: '#93c5fd', text: '#1d4ed8' },
   { value: 'PERMISSION', label: 'Izin', shortLabel: 'I', bg: '#ffedd5', border: '#fdba74', text: '#9a3412' },
+  { value: 'DISPENSATION', label: 'Dispen', shortLabel: 'D', bg: '#cffafe', border: '#67e8f9', text: '#0e7490' },
   { value: 'ABSENT', label: 'Alpha', shortLabel: 'A', bg: '#fee2e2', border: '#fca5a5', text: '#991b1b' },
   { value: 'LATE', label: 'Telat', shortLabel: 'T', bg: '#fef3c7', border: '#fcd34d', text: '#92400e' },
 ];
@@ -318,6 +319,7 @@ export default function TeacherHomeroomAttendanceScreen() {
       present: 0,
       sick: 0,
       permission: 0,
+      dispensation: 0,
       absent: 0,
       late: 0,
       checkedIn: 0,
@@ -330,6 +332,7 @@ export default function TeacherHomeroomAttendanceScreen() {
       if (status === 'PRESENT') result.present += 1;
       if (status === 'SICK') result.sick += 1;
       if (status === 'PERMISSION') result.permission += 1;
+      if (status === 'DISPENSATION') result.dispensation += 1;
       if (status === 'ABSENT') result.absent += 1;
       if (status === 'LATE') result.late += 1;
       if (row.checkInTime) result.checkedIn += 1;
@@ -759,6 +762,7 @@ export default function TeacherHomeroomAttendanceScreen() {
               { label: 'Hadir', value: dailyStats.present },
               { label: 'Sakit', value: dailyStats.sick },
               { label: 'Izin', value: dailyStats.permission },
+              { label: 'Dispen', value: dailyStats.dispensation },
               { label: 'Alpha', value: dailyStats.absent },
               { label: 'Telat', value: dailyStats.late },
             ].map((item) => (
@@ -1062,9 +1066,10 @@ export default function TeacherHomeroomAttendanceScreen() {
                           { label: 'Telat', value: row.summary.late, color: '#92400e' },
                           { label: 'Sakit', value: row.summary.sick, color: '#1d4ed8' },
                           { label: 'Izin', value: row.summary.permission, color: '#a16207' },
+                          { label: 'Dispen', value: row.summary.dispensation, color: '#0e7490' },
                           { label: 'Alpha', value: row.summary.absent, color: '#b91c1c' },
                         ].map((item) => (
-                          <View key={item.label} style={{ width: '20%', paddingHorizontal: 3 }}>
+                          <View key={item.label} style={{ width: '16.6667%', paddingHorizontal: 3 }}>
                             <View
                               style={{
                                 backgroundColor: '#f8fbff',

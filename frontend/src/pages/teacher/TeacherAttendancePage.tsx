@@ -2,20 +2,20 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
-import { 
-  ArrowLeft, 
-  Calendar, 
-  Save, 
-  CheckCircle, 
-  Users, 
-  BookOpen, 
+import {
+  ArrowLeft,
+  Calendar,
+  Save,
+  CheckCircle,
+  Users,
+  BookOpen,
   Loader2,
   XCircle,
   PlusCircle,
   Clock,
   FileText,
+  ClipboardCheck,
   BarChart3,
-  Filter,
   Eye,
   X
 } from 'lucide-react';
@@ -29,42 +29,50 @@ import {
 } from '../../services/attendance.service';
 
 const STATUS_OPTIONS: { value: AttendanceStatus; label: string; icon: LucideIcon; color: string; activeClass: string; inactiveClass: string }[] = [
-  { 
-    value: 'PRESENT', 
-    label: 'Hadir', 
-    icon: CheckCircle, 
+  {
+    value: 'PRESENT',
+    label: 'Hadir',
+    icon: CheckCircle,
     color: 'text-green-600',
     activeClass: 'text-green-700',
     inactiveClass: 'text-gray-400 hover:text-gray-600'
   },
-  { 
-    value: 'SICK', 
-    label: 'Sakit', 
-    icon: PlusCircle, 
+  {
+    value: 'SICK',
+    label: 'Sakit',
+    icon: PlusCircle,
     color: 'text-blue-600',
     activeClass: 'text-blue-700',
     inactiveClass: 'text-gray-400 hover:text-gray-600'
   },
-  { 
-    value: 'PERMISSION', 
-    label: 'Izin', 
-    icon: FileText, 
+  {
+    value: 'PERMISSION',
+    label: 'Izin',
+    icon: FileText,
     color: 'text-yellow-600',
     activeClass: 'text-yellow-700',
     inactiveClass: 'text-gray-400 hover:text-gray-600'
   },
-  { 
-    value: 'ABSENT', 
-    label: 'Alpha', 
-    icon: XCircle, 
+  {
+    value: 'ABSENT',
+    label: 'Alpha',
+    icon: XCircle,
     color: 'text-red-600',
     activeClass: 'text-red-700',
     inactiveClass: 'text-gray-400 hover:text-gray-600'
   },
-  { 
-    value: 'LATE', 
-    label: 'Telat', 
-    icon: Clock, 
+  {
+    value: 'DISPENSATION',
+    label: 'Dispen',
+    icon: ClipboardCheck,
+    color: 'text-cyan-600',
+    activeClass: 'text-cyan-700',
+    inactiveClass: 'text-gray-400 hover:text-gray-600'
+  },
+  {
+    value: 'LATE',
+    label: 'Telat',
+    icon: Clock,
     color: 'text-orange-600',
     activeClass: 'text-orange-700',
     inactiveClass: 'text-gray-400 hover:text-gray-600'
@@ -75,6 +83,7 @@ const STATUS_LABELS: Record<AttendanceStatus, string> = {
   PRESENT: 'Hadir',
   SICK: 'Sakit',
   PERMISSION: 'Izin',
+  DISPENSATION: 'Dispen',
   ABSENT: 'Alpha',
   LATE: 'Telat',
 };
@@ -102,9 +111,10 @@ export const TeacherAttendancePage = () => {
   const [recapYear, setRecapYear] = useState(new Date().getFullYear());
   const [recapWeekStart, setRecapWeekStart] = useState(new Date().toISOString().split('T')[0]);
   const [selectedRecapStudent, setSelectedRecapStudent] = useState<AttendanceDetailStudent | null>(null);
+  const [selectedRecapStatus, setSelectedRecapStatus] = useState<AttendanceStatus | null>(null);
   const normalizedAssignmentId = Number(assignmentId);
   const hasValidAssignmentId = Number.isInteger(normalizedAssignmentId) && normalizedAssignmentId > 0;
-  
+
   // Local state for attendance records before saving
   const [attendanceRecords, setAttendanceRecords] = useState<Record<number, { status: AttendanceStatus; note: string }>>({});
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
@@ -180,7 +190,7 @@ export const TeacherAttendancePage = () => {
     }
 
     const initialRecords: Record<number, { status: AttendanceStatus; note: string }> = {};
-    
+
     // Default to PRESENT for all students if no existing data
     assignment.class.students.forEach(student => {
       initialRecords[student.id] = { status: 'PRESENT', note: '' };
@@ -253,17 +263,6 @@ export const TeacherAttendancePage = () => {
     });
   };
 
-  const markAll = (status: AttendanceStatus) => {
-    setHasUnsavedChanges(true);
-    setAttendanceRecords(prev => {
-      const next = { ...prev };
-      Object.keys(next).forEach(key => {
-        next[Number(key)].status = status;
-      });
-      return next;
-    });
-  };
-
   if (isLoadingAssignment) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh]">
@@ -290,6 +289,28 @@ export const TeacherAttendancePage = () => {
   const recapStudents = (recapData?.data?.students || [])
     .slice()
     .sort((a, b) => a.student.name.localeCompare(b.student.name));
+  const openRecapDetail = (student: AttendanceDetailStudent, status?: AttendanceStatus) => {
+    setSelectedRecapStudent(student);
+    setSelectedRecapStatus(status || null);
+  };
+  const renderRecapCount = (
+    student: AttendanceDetailStudent,
+    status: AttendanceStatus,
+    value: number,
+    colorClass: string,
+  ) => (
+    <button
+      type="button"
+      onClick={() => openRecapDetail(student, status)}
+      disabled={value <= 0}
+      className={`rounded-md px-2 py-1 font-semibold transition ${
+        value > 0 ? `${colorClass} hover:bg-gray-100` : 'cursor-default text-gray-400'
+      }`}
+      title={value > 0 ? `Lihat detail ${STATUS_LABELS[status]}` : `Tidak ada ${STATUS_LABELS[status]}`}
+    >
+      {value > 0 ? value : '-'}
+    </button>
+  );
 
   return (
     <div className="space-y-6 pb-20">
@@ -297,7 +318,7 @@ export const TeacherAttendancePage = () => {
       <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
           <div className="flex items-center gap-3">
-            <button 
+            <button
               onClick={() => navigate(-1)}
               className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
             >
@@ -354,45 +375,104 @@ export const TeacherAttendancePage = () => {
         </div>
 
         <div className="mt-4 border-b border-gray-200">
-          <div className="flex gap-6 overflow-x-auto">
-            <button
-              type="button"
-              onClick={() => setActiveTab('input')}
-              className={`inline-flex items-center gap-2 border-b-2 px-1 py-3 text-sm font-medium ${
-                activeTab === 'input'
-                  ? 'border-blue-600 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
-              }`}
-            >
-              <Calendar className="h-4 w-4" />
-              Input Presensi
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab('recap')}
-              className={`inline-flex items-center gap-2 border-b-2 px-1 py-3 text-sm font-medium ${
-                activeTab === 'recap'
-                  ? 'border-blue-600 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
-              }`}
-            >
-              <BarChart3 className="h-4 w-4" />
-              Rekap Presensi
-            </button>
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex gap-6 overflow-x-auto">
+              <button
+                type="button"
+                onClick={() => setActiveTab('input')}
+                className={`inline-flex items-center gap-2 border-b-2 px-1 py-3 text-sm font-medium ${
+                  activeTab === 'input'
+                    ? 'border-blue-600 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
+                }`}
+              >
+                <Calendar className="h-4 w-4" />
+                Input Presensi
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('recap')}
+                className={`inline-flex items-center gap-2 border-b-2 px-1 py-3 text-sm font-medium ${
+                  activeTab === 'recap'
+                    ? 'border-blue-600 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
+                }`}
+              >
+                <BarChart3 className="h-4 w-4" />
+                Rekap Presensi
+              </button>
+            </div>
+
+            {activeTab === 'recap' && (
+              <div className="flex flex-wrap items-center gap-2 pb-3 text-sm">
+                <label className="font-medium text-gray-600">Jenis Periode</label>
+                <select
+                  value={recapPeriod}
+                  onChange={(event) => setRecapPeriod(event.target.value as AttendanceRecapPeriod)}
+                  className="min-w-[150px] rounded-lg border border-gray-300 px-3 py-2 pr-10 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                >
+                  <option value="WEEK">Mingguan</option>
+                  <option value="MONTH">Bulanan</option>
+                  <option value="SEMESTER">Semester</option>
+                  <option value="YEAR">1 Tahun Ajaran</option>
+                </select>
+                {recapPeriod === 'WEEK' && (
+                  <>
+                    <label className="font-medium text-gray-600">Tanggal Minggu</label>
+                    <input
+                      type="date"
+                      value={recapWeekStart}
+                      onChange={(event) => setRecapWeekStart(event.target.value)}
+                      className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                    />
+                  </>
+                )}
+                {recapPeriod === 'MONTH' && (
+                  <>
+                    <label className="font-medium text-gray-600">Bulan</label>
+                    <select
+                      value={recapMonth}
+                      onChange={(event) => setRecapMonth(Number(event.target.value))}
+                      className="min-w-[140px] rounded-lg border border-gray-300 px-3 py-2 pr-10 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                    >
+                      {Array.from({ length: 12 }, (_, index) => index + 1).map((month) => (
+                        <option key={month} value={month}>
+                          {new Date(2026, month - 1, 1).toLocaleString('id-ID', { month: 'long' })}
+                        </option>
+                      ))}
+                    </select>
+                    <label className="font-medium text-gray-600">Tahun</label>
+                    <input
+                      type="number"
+                      value={recapYear}
+                      onChange={(event) => setRecapYear(Number(event.target.value))}
+                      className="w-28 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                    />
+                  </>
+                )}
+                {recapPeriod === 'SEMESTER' && (
+                  <>
+                    <label className="font-medium text-gray-600">Semester</label>
+                    <select
+                      value={recapSemester}
+                      onChange={(event) => setRecapSemester(event.target.value as 'ODD' | 'EVEN')}
+                      className="min-w-[150px] rounded-lg border border-gray-300 px-3 py-2 pr-10 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                    >
+                      <option value="ODD">Ganjil</option>
+                      <option value="EVEN">Genap</option>
+                    </select>
+                  </>
+                )}
+                {recapData?.data?.meta?.dateRange && (
+                  <div className="ml-2 text-xs text-gray-500">
+                    Periode: <span className="font-semibold text-gray-700">{formatDate(recapData.data.meta.dateRange.start)} - {formatDate(recapData.data.meta.dateRange.end)}</span>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>
-
-      {/* Quick Actions */}
-      {activeTab === 'input' && <div className="flex gap-2 overflow-x-auto pb-2">
-        <button 
-          onClick={() => markAll('PRESENT')}
-          className="whitespace-nowrap px-3 py-1.5 bg-green-50 text-green-700 text-xs font-medium rounded-lg border border-green-200 hover:bg-green-100 transition-colors"
-        >
-          Semua Hadir
-        </button>
-        {/* Add more quick actions if needed */}
-      </div>}
 
       {/* Attendance List */}
       {activeTab === 'input' && <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
@@ -438,7 +518,7 @@ export const TeacherAttendancePage = () => {
                               key={option.value}
                               className={`
                                 cursor-pointer inline-flex flex-col items-center justify-start min-w-[54px] transition-all select-none relative group
-                                ${record.status === option.value 
+                                ${record.status === option.value
                                   ? option.activeClass
                                   : option.inactiveClass
                                 }
@@ -498,84 +578,6 @@ export const TeacherAttendancePage = () => {
 
       {activeTab === 'recap' && (
         <div className="space-y-4">
-          <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
-            <div className="flex flex-col lg:flex-row lg:items-end gap-3">
-              <div className="flex items-center gap-2 text-sm font-semibold text-gray-700">
-                <Filter className="h-4 w-4 text-blue-600" />
-                Filter Rekap
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Jenis Periode</label>
-                <select
-                  value={recapPeriod}
-                  onChange={(event) => setRecapPeriod(event.target.value as AttendanceRecapPeriod)}
-                  className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-                >
-                  <option value="WEEK">Mingguan</option>
-                  <option value="MONTH">Bulanan</option>
-                  <option value="SEMESTER">Semester</option>
-                  <option value="YEAR">1 Tahun Ajaran</option>
-                </select>
-              </div>
-              {recapPeriod === 'WEEK' && (
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Tanggal Minggu</label>
-                  <input
-                    type="date"
-                    value={recapWeekStart}
-                    onChange={(event) => setRecapWeekStart(event.target.value)}
-                    className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-                  />
-                </div>
-              )}
-              {recapPeriod === 'MONTH' && (
-                <>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">Bulan</label>
-                    <select
-                      value={recapMonth}
-                      onChange={(event) => setRecapMonth(Number(event.target.value))}
-                      className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-                    >
-                      {Array.from({ length: 12 }, (_, index) => index + 1).map((month) => (
-                        <option key={month} value={month}>
-                          {new Date(2026, month - 1, 1).toLocaleString('id-ID', { month: 'long' })}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-500 mb-1">Tahun</label>
-                    <input
-                      type="number"
-                      value={recapYear}
-                      onChange={(event) => setRecapYear(Number(event.target.value))}
-                      className="w-28 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-                    />
-                  </div>
-                </>
-              )}
-              {recapPeriod === 'SEMESTER' && (
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Semester</label>
-                  <select
-                    value={recapSemester}
-                    onChange={(event) => setRecapSemester(event.target.value as 'ODD' | 'EVEN')}
-                    className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-                  >
-                    <option value="ODD">Ganjil</option>
-                    <option value="EVEN">Genap</option>
-                  </select>
-                </div>
-              )}
-              {recapData?.data?.meta?.dateRange && (
-                <div className="text-xs text-gray-500 lg:ml-auto">
-                  Periode: <span className="font-semibold text-gray-700">{formatDate(recapData.data.meta.dateRange.start)} - {formatDate(recapData.data.meta.dateRange.end)}</span>
-                </div>
-              )}
-            </div>
-          </div>
-
           <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
             {isLoadingRecap ? (
               <div className="flex items-center justify-center p-12 text-gray-500">
@@ -590,8 +592,9 @@ export const TeacherAttendancePage = () => {
                       <th className="px-4 py-3 text-left">Siswa</th>
                       <th className="px-4 py-3 text-center">Hadir</th>
                       <th className="px-4 py-3 text-center">Sakit</th>
-                      <th className="px-4 py-3 text-center">Izin</th>
-                      <th className="px-4 py-3 text-center">Alpha</th>
+                  <th className="px-4 py-3 text-center">Izin</th>
+                  <th className="px-4 py-3 text-center">Dispen</th>
+                  <th className="px-4 py-3 text-center">Alpha</th>
                       <th className="px-4 py-3 text-center">Telat</th>
                       <th className="px-4 py-3 text-center">Total</th>
                       <th className="px-4 py-3 text-center">Detail</th>
@@ -604,16 +607,17 @@ export const TeacherAttendancePage = () => {
                           <div className="font-semibold text-gray-900">{student.student.name}</div>
                           <div className="text-xs text-gray-500">NIS: {student.student.nis || '-'}</div>
                         </td>
-                        <td className="px-4 py-3 text-center font-semibold text-emerald-700">{student.summary.present}</td>
-                        <td className="px-4 py-3 text-center font-semibold text-blue-700">{student.summary.sick}</td>
-                        <td className="px-4 py-3 text-center font-semibold text-yellow-700">{student.summary.permission}</td>
-                        <td className="px-4 py-3 text-center font-semibold text-red-700">{student.summary.absent}</td>
-                        <td className="px-4 py-3 text-center font-semibold text-orange-700">{student.summary.late}</td>
+                        <td className="px-4 py-3 text-center">{renderRecapCount(student, 'PRESENT', student.summary.present, 'text-emerald-700')}</td>
+                        <td className="px-4 py-3 text-center">{renderRecapCount(student, 'SICK', student.summary.sick, 'text-blue-700')}</td>
+                        <td className="px-4 py-3 text-center">{renderRecapCount(student, 'PERMISSION', student.summary.permission, 'text-yellow-700')}</td>
+                        <td className="px-4 py-3 text-center">{renderRecapCount(student, 'DISPENSATION', student.summary.dispensation, 'text-cyan-700')}</td>
+                        <td className="px-4 py-3 text-center">{renderRecapCount(student, 'ABSENT', student.summary.absent, 'text-red-700')}</td>
+                        <td className="px-4 py-3 text-center">{renderRecapCount(student, 'LATE', student.summary.late, 'text-orange-700')}</td>
                         <td className="px-4 py-3 text-center font-semibold text-gray-800">{student.summary.total}</td>
                         <td className="px-4 py-3 text-center">
                           <button
                             type="button"
-                            onClick={() => setSelectedRecapStudent(student)}
+                            onClick={() => openRecapDetail(student)}
                             className="inline-flex items-center gap-1 rounded-lg border border-blue-200 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-50"
                           >
                             <Eye className="h-3.5 w-3.5" />
@@ -624,7 +628,7 @@ export const TeacherAttendancePage = () => {
                     ))}
                     {recapStudents.length === 0 && (
                       <tr>
-                        <td colSpan={8} className="px-4 py-10 text-center text-gray-500">
+                        <td colSpan={9} className="px-4 py-10 text-center text-gray-500">
                           Belum ada rekap presensi untuk periode ini.
                         </td>
                       </tr>
@@ -659,11 +663,18 @@ export const TeacherAttendancePage = () => {
             <div className="flex items-start justify-between border-b border-gray-100 p-5">
               <div>
                 <h2 className="text-lg font-bold text-gray-900">Detail Presensi {selectedRecapStudent.student.name}</h2>
-                <p className="text-sm text-gray-500">Tanggal dan status presensi mapel pada periode terpilih.</p>
+                <p className="text-sm text-gray-500">
+                  {selectedRecapStatus
+                    ? `Tanggal saat siswa berstatus ${STATUS_LABELS[selectedRecapStatus]} pada periode terpilih.`
+                    : 'Tanggal dan status presensi mapel pada periode terpilih.'}
+                </p>
               </div>
               <button
                 type="button"
-                onClick={() => setSelectedRecapStudent(null)}
+                onClick={() => {
+                  setSelectedRecapStudent(null);
+                  setSelectedRecapStatus(null);
+                }}
                 className="rounded-lg p-2 text-gray-500 hover:bg-gray-100"
               >
                 <X className="h-5 w-5" />
@@ -680,7 +691,9 @@ export const TeacherAttendancePage = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {selectedRecapStudent.details.map((detail) => (
+                  {selectedRecapStudent.details
+                    .filter((detail) => !selectedRecapStatus || detail.status === selectedRecapStatus)
+                    .map((detail) => (
                     <tr key={`${detail.attendanceId}-${detail.date}-${detail.status}`}>
                       <td className="px-3 py-2 font-medium text-gray-900">{formatDate(detail.date)}</td>
                       <td className="px-3 py-2">{STATUS_LABELS[detail.status]}</td>
@@ -691,7 +704,7 @@ export const TeacherAttendancePage = () => {
                       </td>
                     </tr>
                   ))}
-                  {selectedRecapStudent.details.length === 0 && (
+                  {selectedRecapStudent.details.filter((detail) => !selectedRecapStatus || detail.status === selectedRecapStatus).length === 0 && (
                     <tr>
                       <td colSpan={4} className="px-3 py-8 text-center text-gray-500">
                         Belum ada detail presensi pada periode ini.

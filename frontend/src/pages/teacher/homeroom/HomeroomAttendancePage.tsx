@@ -5,10 +5,10 @@ import { userService } from '../../../services/user.service';
 import { authService } from '../../../services/auth.service';
 import { useActiveAcademicYear } from '../../../hooks/useActiveAcademicYear';
 import type { User } from '../../../types/auth';
-import { 
-  Calendar, 
-  Clock, 
-  FileText, 
+import {
+  Calendar,
+  Clock,
+  FileText,
   AlertCircle,
   Download,
   Filter,
@@ -43,6 +43,7 @@ const STATUS_OPTIONS: Array<{ value: AttendanceStatus; label: string; color: str
   { value: 'PRESENT', label: 'Hadir', color: 'bg-green-100 text-green-700' },
   { value: 'SICK', label: 'Sakit', color: 'bg-blue-100 text-blue-700' },
   { value: 'PERMISSION', label: 'Izin', color: 'bg-yellow-100 text-yellow-700' },
+  { value: 'DISPENSATION', label: 'Dispen', color: 'bg-cyan-100 text-cyan-700' },
   { value: 'ABSENT', label: 'Alpa', color: 'bg-red-100 text-red-700' },
   { value: 'LATE', label: 'Telat', color: 'bg-orange-100 text-orange-700' },
 ];
@@ -51,6 +52,7 @@ const STATUS_LABELS: Record<AttendanceStatus, string> = {
   PRESENT: 'Hadir',
   SICK: 'Sakit',
   PERMISSION: 'Izin',
+  DISPENSATION: 'Dispen',
   ABSENT: 'Alpha',
   LATE: 'Telat',
 };
@@ -69,6 +71,7 @@ export const HomeroomAttendancePage = () => {
   const [recapYear, setRecapYear] = useState(new Date().getFullYear());
   const [recapWeekStart, setRecapWeekStart] = useState(new Date().toISOString().split('T')[0]);
   const [selectedRecapDetail, setSelectedRecapDetail] = useState<AttendanceDetailStudent | null>(null);
+  const [selectedRecapStatus, setSelectedRecapStatus] = useState<AttendanceStatus | null>(null);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(10);
@@ -77,7 +80,7 @@ export const HomeroomAttendancePage = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [attendanceRecords, setAttendanceRecords] = useState<Record<number, { status: AttendanceStatus | ''; note: string }>>({});
 
-  
+
   const { user: contextUser, activeYear: contextActiveYear } = useOutletContext<{ user: User, activeYear: { id: number; name: string } }>() || {};
 
   // 1. Get Current User via Query (Database Persistence)
@@ -134,17 +137,17 @@ export const HomeroomAttendancePage = () => {
         });
     }
   };
-  
+
   // 2. Get Active Academic Year
   // Consolidate with previous declaration - Removed Duplicate
-  /* 
+  /*
   const { data: activeAcademicYear } = useQuery({
     queryKey: ['active-academic-year'],
     queryFn: async () => {
       const res = await academicYearService.getActive();
       return res.data;
     }
-  }); 
+  });
   */
 
   // 3. Get Homeroom Class Summary (Filtered by Active Year)
@@ -245,7 +248,7 @@ export const HomeroomAttendancePage = () => {
       const records: Record<number, { status: AttendanceStatus | ''; note: string }> = {};
       dailyLogData.data.forEach((item: DailyLogItem) => {
         records[item.student.id] = {
-          status: item.status || '', 
+          status: item.status || 'PRESENT',
           note: item.note || ''
         };
       });
@@ -309,11 +312,12 @@ export const HomeroomAttendancePage = () => {
   // Calculate Daily Stats
   const dailyStats = useMemo(() => {
     if (!dailyLogData?.data || !Array.isArray(dailyLogData.data)) return null;
-    
+
     const stats = {
       present: 0,
       sick: 0,
       permission: 0,
+      dispensation: 0,
       absent: 0,
       late: 0,
       checkedIn: 0,
@@ -322,11 +326,12 @@ export const HomeroomAttendancePage = () => {
     };
 
     dailyLogData.data.forEach((item: DailyLogItem) => {
-      const status = item.status; 
+      const status = item.status;
       switch (status) {
         case 'PRESENT': stats.present++; break;
         case 'SICK': stats.sick++; break;
         case 'PERMISSION': stats.permission++; break;
+        case 'DISPENSATION': stats.dispensation++; break;
         case 'ABSENT': stats.absent++; break;
         case 'LATE': stats.late++; break;
       }
@@ -374,6 +379,7 @@ export const HomeroomAttendancePage = () => {
             late: item.summary.late,
             sick: item.summary.sick,
             permission: item.summary.permission,
+            dispensation: item.summary.dispensation,
             absent: item.summary.absent,
             total: item.summary.total,
             percentage: item.summary.percentage,
@@ -386,7 +392,7 @@ export const HomeroomAttendancePage = () => {
   };
 
   const currentData = getCurrentData();
-  
+
   const filteredData = currentData.filter((item) => {
     if (!search) return true;
     const term = search.toLowerCase();
@@ -402,6 +408,29 @@ export const HomeroomAttendancePage = () => {
   const totalPages = Math.max(1, Math.ceil(totalItems / limit));
   const startIndex = (page - 1) * limit;
   const paginatedData = filteredData.slice(startIndex, startIndex + limit);
+  const openRecapDetail = (studentId: number, status?: AttendanceStatus) => {
+    const detail = dailyRecapDetailData?.data?.students.find((item) => item.student.id === studentId);
+    setSelectedRecapDetail(detail || null);
+    setSelectedRecapStatus(status || null);
+  };
+  const renderRecapCount = (
+    student: DailyRecapItem,
+    status: AttendanceStatus,
+    value: number,
+    colorClass: string,
+  ) => (
+    <button
+      type="button"
+      onClick={() => openRecapDetail(student.student.id, status)}
+      disabled={value <= 0}
+      className={`rounded-md px-2 py-1 font-semibold transition ${
+        value > 0 ? `${colorClass} hover:bg-gray-100` : 'cursor-default text-gray-400'
+      }`}
+      title={value > 0 ? `Lihat detail ${STATUS_LABELS[status]}` : `Tidak ada ${STATUS_LABELS[status]}`}
+    >
+      {value > 0 ? value : '-'}
+    </button>
+  );
 
   return (
     <div className="space-y-6">
@@ -475,7 +504,7 @@ export const HomeroomAttendancePage = () => {
                   className="block w-full sm:w-auto pl-3 pr-10 py-2 text-base bg-white border border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md text-gray-900"
                 />
               </div>
-              
+
               {isEditing ? (
                  <div className="flex items-center gap-2">
                    <button
@@ -509,10 +538,11 @@ export const HomeroomAttendancePage = () => {
           {activeTab === 'recap' && (
             <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
               <Filter className="w-4 h-4 text-gray-500" />
+              <label className="text-sm font-medium text-gray-600">Jenis Periode</label>
               <select
                 value={recapPeriod}
                 onChange={(e) => setRecapPeriod(e.target.value as AttendanceRecapPeriod)}
-                className="block w-full sm:w-auto pl-3 pr-10 py-2 text-base bg-white border border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md text-gray-900"
+                className="block w-full min-w-[150px] sm:w-auto pl-3 pr-10 py-2 text-base bg-white border border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md text-gray-900"
               >
                 <option value="WEEK">Mingguan</option>
                 <option value="MONTH">Bulanan</option>
@@ -530,9 +560,9 @@ export const HomeroomAttendancePage = () => {
               {recapPeriod === 'MONTH' && (
                 <>
                   <select
-                    value={recapMonth}
-                    onChange={(e) => setRecapMonth(Number(e.target.value))}
-                    className="block w-full sm:w-auto pl-3 pr-10 py-2 text-base bg-white border border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md text-gray-900"
+                  value={recapMonth}
+                  onChange={(e) => setRecapMonth(Number(e.target.value))}
+                    className="block w-full min-w-[140px] sm:w-auto pl-3 pr-10 py-2 text-base bg-white border border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md text-gray-900"
                   >
                     {Array.from({ length: 12 }, (_, index) => index + 1).map((month) => (
                       <option key={month} value={month}>
@@ -552,7 +582,7 @@ export const HomeroomAttendancePage = () => {
               <select
                 value={semesterFilter}
                 onChange={(e) => setSemesterFilter(e.target.value as SemesterFilter)}
-                className="block w-full sm:w-auto pl-3 pr-10 py-2 text-base bg-white border border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md text-gray-900"
+                className="block w-full min-w-[170px] sm:w-auto pl-3 pr-10 py-2 text-base bg-white border border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md text-gray-900"
               >
                 <option value="ALL">Semua Semester</option>
                 <option value="ODD">Semester Ganjil</option>
@@ -603,6 +633,11 @@ export const HomeroomAttendancePage = () => {
                 <div className="flex items-center gap-1.5 whitespace-nowrap" title="Izin">
                   <div className="w-2 h-2 rounded-full bg-yellow-500"></div>
                   <span>Izin: <span className="font-semibold text-gray-900">{dailyStats.permission}</span></span>
+                </div>
+                <div className="w-px h-3 bg-gray-300 hidden sm:block"></div>
+                <div className="flex items-center gap-1.5 whitespace-nowrap" title="Dispen">
+                  <div className="w-2 h-2 rounded-full bg-cyan-500"></div>
+                  <span>Dispen: <span className="font-semibold text-gray-900">{dailyStats.dispensation}</span></span>
                 </div>
                 <div className="w-px h-3 bg-gray-300 hidden sm:block"></div>
                 <div className="flex items-center gap-1.5 whitespace-nowrap" title="Telat">
@@ -734,6 +769,7 @@ export const HomeroomAttendancePage = () => {
                             {item.status === 'PRESENT' && <span className="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">Hadir</span>}
                             {item.status === 'SICK' && <span className="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">Sakit</span>}
                             {item.status === 'PERMISSION' && <span className="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">Izin</span>}
+                            {item.status === 'DISPENSATION' && <span className="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-cyan-100 text-cyan-800">Dispen</span>}
                             {item.status === 'ABSENT' && <span className="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">Alpa</span>}
                             {item.status === 'LATE' && <span className="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-orange-100 text-orange-800">Telat</span>}
                             {!item.status && <span className="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800">Belum Absen</span>}
@@ -800,6 +836,9 @@ export const HomeroomAttendancePage = () => {
                       Izin
                     </th>
                     <th scope="col" className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Dispen
+                    </th>
+                    <th scope="col" className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Alpa
                     </th>
                     <th scope="col" className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -840,28 +879,31 @@ export const HomeroomAttendancePage = () => {
                           </div>
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-center text-sm text-gray-500 font-medium">
-                        {student.present}
+                      <td className="px-6 py-4 whitespace-nowrap text-center text-sm text-gray-500">
+                        {renderRecapCount(student, 'PRESENT', student.present, 'text-emerald-700')}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-center text-sm text-gray-500">
-                        {student.sick > 0 ? <span className="text-blue-600 font-bold">{student.sick}</span> : '-'}
+                        {renderRecapCount(student, 'SICK', student.sick, 'text-blue-700')}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-center text-sm text-gray-500">
-                        {student.permission > 0 ? <span className="text-yellow-600 font-bold">{student.permission}</span> : '-'}
+                        {renderRecapCount(student, 'PERMISSION', student.permission, 'text-yellow-700')}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-center text-sm text-gray-500">
-                        {student.absent > 0 ? <span className="text-red-600 font-bold">{student.absent}</span> : '-'}
+                        {renderRecapCount(student, 'DISPENSATION', student.dispensation, 'text-cyan-700')}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-center text-sm text-gray-500">
-                        {student.late > 0 ? <span className="text-orange-600 font-bold">{student.late}</span> : '-'}
+                        {renderRecapCount(student, 'ABSENT', student.absent, 'text-red-700')}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-center text-sm text-gray-500">
+                        {renderRecapCount(student, 'LATE', student.late, 'text-orange-700')}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-medium text-gray-900">
                         {student.total}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-center text-sm">
-                        <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
-                          ${student.percentage >= 90 ? 'bg-green-100 text-green-800' : 
-                            student.percentage >= 75 ? 'bg-yellow-100 text-yellow-800' : 
+                        <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full
+                          ${student.percentage >= 90 ? 'bg-green-100 text-green-800' :
+                            student.percentage >= 75 ? 'bg-yellow-100 text-yellow-800' :
                             'bg-red-100 text-red-800'}`}>
                           {student.percentage}%
                         </span>
@@ -870,10 +912,7 @@ export const HomeroomAttendancePage = () => {
                         <button
                           type="button"
                           onClick={() => {
-                            const detail = dailyRecapDetailData?.data?.students.find(
-                              (item) => item.student.id === student.student.id,
-                            );
-                            setSelectedRecapDetail(detail || null);
+                            openRecapDetail(student.student.id);
                           }}
                           className="inline-flex items-center rounded-lg border border-blue-200 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-50"
                         >
@@ -884,7 +923,7 @@ export const HomeroomAttendancePage = () => {
                   ))}
                   {paginatedData.length === 0 && (
                     <tr>
-                      <td colSpan={11} className="px-6 py-12 text-center text-gray-500">
+                      <td colSpan={12} className="px-6 py-12 text-center text-gray-500">
                         <FileText className="mx-auto h-12 w-12 text-gray-300 mb-3" />
                         <p>{search ? 'Siswa tidak ditemukan' : 'Belum ada data presensi untuk ditampilkan.'}</p>
                       </td>
@@ -1035,11 +1074,18 @@ export const HomeroomAttendancePage = () => {
             <div className="flex items-start justify-between border-b border-gray-100 p-5">
               <div>
                 <h2 className="text-lg font-bold text-gray-900">Detail Presensi {selectedRecapDetail.student.name}</h2>
-                <p className="text-sm text-gray-500">Tanggal status S/I/A/T pada periode rekap yang dipilih.</p>
+                <p className="text-sm text-gray-500">
+                  {selectedRecapStatus
+                    ? `Tanggal saat siswa berstatus ${STATUS_LABELS[selectedRecapStatus]} pada periode rekap yang dipilih.`
+                    : 'Tanggal status H/S/I/D/A/T pada periode rekap yang dipilih.'}
+                </p>
               </div>
               <button
                 type="button"
-                onClick={() => setSelectedRecapDetail(null)}
+                onClick={() => {
+                  setSelectedRecapDetail(null);
+                  setSelectedRecapStatus(null);
+                }}
                 className="rounded-lg p-2 text-gray-500 hover:bg-gray-100"
               >
                 <X size={18} />
@@ -1057,7 +1103,9 @@ export const HomeroomAttendancePage = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {selectedRecapDetail.details.map((detail) => (
+                  {selectedRecapDetail.details
+                    .filter((detail) => !selectedRecapStatus || detail.status === selectedRecapStatus)
+                    .map((detail) => (
                     <tr key={`${detail.id}-${detail.date}-${detail.status}`}>
                       <td className="px-3 py-2 font-medium text-gray-900">{formatDate(detail.date)}</td>
                       <td className="px-3 py-2">{STATUS_LABELS[detail.status]}</td>
@@ -1068,7 +1116,7 @@ export const HomeroomAttendancePage = () => {
                       <td className="px-3 py-2 text-xs text-gray-500">{formatDateTime(detail.updatedAt || detail.createdAt || null)}</td>
                     </tr>
                   ))}
-                  {selectedRecapDetail.details.length === 0 && (
+                  {selectedRecapDetail.details.filter((detail) => !selectedRecapStatus || detail.status === selectedRecapStatus).length === 0 && (
                     <tr>
                       <td colSpan={5} className="px-3 py-8 text-center text-gray-500">
                         Belum ada detail presensi pada periode ini.

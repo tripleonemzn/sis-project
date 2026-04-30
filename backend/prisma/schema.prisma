@@ -3394,6 +3394,7 @@ enum AttendanceStatus {
   ABSENT
   SICK
   PERMISSION
+  DISPENSATION
   LATE
 }
 

@@ -13,7 +13,7 @@ import { BRAND_COLORS } from '../../../src/config/brand';
 import { notifyApiError, notifySuccess } from '../../../src/lib/ui/feedback';
 import { useAppTextScale } from '../../../src/theme/AppTextScaleProvider';
 
-type DailyAttendanceStatus = 'PRESENT' | 'SICK' | 'PERMISSION' | 'ABSENT' | 'LATE';
+type DailyAttendanceStatus = 'PRESENT' | 'SICK' | 'PERMISSION' | 'DISPENSATION' | 'ABSENT' | 'LATE';
 
 type DailyAttendanceRow = {
   student: {
@@ -37,6 +37,7 @@ const STATUS_LABELS: Record<DailyAttendanceStatus, string> = {
   PRESENT: 'Hadir',
   SICK: 'Sakit',
   PERMISSION: 'Izin',
+  DISPENSATION: 'Dispen',
   ABSENT: 'Alpha',
   LATE: 'Terlambat',
 };

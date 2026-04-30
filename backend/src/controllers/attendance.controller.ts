@@ -18,7 +18,7 @@ function formatAttendanceTime(value?: Date | null) {
   });
 }
 
-const ATTENDANCE_STATUS_VALUES = ['PRESENT', 'ABSENT', 'SICK', 'PERMISSION', 'LATE'] as const;
+const ATTENDANCE_STATUS_VALUES = ['PRESENT', 'ABSENT', 'SICK', 'PERMISSION', 'DISPENSATION', 'LATE'] as const;
 const ATTENDANCE_SUPERVISOR_DUTIES = new Set([
   'WAKASEK_KURIKULUM',
   'SEKRETARIS_KURIKULUM',
@@ -174,6 +174,7 @@ function createEmptyAttendanceSummary() {
     late: 0,
     sick: 0,
     permission: 0,
+    dispensation: 0,
     absent: 0,
     total: 0,
     percentage: 0,
@@ -195,6 +196,9 @@ function applyStatusToSummary(summary: ReturnType<typeof createEmptyAttendanceSu
     case 'PERMISSION':
       summary.permission += 1;
       break;
+    case 'DISPENSATION':
+      summary.dispensation += 1;
+      break;
     case 'ABSENT':
       summary.absent += 1;
       break;
@@ -202,7 +206,9 @@ function applyStatusToSummary(summary: ReturnType<typeof createEmptyAttendanceSu
       break;
   }
   summary.percentage =
-    summary.total > 0 ? Math.round(((summary.present + summary.late) / summary.total) * 100) : 0;
+    summary.total > 0
+      ? Math.round(((summary.present + summary.dispensation + summary.late) / summary.total) * 100)
+      : 0;
 }
 
 const saveSubjectAttendanceSchema = z.object({
@@ -215,7 +221,7 @@ const saveSubjectAttendanceSchema = z.object({
   records: z.array(
     z.object({
       studentId: z.number().int(),
-      status: z.enum(['PRESENT', 'ABSENT', 'SICK', 'PERMISSION', 'LATE']),
+      status: z.enum(ATTENDANCE_STATUS_VALUES),
       note: z.string().optional().nullable(),
     }),
   ),
@@ -245,7 +251,7 @@ const saveDailyAttendanceSchema = z.object({
   records: z.array(
     z.object({
       studentId: z.number().int(),
-      status: z.enum(['PRESENT', 'ABSENT', 'SICK', 'PERMISSION', 'LATE']),
+      status: z.enum(ATTENDANCE_STATUS_VALUES),
       note: z.string().optional().nullable(),
     }),
   ),
@@ -649,6 +655,7 @@ export const getDailyAttendanceRecap = asyncHandler(async (req: Request, res: Re
       late: number;
       sick: number;
       permission: number;
+      dispensation: number;
       absent: number;
       total: number;
       percentage: number;
@@ -667,6 +674,7 @@ export const getDailyAttendanceRecap = asyncHandler(async (req: Request, res: Re
       late: 0,
       sick: 0,
       permission: 0,
+      dispensation: 0,
       absent: 0,
       total: 0,
       percentage: 0,
@@ -711,6 +719,9 @@ export const getDailyAttendanceRecap = asyncHandler(async (req: Request, res: Re
         case 'PERMISSION':
           summary.permission += 1;
           break;
+        case 'DISPENSATION':
+          summary.dispensation += 1;
+          break;
         case 'ABSENT':
           summary.absent += 1;
           break;
@@ -721,7 +732,7 @@ export const getDailyAttendanceRecap = asyncHandler(async (req: Request, res: Re
   }
 
   for (const summary of studentMap.values()) {
-    const countedPresent = summary.present + summary.late;
+    const countedPresent = summary.present + summary.dispensation + summary.late;
     summary.percentage =
       summary.total > 0 ? Math.round((countedPresent / summary.total) * 100) : 0;
   }
