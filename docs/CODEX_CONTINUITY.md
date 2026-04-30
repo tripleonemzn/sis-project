@@ -5,19 +5,19 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-04-30 12:50 WIB
-- Current status: Batch 3 fitur remedial sudah selesai pada integrasi nilai efektif remedial ke sinkronisasi `ReportGrade`. Nilai asli tetap tidak ditimpa, tetapi rapor/leger yang membaca `ReportGrade` kini memakai nilai efektif remedial setelah guru menyimpan remedial.
+- Last updated: 2026-04-30 13:08 WIB
+- Current status: Fitur remedial selesai 100%. UI web guru mapel sudah refresh snapshot `ReportGrade` langsung setelah remedial disimpan, sehingga nilai akhir/deskripsi di layar ikut sinkron tanpa menunggu reload manual.
 - Objective/task aktif:
   - Mengembangkan fitur remedial nilai untuk guru mapel dengan sumber nilai spesifik, riwayat percobaan lebih dari 1x, nilai asli tetap utuh, dan nilai efektif remedial dibatasi sampai KKM.
 - Batch terakhir selesai:
-  - `Remedial batch 3 - effective score report integration`
+  - `Remedial batch 4 - final polish and live refresh`
 - Progress batch remedial saat ini:
   - `100%` untuk fondasi database remedial
   - `100%` untuk API kandidat nilai belum tuntas dan pencatatan remedial
   - `100%` untuk UI web guru mapel
   - `100%` untuk integrasi nilai efektif remedial ke perhitungan rapor/leger berbasis `ReportGrade`
 - Progress fitur remedial keseluruhan:
-  - `90%`
+  - `100%`
 - Progress presensi terpadu saat ini:
   - `100%` backend audit dan endpoint rekap/detail
   - `100%` web guru mapel rekap detail
@@ -31,32 +31,33 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
-  - Commit: `781974c`
-  - Title: `fix(grades): apply remedial effective scores to reports`
+  - Commit: `pending`
+  - Title: `fix(grades): refresh report snapshot after remedial save`
   - Summary:
-    - kolektor `StudentScoreEntry` untuk perhitungan rapor sekarang ikut mengambil riwayat remedial yang counted
-    - perhitungan slot nilai memakai score asli jika belum ada remedial, atau `effectiveScore` remedial terbaik jika ada
-    - alur formatif/NF series juga memakai nilai efektif remedial saat menghitung rata-rata
-    - setelah guru menyimpan remedial, backend langsung menjalankan sinkronisasi `ReportGrade` untuk siswa/mapel/semester terkait
-    - event realtime `GRADES` dan `REPORTS` tetap scoped ke siswa, mapel, tahun ajaran, dan semester terkait
-    - nilai asli di `StudentScoreEntry` dan `StudentGrade` tetap tidak ditimpa
+    - halaman guru mapel `Input Nilai Siswa` sekarang memakai helper refresh snapshot `ReportGrade`
+    - setelah `Simpan Remedial`, UI langsung memuat ulang riwayat remedial, daftar kandidat, dan snapshot nilai rapor kelas/mapel/semester terkait
+    - refresh snapshot dibuat ringan dan scoped pada assignment aktif, tidak menambah polling atau refetch global
+    - audit lintas tampilan menunjukkan siswa, wali kelas, kurikulum, dan mobile membaca nilai akhir melalui `ReportGrade`, sehingga nilai efektif remedial sudah mengalir dari integrasi Batch 3
 - Area/file disentuh:
-  - `backend/src/controllers/grade.controller.ts`
+  - `frontend/src/pages/teacher/TeacherGradesPage.tsx`
   - `docs/CODEX_CONTINUITY.md`
 - Verifikasi batch ini:
   - `git diff --check`
   - `cd backend && npm run build`
   - `cd frontend && npm run build`
-  - `cd backend && npm run service:restart`
   - `cd backend && npm run service:health`
+  - `cd mobile-app && npm run typecheck`
+  - `cd mobile-app && npm run audit:parity:check`
+  - `cd frontend && npm run deploy`
+  - `curl -I https://siskgb2.id/teacher/grades`
 - Publish/live status:
-  - Backend sudah restart dan health `Backend:200`, `Backend API:200`
-  - Web deploy tidak dijalankan karena batch ini tidak mengubah frontend source; build frontend hanya sanity check
-  - Mobile OTA tidak dijalankan karena batch ini tidak mengubah mobile source
+  - Web sudah deploy live dan `/teacher/grades` merespons `200`
+  - Backend tidak direstart pada batch final polish karena tidak ada perubahan backend; health tetap `Backend:200`, `Backend API:200`
+  - Mobile OTA tidak dijalankan karena tidak ada perubahan source mobile; typecheck dan parity audit lolos
 - Remaining work:
-  - Batch 4/final polish: audit tampilan siswa, wali kelas, kurikulum, dan mobile untuk memastikan tidak ada label/parity yang membingungkan, terutama jika user ingin remedial juga terlihat eksplisit sebagai riwayat.
+  - Tidak ada sisa batch remedial pada scope yang disepakati.
 - Residual risk:
-  - Data `ReportGrade` lama baru berubah setelah sinkronisasi nilai berjalan. Untuk data yang remedialnya dibuat sebelum Batch 3, lakukan resync rapor per siswa/mapel/semester atau aksi simpan remedial/score berikutnya agar snapshot lama ikut tersinkron.
+  - Jika ada remedial yang sudah dibuat sebelum Batch 3 dan belum pernah tersinkron ulang, data `ReportGrade` lama baru berubah setelah ada aksi simpan/remedial/resync berikutnya pada siswa-mapel-semester tersebut.
 
 ## Status Saat Ini
 

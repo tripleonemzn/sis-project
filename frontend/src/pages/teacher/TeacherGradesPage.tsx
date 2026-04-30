@@ -1248,6 +1248,61 @@ export const TeacherGradesPage = () => {
     }
   };
 
+  const refreshReportGradeSnapshot = async (requestId?: number) => {
+    const assignment = selectedAssignmentObj;
+    const academicYearId = Number(selectedAcademicYear);
+    if (
+      !assignment ||
+      !Number.isFinite(academicYearId) ||
+      academicYearId <= 0 ||
+      !selectedSemester
+    ) {
+      setReportGradeMap({});
+      setDescriptions({});
+      return;
+    }
+
+    const reportRes = await gradeService.getReportGrades({
+      class_id: assignment.class.id,
+      subject_id: assignment.subject.id,
+      academic_year_id: academicYearId,
+      semester: selectedSemester,
+    });
+    const reportResponse = reportRes as { data?: ApiReportGradeRow[] } | ApiReportGradeRow[];
+    const reportData =
+      'data' in reportResponse && Array.isArray(reportResponse.data)
+        ? reportResponse.data
+        : (Array.isArray(reportResponse) ? reportResponse : []);
+    const nextReportMap: Record<number, StudentReportGrade> = {};
+    const nextDescriptions: Record<number, string> = {};
+
+    if (Array.isArray(reportData)) {
+      reportData.forEach((r: ApiReportGradeRow) => {
+        const studentId = Number(r?.studentId);
+        if (!studentId) return;
+        nextReportMap[studentId] = {
+          studentId,
+          formatifScore: r.formatifScore ?? null,
+          sbtsScore: r.sbtsScore ?? null,
+          sasScore: r.sasScore ?? null,
+          finalScore: r.finalScore ?? null,
+          slotScores:
+            r.slotScores && typeof r.slotScores === 'object'
+              ? (r.slotScores as Record<string, number | null>)
+              : null,
+          description: r.description ?? null,
+        };
+        if (typeof r.description === 'string' && r.description.trim()) {
+          nextDescriptions[studentId] = r.description;
+        }
+      });
+    }
+
+    if (requestId && requestId !== existingGradesRequestRef.current) return;
+    setReportGradeMap(nextReportMap);
+    setDescriptions(isFinalComponent ? nextDescriptions : {});
+  };
+
   const fetchExistingGrades = async () => {
     const requestId = ++existingGradesRequestRef.current;
     try {
@@ -1290,41 +1345,8 @@ export const TeacherGradesPage = () => {
       if (requestId !== existingGradesRequestRef.current) return;
       
       try {
-          const reportRes = await gradeService.getReportGrades({
-              class_id: assignment.class.id,
-              subject_id: assignment.subject.id,
-              academic_year_id: parseInt(selectedAcademicYear),
-              semester: selectedSemester
-          });
-          const reportResponse = reportRes as { data?: ApiReportGradeRow[] } | ApiReportGradeRow[];
-          const reportData = 'data' in reportResponse && Array.isArray(reportResponse.data) ? reportResponse.data : (Array.isArray(reportResponse) ? reportResponse : []);
-          const nextReportMap: Record<number, StudentReportGrade> = {};
-          const nextDescriptions: Record<number, string> = {};
-
-          if (Array.isArray(reportData)) {
-              reportData.forEach((r: ApiReportGradeRow) => {
-                  const studentId = Number(r?.studentId);
-                  if (!studentId) return;
-                  nextReportMap[studentId] = {
-                      studentId,
-                      formatifScore: r.formatifScore ?? null,
-                      sbtsScore: r.sbtsScore ?? null,
-                      sasScore: r.sasScore ?? null,
-                      finalScore: r.finalScore ?? null,
-                      slotScores:
-                        r.slotScores && typeof r.slotScores === 'object'
-                          ? (r.slotScores as Record<string, number | null>)
-                          : null,
-                      description: r.description ?? null,
-                  };
-                  if (typeof r.description === 'string' && r.description.trim()) {
-                      nextDescriptions[studentId] = r.description;
-                  }
-              });
-          }
+          await refreshReportGradeSnapshot(requestId);
           if (requestId !== existingGradesRequestRef.current) return;
-          setReportGradeMap(nextReportMap);
-          setDescriptions(isFinalComponent ? nextDescriptions : {});
           setFormativeSlotDrafts({});
       } catch (e) {
           if (requestId !== existingGradesRequestRef.current) return;
@@ -1612,6 +1634,7 @@ export const TeacherGradesPage = () => {
       setRemedialNoteInput('');
       await fetchRemedialDetail(activeRemedial.scoreEntryId);
       await fetchRemedialRows(true);
+      await refreshReportGradeSnapshot();
     } catch (error) {
       console.error('Save remedial error:', error);
       toast.error(getApiErrorMessage(error, 'Gagal menyimpan nilai remedial'));
