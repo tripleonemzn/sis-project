@@ -5,8 +5,8 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-04-30 11:12 WIB
-- Current status: Perbaikan UI/UX presensi sedang diselesaikan. Status baru `DISPENSATION`/`Dispen` sudah ditambahkan sebagai status resmi presensi, tetap dihitung hadir untuk persentase, dan UI web guru mapel/wali kelas sudah mendukung klik angka rekap untuk melihat tanggal detail per status.
+- Last updated: 2026-04-30 11:16 WIB
+- Current status: Perbaikan UI/UX presensi dan status `DISPENSATION`/`Dispen` sudah selesai, commit/push, live web/backend, dan OTA mobile tester sudah publish ke channel `pilot-live`.
 - Objective/task aktif:
   - Menyelesaikan peningkatan presensi siswa/guru lintas guru mapel, wali kelas, kurikulum, dan mobile parity.
 - Batch terakhir selesai:
@@ -19,15 +19,15 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` web wali kelas detail tanggal rekap
   - `100%` web kurikulum/admin monitoring guru mapel
   - `100%` mobile parity untuk rekap/detail baru
-  - `90%` status `Dispen` dan UI rekap klik angka; sisa publish live/OTA setelah commit
+  - `100%` status `Dispen` dan UI rekap klik angka
 - Progress roadmap perangkat ajar dinamis:
   - `100%` untuk rumusan arsitektur generik
   - `100%` untuk implementasi teknis scope aktif engine generik
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
-  - Commit terakhir sebelum batch ini: `11680ab`
-  - Title: `docs: add multi-pc coordination policy`
+  - Commit: `8353256`
+  - Title: `feat(attendance): add dispensation status and recap drilldown`
   - Summary:
     - subject attendance mendapat audit fields (`createdAt`, `updatedAt`, `createdById`, `updatedById`, optional assignment/schedule link)
     - endpoint baru tersedia untuk detail rekap presensi harian, rekap presensi mapel, dan monitoring presensi guru mapel berbasis jadwal
@@ -81,9 +81,13 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `cd mobile-app && npm run update:testers -- "Rekap presensi mobile diperbarui. Silakan perbarui untuk menikmati fitur terbaru."`
 - Publish/live status:
   - Batch sebelumnya: backend/web/mobile sudah live
-  - Batch Dispen saat handoff ini: source sudah diverifikasi lokal; restart/deploy/OTA dilanjutkan setelah commit agar safety gate clean
+  - Backend sudah restart dan health `Backend:200`, `Backend API:200`
+  - Web sudah deploy ke `/var/www/html` dan `https://siskgb2.id/` merespons `200`
+  - Mobile OTA sudah publish ke channel `pilot-live`
+  - OTA update group ID: `2b750981-4d8c-4597-87a5-851df4cc931b`
+  - Android update ID: `019ddc99-c69b-7f3e-ac29-11b9f433332e`
+  - Push notify update berhasil: recipients `50`, sent `50`, failed `0`, stale `0`
 - Remaining work:
-  - Commit/push batch Dispen, restart backend, deploy frontend, publish OTA mobile tester.
   - Sanity test manual dengan akun guru/wakakur di browser untuk memastikan data jadwal/presensi real tampil sesuai ekspektasi.
 - Residual risk:
   - Jika satu kelas-mapel punya lebih dari satu sesi pada hari yang sama, data lama tanpa `scheduleEntryId` masih dicocokkan fallback per tanggal+kelas+mapel. Data baru sudah mendukung link jadwal opsional, tetapi UI input belum memilih sesi spesifik.
