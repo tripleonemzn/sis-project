@@ -1141,13 +1141,18 @@ const formatMultilineHtml = (value: unknown): string => {
   return safe.replace(/\n/g, '<br />');
 };
 
-const splitCellLines = (value: unknown): string[] => {
+const splitCellLines = (value: unknown, options: { trimTrailingBlank?: boolean } = {}): string[] => {
+  const { trimTrailingBlank = true } = options;
   const lines = String(value ?? '')
     .replace(/\r\n/g, '\n')
     .split('\n');
-  while (lines.length > 1 && !String(lines[lines.length - 1] || '').trim()) lines.pop();
+  if (trimTrailingBlank) {
+    while (lines.length > 1 && !String(lines[lines.length - 1] || '').trim()) lines.pop();
+  }
   return lines.length > 0 ? lines : [''];
 };
+
+const splitEditableCellLines = (value: unknown): string[] => splitCellLines(value, { trimTrailingBlank: false });
 
 const buildReferenceSelectionLineKey = (columnKey: string, lineIndex: number): string =>
   lineIndex > 0 ? `${columnKey}__line_${lineIndex}` : columnKey;
@@ -1725,6 +1730,7 @@ export const LearningResourceGenerator = ({
   const [quickEditEntryId, setQuickEditEntryId] = useState<number | null>(null);
   const [quickEditSections, setQuickEditSections] = useState<EntrySectionForm[]>([]);
   const quickEditSectionsRef = useRef<EntrySectionForm[]>([]);
+  const quickEditCellRefs = useRef<Record<string, HTMLTextAreaElement | HTMLInputElement | null>>({});
   const [quickEditActiveSectionId, setQuickEditActiveSectionId] = useState('');
   const [referenceSearchTerms, setReferenceSearchTerms] = useState<Record<string, string>>({});
   const [referenceServerSearchInput, setReferenceServerSearchInput] = useState('');
@@ -1821,10 +1827,15 @@ export const LearningResourceGenerator = ({
     const codes = new Set<string>();
     activeProgramSchemaSections.forEach((section) => {
       ensureArray<EntrySectionColumnForm>(section.columns).forEach((column) => {
-        if (!isDocumentReferencePickerColumn(column)) return;
         const sourceProgramCode = normalizeTeachingResourceProgramCode(column.binding?.sourceProgramCode);
         if (!sourceProgramCode) return;
-        codes.add(sourceProgramCode);
+        if (
+          isDocumentReferencePickerColumn(column) ||
+          String(column.sourceType || '').trim().toUpperCase() === 'DOCUMENT_SNAPSHOT' ||
+          Boolean(column.binding?.sourceFieldIdentity || column.binding?.sourceDocumentFieldIdentity)
+        ) {
+          codes.add(sourceProgramCode);
+        }
       });
     });
     return Array.from(codes).sort();
@@ -2124,7 +2135,7 @@ export const LearningResourceGenerator = ({
         search: debouncedReferenceServerSearch || undefined,
         limitPerProgram: 250,
         referenceRequests: referenceProjectionRequests,
-        includeRows: false,
+        includeRows: true,
       });
       const entriesByProgram = new Map<string, TeachingResourceEntry[]>();
       const metaByProgram = new Map<string, ReferenceProgramMeta>();
@@ -2356,6 +2367,158 @@ export const LearningResourceGenerator = ({
     selectedContext,
   ]);
 
+  const normalizeComparableCellValue = (value: unknown): string[] =>
+    splitCellLines(value)
+      .map((line) => normalizeReferenceToken(line))
+      .filter(Boolean);
+
+  const buildComparableRowSnapshot = (
+    columns: EntrySectionColumnForm[],
+    row: EntrySectionRowForm,
+  ): Record<string, string> => {
+    const snapshot = buildReferenceSnapshot(columns, row.values || {});
+    Object.values(row.referenceSelections || {}).forEach((selection) => {
+      const selectionSnapshot = sanitizeReferenceSnapshot(selection.snapshot);
+      Object.entries(selectionSnapshot).forEach(([key, value]) => {
+        if (!snapshot[key] && isMeaningfulReferenceValue(value)) snapshot[key] = value;
+      });
+      const selectionValue = String(selection.value || '').trim();
+      const selectionKeys = [
+        selection.sourceFieldIdentity,
+        selection.sourceFieldKey,
+        selection.sourceProgramCode ? `${selection.sourceProgramCode}.${selection.sourceFieldIdentity || selection.sourceFieldKey || ''}` : '',
+      ];
+      selectionKeys.forEach((key) => {
+        const normalizedKey = normalizeReferenceToken(key);
+        if (normalizedKey && !snapshot[normalizedKey] && isMeaningfulReferenceValue(selectionValue)) {
+          snapshot[normalizedKey] = selectionValue;
+        }
+      });
+    });
+    return snapshot;
+  };
+
+  const scoreRelatedReferenceSnapshot = (
+    currentSnapshot: Record<string, string>,
+    candidateSnapshot: Record<string, string>,
+    targetColumn: EntrySectionColumnForm,
+  ): number => {
+    const targetCandidates = new Set([
+      ...extractBindingCandidates(targetColumn),
+      ...extractReferenceCandidates(targetColumn),
+      ...getColumnIdentityCandidates(targetColumn),
+    ]);
+    let score = 0;
+    Object.entries(currentSnapshot).forEach(([key, rawValue]) => {
+      const normalizedKey = normalizeReferenceToken(key);
+      if (!normalizedKey || CONTEXT_REFERENCE_IDENTITIES.has(normalizedKey) || targetCandidates.has(normalizedKey)) return;
+      const candidateValue = candidateSnapshot[normalizedKey];
+      if (!isMeaningfulReferenceValue(rawValue) || !isMeaningfulReferenceValue(candidateValue)) return;
+      const currentLines = normalizeComparableCellValue(rawValue);
+      const candidateLines = normalizeComparableCellValue(candidateValue);
+      if (currentLines.length === 0 || candidateLines.length === 0) return;
+      if (currentLines.join('\n') === candidateLines.join('\n')) {
+        score += 20 + Math.min(10, currentLines.length);
+        return;
+      }
+      const candidateSet = new Set(candidateLines);
+      const overlapCount = currentLines.filter((line) => candidateSet.has(line)).length;
+      if (overlapCount > 0) score += overlapCount;
+    });
+    return score;
+  };
+
+  const resolveRelatedReferenceValue = (
+    section: EntrySectionForm,
+    row: EntrySectionRowForm,
+    targetColumn: EntrySectionColumnForm,
+  ): string => {
+    const sourceProgramCode = normalizeTeachingResourceProgramCode(targetColumn.binding?.sourceProgramCode);
+    if (!sourceProgramCode || !referenceEntriesQuery.data) return '';
+    const sourceEntries = referenceEntriesQuery.data.entriesByProgram.get(sourceProgramCode) || [];
+    if (sourceEntries.length === 0) return '';
+    const currentSnapshot = buildComparableRowSnapshot(resolveSectionColumnsForSnapshot(section), row);
+    const sourceProgram = programMetaByCode.get(sourceProgramCode);
+    const schemaMap = new Map<string, TeachingResourceProgramSectionSchema>();
+    ensureArray<TeachingResourceProgramSectionSchema>(sourceProgram?.schema?.sections).forEach((sourceSection) => {
+      schemaMap.set(String(sourceSection.key || '').trim(), sourceSection);
+    });
+
+    let bestScore = 0;
+    let bestValue = '';
+    sourceEntries.forEach((entry) => {
+      const entryContextSnapshot = buildEntryContextSnapshot(entry, {
+        tingkat: String(entry.classLevel || '').trim(),
+      });
+      toEntryReferenceSections(entry).forEach((sourceSection) => {
+        const sourceSchema = schemaMap.get(String(sourceSection.schemaKey || '').trim());
+        const sourceColumns = sourceSection.columns.length > 0 ? sourceSection.columns : sanitizeSectionColumns(sourceSchema?.columns);
+        sourceSection.rows.forEach((sourceRow) => {
+          const candidateSnapshot = buildReferenceSnapshot(sourceColumns, sourceRow, entryContextSnapshot);
+          const candidateValue = getSnapshotValueForColumn(candidateSnapshot, targetColumn);
+          if (!isMeaningfulReferenceValue(candidateValue)) return;
+          const score = scoreRelatedReferenceSnapshot(currentSnapshot, candidateSnapshot, targetColumn);
+          if (score <= 0) return;
+          if (score > bestScore) {
+            bestScore = score;
+            bestValue = candidateValue;
+          }
+        });
+      });
+    });
+
+    return bestValue;
+  };
+
+  const shouldUseResolvedReferenceValue = (currentValue: string, resolvedValue: string): boolean => {
+    if (!isMeaningfulReferenceValue(resolvedValue)) return false;
+    const currentLines = splitCellLines(currentValue).filter(isMeaningfulReferenceValue);
+    const resolvedLines = splitCellLines(resolvedValue).filter(isMeaningfulReferenceValue);
+    if (currentLines.length === 0) return true;
+    return resolvedLines.length > currentLines.length;
+  };
+
+  const resolveSectionColumnsForSnapshot = (section: EntrySectionForm): EntrySectionColumnForm[] => {
+    const customColumns = sanitizeSectionColumns(section.columns);
+    if (customColumns.length > 0) return customColumns;
+    return sanitizeSectionColumns(activeProgramSchemaMap.get(String(section.schemaKey || '').trim())?.columns);
+  };
+
+  const reconcileRelatedReferenceSnapshots = (sourceSections: EntrySectionForm[]): EntrySectionForm[] => {
+    if (!referenceEntriesQuery.data) return sourceSections;
+    let changed = false;
+    const nextSections = sourceSections.map((section) => {
+      const columns = resolveSectionColumnsForSnapshot(section);
+      if (columns.length === 0 || section.rows.length === 0) return section;
+      const nextRows = section.rows.map((row) => {
+        let nextValues = row.values;
+        Object.entries(row.referenceSelections || {}).forEach(([selectionKey, selection]) => {
+          const columnKey = String(selectionKey || '').split('__line_')[0] || '';
+          if (!columnKey || isMeaningfulReferenceValue(nextValues[columnKey])) return;
+          const selectionValue = String(selection.value || '').trim();
+          if (!isMeaningfulReferenceValue(selectionValue)) return;
+          nextValues = { ...nextValues, [columnKey]: selectionValue };
+          changed = true;
+        });
+
+        columns.forEach((column) => {
+          const key = String(column.key || '').trim();
+          if (!key) return;
+          const sourceProgramCode = normalizeTeachingResourceProgramCode(column.binding?.sourceProgramCode);
+          if (!sourceProgramCode) return;
+          const resolvedValue = resolveRelatedReferenceValue(section, { ...row, values: nextValues }, column);
+          if (!shouldUseResolvedReferenceValue(String(nextValues[key] || ''), resolvedValue)) return;
+          nextValues = { ...nextValues, [key]: resolvedValue };
+          changed = true;
+        });
+
+        return nextValues === row.values ? row : { ...row, values: nextValues };
+      });
+      return nextRows === section.rows ? section : { ...section, columns, rows: nextRows };
+    });
+    return changed ? nextSections : sourceSections;
+  };
+
   useEffect(() => {
     const timeout = window.setTimeout(() => {
       setDebouncedReferenceServerSearch(referenceServerSearchInput);
@@ -2480,7 +2643,7 @@ export const LearningResourceGenerator = ({
           teachingLoad: selectedTeachingLoad,
         })
       : sourceSections;
-    return ensureDerivedSections(hydratedSections);
+    return reconcileRelatedReferenceSnapshots(ensureDerivedSections(hydratedSections));
   };
 
   const resetForm = () => {
@@ -2979,7 +3142,7 @@ export const LearningResourceGenerator = ({
 
   const setQuickEditSectionsWithDerived = (updater: (prev: EntrySectionForm[]) => EntrySectionForm[]) => {
     setQuickEditSections((prev) => {
-      const nextSections = ensureDerivedSections(updater(prev));
+      const nextSections = reconcileRelatedReferenceSnapshots(ensureDerivedSections(updater(prev)));
       quickEditSectionsRef.current = nextSections;
       return nextSections;
     });
@@ -3025,17 +3188,19 @@ export const LearningResourceGenerator = ({
     entry: TeachingResourceEntry,
     sourceSections: EntrySectionForm[],
   ): EntrySectionForm[] => {
-    if (!usesSheetTemplate) return ensureDerivedSections(sourceSections);
+    if (!usesSheetTemplate) return reconcileRelatedReferenceSnapshots(ensureDerivedSections(sourceSections));
     const entryContext = resolveEntryAssignmentContext(entry);
-    return ensureDerivedSections(
-      hydrateSheetSections({
-        sections: sourceSections,
-        schemaMap: activeProgramSchemaMap,
-        context: entryContext,
-        academicYearName,
-        semesterLabel: activeSemesterLabel,
-        teachingLoad: entryContext ? teachingLoadByContext.get(entryContext.key) || null : null,
-      }),
+    return reconcileRelatedReferenceSnapshots(
+      ensureDerivedSections(
+        hydrateSheetSections({
+          sections: sourceSections,
+          schemaMap: activeProgramSchemaMap,
+          context: entryContext,
+          academicYearName,
+          semesterLabel: activeSemesterLabel,
+          teachingLoad: entryContext ? teachingLoadByContext.get(entryContext.key) || null : null,
+        }),
+      ),
     );
   };
 
@@ -3102,6 +3267,21 @@ export const LearningResourceGenerator = ({
     usesSheetTemplate,
   ]);
 
+  useEffect(() => {
+    if (!quickEditEntryId || !referenceEntriesQuery.data) return;
+    setQuickEditSections((prev) => {
+      const nextSections = reconcileRelatedReferenceSnapshots(ensureDerivedSections(prev));
+      if (nextSections === prev) return prev;
+      quickEditSectionsRef.current = nextSections;
+      return nextSections;
+    });
+  }, [quickEditEntryId, referenceEntriesQuery.data]);
+
+  useEffect(() => {
+    if ((!isEditorOpen && !isPageEditor) || !referenceEntriesQuery.data) return;
+    setSections((prev) => normalizeSectionsForEditor(prev));
+  }, [isEditorOpen, isPageEditor, referenceEntriesQuery.data]);
+
   const updateQuickEditRowCell = (sectionId: string, rowId: string, columnKey: string, value: string) => {
     setQuickEditSectionsWithDerived((prev) =>
       prev.map((item) => {
@@ -3138,7 +3318,7 @@ export const LearningResourceGenerator = ({
           ...item,
           rows: item.rows.map((row) => {
             if (row.id !== rowId) return row;
-            const currentLines = splitCellLines(row.values[columnKey]);
+            const currentLines = splitEditableCellLines(row.values[columnKey]);
             const replacementLines = String(value).replace(/\r\n/g, '\n').split('\n');
             const nextLines = [...currentLines];
             nextLines.splice(Math.max(0, lineIndex), 1, ...replacementLines);
@@ -3153,6 +3333,30 @@ export const LearningResourceGenerator = ({
         };
       }),
     );
+  };
+
+  const buildQuickCellFocusKey = (sectionId: string, rowId: string, columnKey: string, lineIndex: number): string =>
+    `${sectionId}::${rowId}::${columnKey}::${lineIndex}`;
+
+  const focusQuickEditCellLine = (sectionId: string, rowId: string, columnKey: string, lineIndex: number) => {
+    window.setTimeout(() => {
+      const target = quickEditCellRefs.current[buildQuickCellFocusKey(sectionId, rowId, columnKey, lineIndex)];
+      if (!target) return;
+      target.focus();
+      target.setSelectionRange(target.value.length, target.value.length);
+    }, 0);
+  };
+
+  const handleQuickEditCellEnter = (
+    sectionId: string,
+    rowId: string,
+    columnKey: string,
+    lineIndex: number,
+    value: string,
+  ) => {
+    const nextValue = `${value}\n`;
+    updateQuickEditRowCellLine(sectionId, rowId, columnKey, lineIndex, nextValue);
+    focusQuickEditCellLine(sectionId, rowId, columnKey, lineIndex + 1);
   };
 
   const toggleQuickEditRowMark = (sectionId: string, rowId: string, columnKey: string) => {
@@ -3345,10 +3549,12 @@ export const LearningResourceGenerator = ({
     lineIndex = 0,
   ) => {
     const columnKey = String(column.key || '').trim();
-    const value = splitCellLines(row?.values?.[columnKey])[lineIndex] ?? '';
+    const value = splitEditableCellLines(row?.values?.[columnKey])[lineIndex] ?? '';
     const dataType = getColumnDataType(column);
     const readOnly = isSystemManagedColumn(column);
     const centerAligned = isCenterAlignedTableColumn(column);
+    const focusKey =
+      row?.id && columnKey ? buildQuickCellFocusKey(section.id, row.id, columnKey, lineIndex) : '';
     const tableCellControlClassName = `block w-full border-0 bg-transparent px-1 py-1 text-xs leading-relaxed text-slate-800 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-400 ${
       readOnly ? 'cursor-not-allowed text-slate-500' : ''
     } ${centerAligned ? 'text-center' : ''}`;
@@ -3590,12 +3796,20 @@ export const LearningResourceGenerator = ({
     if (!['MONTH', 'WEEK', 'SEMESTER', 'SELECT', 'BOOLEAN', 'WEEK_GRID'].includes(dataType)) {
       return (
         <textarea
+          ref={(element) => {
+            if (focusKey) quickEditCellRefs.current[focusKey] = element;
+          }}
           rows={2}
           value={value}
           disabled={readOnly}
           onChange={(event) =>
             updateQuickEditRowCellLine(section.id, row?.id || '', columnKey, lineIndex, event.target.value)
           }
+          onKeyDown={(event) => {
+            if (event.key !== 'Enter' || event.shiftKey || readOnly || !row?.id) return;
+            event.preventDefault();
+            handleQuickEditCellEnter(section.id, row.id, columnKey, lineIndex, value);
+          }}
           onInput={(event) => {
             event.currentTarget.style.height = 'auto';
             event.currentTarget.style.height = `${event.currentTarget.scrollHeight}px`;
@@ -3608,10 +3822,18 @@ export const LearningResourceGenerator = ({
 
     return (
       <input
+        ref={(element) => {
+          if (focusKey) quickEditCellRefs.current[focusKey] = element;
+        }}
         type="text"
         value={value}
         disabled={readOnly}
         onChange={(event) => updateQuickEditRowCellLine(section.id, row?.id || '', columnKey, lineIndex, event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key !== 'Enter' || event.shiftKey || readOnly || !row?.id) return;
+          event.preventDefault();
+          handleQuickEditCellEnter(section.id, row.id, columnKey, lineIndex, value);
+        }}
         placeholder={column.placeholder || ''}
         className={tableCellControlClassName}
       />
@@ -4873,23 +5095,16 @@ export const LearningResourceGenerator = ({
                           <tr className="border-b border-gray-100 bg-slate-50/60">
                             <td colSpan={6} className="px-3 py-3">
                               <div className="rounded-lg border border-slate-200 bg-white p-3">
-                                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                                  <div className="min-w-0">
-                                    <div className="text-sm font-semibold text-slate-900">
-                                      {activeQuickSection.title || 'Tabel Dokumen'}
-                                    </div>
-                                  </div>
-                                  <div className="flex flex-wrap items-center gap-2">
-                                    <button
-                                      type="button"
-                                      onClick={() => quickEditMutation.mutate(entry)}
-                                      disabled={quickEditMutation.isPending}
-                                      className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
-                                    >
-                                      <Save size={12} />
-                                      {quickEditMutation.isPending ? 'Menyimpan...' : 'Simpan Tabel'}
-                                    </button>
-                                  </div>
+                                <div className="flex flex-wrap items-center justify-end gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => quickEditMutation.mutate(entry)}
+                                    disabled={quickEditMutation.isPending}
+                                    className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+                                  >
+                                    <Save size={12} />
+                                    {quickEditMutation.isPending ? 'Menyimpan...' : 'Simpan Tabel'}
+                                  </button>
                                 </div>
 
                                 {quickSections.length > 1 ? (
@@ -4929,7 +5144,7 @@ export const LearningResourceGenerator = ({
                                     <tbody>
                                       {compactQuickRows.map((row) => {
                                         const lineCounts = compactQuickColumns.map((column) =>
-                                          splitCellLines(row.values[String(column.key || '').trim()]).length,
+                                          splitEditableCellLines(row.values[String(column.key || '').trim()]).length,
                                         );
                                         const maxLineCount = Math.max(1, ...lineCounts);
                                         return Array.from({ length: maxLineCount }).map((_, lineIndex) => (
@@ -4939,7 +5154,7 @@ export const LearningResourceGenerator = ({
                                           >
                                             {compactQuickColumns.map((column) => {
                                               const columnKey = String(column.key || '').trim();
-                                              const cellLines = splitCellLines(row.values[columnKey]);
+                                              const cellLines = splitEditableCellLines(row.values[columnKey]);
                                               if (cellLines.length <= 1 && lineIndex > 0) return null;
                                               if (cellLines.length > 1 && lineIndex >= cellLines.length) {
                                                 return (
@@ -4971,7 +5186,7 @@ export const LearningResourceGenerator = ({
                                     </tbody>
                                   </table>
                                 </div>
-                                <div className="mt-3 flex items-center justify-between gap-2">
+                                <div className="mt-3 flex items-center gap-2">
                                   <button
                                     type="button"
                                     onClick={() => addQuickEditSectionRow(activeQuickSection.id)}
@@ -4979,9 +5194,6 @@ export const LearningResourceGenerator = ({
                                   >
                                     + Tambah Baris
                                   </button>
-                                  <p className="text-[11px] text-slate-500">
-                                    Tekan Enter di dalam sel untuk membuat subbaris pada kolom tersebut.
-                                  </p>
                                 </div>
 
                               </div>
@@ -5164,18 +5376,8 @@ export const LearningResourceGenerator = ({
                         const minRowCount = getMinimumRowCount(section);
                         return (
                           <>
-                            <div className="mb-2 flex items-center justify-between">
-                              <div>
-                                <p className="text-xs font-medium text-gray-500">
-                                  {usesSheetTemplate
-                                    ? sectionSchema?.label || section.title || `Bagian ${index + 1}`
-                                    : `Bagian ${index + 1}`}
-                                </p>
-                                {sectionSchema?.description ? (
-                                  <p className="mt-0.5 text-[11px] text-gray-400">{sectionSchema.description}</p>
-                                ) : null}
-                              </div>
-                              <div className="flex items-center gap-2">
+                            {(usesSheetTemplate && tableMode) || canDeleteSection(section) ? (
+                              <div className="mb-2 flex items-center justify-end gap-2">
                                 {usesSheetTemplate && tableMode ? (
                                   <button
                                     type="button"
@@ -5197,7 +5399,7 @@ export const LearningResourceGenerator = ({
                                   </button>
                                 ) : null}
                               </div>
-                            </div>
+                            ) : null}
 
                             {usesSheetTemplate && tableMode && visibleSectionColumns.length > 0 ? (
                               <div className="mb-2 rounded-md border border-gray-200 bg-gray-50 p-2">
@@ -5232,22 +5434,18 @@ export const LearningResourceGenerator = ({
                               </div>
                             ) : null}
 
-                            {tableMode ? (
-                              <div className="mb-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm font-medium text-gray-700">
-                                {section.title || sectionSchema?.label || `Bagian ${index + 1}`}
-                              </div>
-                            ) : canEditSectionTitle(section) ? (
+                            {!tableMode && canEditSectionTitle(section) ? (
                               <input
                                 value={section.title}
                                 onChange={(event) => updateSectionField(section.id, 'title', event.target.value)}
                                 placeholder={sectionSchema?.titlePlaceholder || 'Judul bagian'}
                                 className="mb-2 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
                               />
-                            ) : (
+                            ) : !tableMode ? (
                               <div className="mb-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm font-medium text-gray-700">
                                 {section.title || sectionSchema?.label || `Bagian ${index + 1}`}
                               </div>
-                            )}
+                            ) : null}
 
                             {tableMode ? (
                               isSingleRowSheetForm(section) ? (
