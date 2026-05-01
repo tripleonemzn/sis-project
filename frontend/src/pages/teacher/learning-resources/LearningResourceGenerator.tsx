@@ -709,6 +709,26 @@ const extractReferenceCandidates = (column: Partial<EntrySectionColumnForm> | nu
 const isDocumentReferencePickerColumn = (column: Partial<EntrySectionColumnForm> | null | undefined): boolean =>
   String(column?.sourceType || '').trim().toUpperCase() === 'DOCUMENT_REFERENCE';
 
+const getColumnSourceProgramCode = (column: Partial<EntrySectionColumnForm> | null | undefined): string =>
+  normalizeTeachingResourceProgramCode(column?.binding?.sourceProgramCode);
+
+const isSecondaryReferenceColumn = (
+  section: Pick<EntrySectionForm, 'columns'>,
+  column: Partial<EntrySectionColumnForm> | null | undefined,
+): boolean => {
+  if (!isDocumentReferencePickerColumn(column)) return false;
+  const columnKey = String(column?.key || '').trim();
+  const sourceProgramCode = getColumnSourceProgramCode(column);
+  if (!columnKey || !sourceProgramCode) return false;
+  const columns = ensureArray<EntrySectionColumnForm>(section.columns);
+  const columnIndex = columns.findIndex((item) => String(item.key || '').trim() === columnKey);
+  if (columnIndex <= 0) return false;
+  return columns.slice(0, columnIndex).some((candidate) => {
+    const candidateKey = String(candidate.key || '').trim();
+    return candidateKey !== columnKey && isDocumentReferencePickerColumn(candidate) && getColumnSourceProgramCode(candidate) === sourceProgramCode;
+  });
+};
+
 const REFERENCE_IDENTITY_ALIASES: Record<string, string> = {
   tp: 'tujuan_pembelajaran',
   tujuan_pembelajaran: 'tujuan_pembelajaran',
@@ -903,6 +923,20 @@ const buildReferenceSnapshot = (
 const getReferenceRowLineCount = (row: Record<string, string>): number =>
   Math.max(1, ...Object.values(row).map((rawValue) => splitCellLines(rawValue).filter(isMeaningfulReferenceValue).length));
 
+const getSnapshotValueForColumn = (snapshot: Record<string, string> | undefined, column: EntrySectionColumnForm): string => {
+  if (!snapshot) return '';
+  const candidates = new Set<string>([
+    ...extractBindingCandidates(column),
+    ...extractReferenceCandidates(column),
+    ...getColumnIdentityCandidates(column),
+  ]);
+  for (const candidate of candidates) {
+    const resolvedValue = String(snapshot[candidate] || '').trim();
+    if (isMeaningfulReferenceValue(resolvedValue)) return resolvedValue;
+  }
+  return '';
+};
+
 const resolveEntryContextLabel = (
   entry: TeachingResourceEntry,
   assignmentLabelMap: Map<string, string>,
@@ -1031,6 +1065,7 @@ const splitCellLines = (value: unknown): string[] => {
   const lines = String(value ?? '')
     .replace(/\r\n/g, '\n')
     .split('\n');
+  while (lines.length > 1 && !String(lines[lines.length - 1] || '').trim()) lines.pop();
   return lines.length > 0 ? lines : [''];
 };
 
@@ -3077,7 +3112,11 @@ export const LearningResourceGenerator = ({
             const nextValues = {
               ...row.values,
             };
-            nextValues[columnKey] = setCellLineValue(nextValues[columnKey], lineIndex, selectedOption?.value || '');
+            const shouldReplaceWholeSourceCell = Boolean(selectedOption?.isAggregate || String(selectedOption?.value || '').includes('\n'));
+            nextValues[columnKey] =
+              selectedOption && shouldReplaceWholeSourceCell
+                ? selectedOption.value
+                : setCellLineValue(nextValues[columnKey], lineIndex, selectedOption?.value || '');
             const nextReferenceSelections = {
               ...(row.referenceSelections || {}),
             };
@@ -3100,31 +3139,29 @@ export const LearningResourceGenerator = ({
               delete nextReferenceSelections[selectionKey];
             }
 
-            const selectedSourceProgramCode = normalizeTeachingResourceProgramCode(
-              selectedOption?.sourceProgramCode || sourceColumn.binding?.sourceProgramCode,
-            );
             item.columns.forEach((targetColumn) => {
               const targetKey = String(targetColumn.key || '').trim();
               if (!targetKey || targetKey === columnKey) return;
-              if (String(targetColumn.sourceType || '').trim().toUpperCase() !== 'DOCUMENT_SNAPSHOT') return;
-              const targetProgramCode = normalizeTeachingResourceProgramCode(targetColumn.binding?.sourceProgramCode);
-              if (selectedSourceProgramCode && targetProgramCode && targetProgramCode !== selectedSourceProgramCode) return;
+              const targetSourceType = String(targetColumn.sourceType || '').trim().toUpperCase();
+              const canReceiveSnapshot =
+                targetSourceType === 'DOCUMENT_SNAPSHOT' ||
+                (targetSourceType === 'DOCUMENT_REFERENCE' && isSecondaryReferenceColumn(item, targetColumn));
+              if (!canReceiveSnapshot) return;
               const allowManualOverride = Boolean(targetColumn.binding?.allowManualOverride);
               if (!selectedOption) {
                 if (!allowManualOverride) {
-                  nextValues[targetKey] = setCellLineValue(nextValues[targetKey], lineIndex, '');
+                  nextValues[targetKey] = '';
                 }
                 return;
               }
+              const resolvedValue = getSnapshotValueForColumn(selectedOption.snapshot, targetColumn);
+              if (!resolvedValue) return;
               const targetLineValue = splitCellLines(nextValues[targetKey])[lineIndex] ?? '';
-              if (allowManualOverride && String(targetLineValue || '').trim()) return;
-              const candidates = extractBindingCandidates(targetColumn);
-              for (const candidate of candidates) {
-                const resolvedValue = String(selectedOption.snapshot[candidate] || '').trim();
-                if (!isMeaningfulReferenceValue(resolvedValue)) continue;
-                nextValues[targetKey] = setCellLineValue(nextValues[targetKey], lineIndex, resolvedValue);
-                break;
-              }
+              if (allowManualOverride && String(targetLineValue || '').trim() && targetSourceType !== 'DOCUMENT_REFERENCE') return;
+              nextValues[targetKey] =
+                selectedOption.isAggregate || resolvedValue.includes('\n')
+                  ? resolvedValue
+                  : setCellLineValue(nextValues[targetKey], lineIndex, resolvedValue);
             });
 
             return {
@@ -3155,7 +3192,7 @@ export const LearningResourceGenerator = ({
       readOnly ? 'cursor-not-allowed bg-slate-50 text-slate-500' : ''
     }`;
 
-    if (isDocumentReferencePickerColumn(column)) {
+    if (isDocumentReferencePickerColumn(column) && !isSecondaryReferenceColumn(section, column)) {
       const selectionKey = buildReferenceSelectionLineKey(columnKey, lineIndex);
       const referenceSelection =
         row?.referenceSelections?.[selectionKey] || (lineIndex === 0 ? row?.referenceSelections?.[columnKey] : undefined);
@@ -3459,16 +3496,14 @@ export const LearningResourceGenerator = ({
               delete nextReferenceSelections[columnKey];
             }
 
-            const selectedSourceProgramCode = normalizeTeachingResourceProgramCode(
-              selectedOption?.sourceProgramCode || sourceColumn.binding?.sourceProgramCode,
-            );
             item.columns.forEach((targetColumn) => {
               const targetKey = String(targetColumn.key || '').trim();
               if (!targetKey || targetKey === columnKey) return;
               const targetSourceType = String(targetColumn.sourceType || '').trim().toUpperCase();
-              if (targetSourceType !== 'DOCUMENT_SNAPSHOT') return;
-              const targetProgramCode = normalizeTeachingResourceProgramCode(targetColumn.binding?.sourceProgramCode);
-              if (selectedSourceProgramCode && targetProgramCode && targetProgramCode !== selectedSourceProgramCode) return;
+              const canReceiveSnapshot =
+                targetSourceType === 'DOCUMENT_SNAPSHOT' ||
+                (targetSourceType === 'DOCUMENT_REFERENCE' && isSecondaryReferenceColumn(item, targetColumn));
+              if (!canReceiveSnapshot) return;
               const allowManualOverride = Boolean(targetColumn.binding?.allowManualOverride);
               if (!selectedOption) {
                 if (!allowManualOverride) {
@@ -3476,14 +3511,10 @@ export const LearningResourceGenerator = ({
                 }
                 return;
               }
-              if (allowManualOverride && String(nextValues[targetKey] || '').trim()) return;
-              const candidates = extractBindingCandidates(targetColumn);
-              for (const candidate of candidates) {
-                const resolvedValue = String(selectedOption.snapshot[candidate] || '').trim();
-                if (!resolvedValue) continue;
-                nextValues[targetKey] = resolvedValue;
-                break;
-              }
+              if (allowManualOverride && String(nextValues[targetKey] || '').trim() && targetSourceType !== 'DOCUMENT_REFERENCE') return;
+              const resolvedValue = getSnapshotValueForColumn(selectedOption.snapshot, targetColumn);
+              if (!resolvedValue) return;
+              nextValues[targetKey] = resolvedValue;
             });
 
             return {
@@ -3723,7 +3754,7 @@ export const LearningResourceGenerator = ({
     }`;
     const selectClassName = `${inputClassName} ${readOnly ? 'cursor-not-allowed' : ''}`;
 
-    if (isDocumentReferencePickerColumn(column)) {
+    if (isDocumentReferencePickerColumn(column) && !isSecondaryReferenceColumn(section, column)) {
       return (
         <div className="space-y-1">
           {showReferenceSearch ? (
