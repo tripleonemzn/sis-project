@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, Check, Pencil, Plus, Printer, RotateCcw, Save, Send, Trash2, X } from 'lucide-react';
+import { AlertTriangle, CalendarDays, Check, Pencil, Plus, Printer, RotateCcw, Save, Send, Trash2, X } from 'lucide-react';
 import { useNavigate, useOutletContext } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import ReactQuill from 'react-quill-new';
@@ -32,6 +32,7 @@ import {
   type TeacherAssignment,
 } from '../../../services/teacherAssignment.service';
 import { scheduleService, type ScheduleEntry } from '../../../services/schedule.service';
+import UnderlineTabBar from '../../../components/navigation/UnderlineTabBar';
 
 interface LearningResourceGeneratorProps {
   type: string;
@@ -2243,7 +2244,8 @@ export const LearningResourceGenerator = ({
             const values = Object.entries(row.values || {}).reduce<Record<string, string>>((acc, [key, value]) => {
               const normalizedKey = String(key || '').trim();
               if (!normalizedKey) return acc;
-              acc[normalizedKey] = String(value ?? '').trim();
+              const rawValue = String(value ?? '').replace(/\r\n/g, '\n');
+              acc[normalizedKey] = parseMonthWeekColumnKey(normalizedKey) ? rawValue : rawValue.trim();
               return acc;
             }, {});
             return Object.values(values).some((value) => value) ? values : null;
@@ -3719,8 +3721,10 @@ export const LearningResourceGenerator = ({
             if (row.id !== rowId) return row;
             const currentLines = splitEditableCellLines(row.values[columnKey]);
             const replacementLines = String(value).replace(/\r\n/g, '\n').split('\n');
+            const safeLineIndex = Math.max(0, Number(lineIndex) || 0);
             const nextLines = [...currentLines];
-            nextLines.splice(Math.max(0, lineIndex), 1, ...replacementLines);
+            while (nextLines.length <= safeLineIndex) nextLines.push('');
+            nextLines.splice(safeLineIndex, 1, ...replacementLines);
             return {
               ...row,
               values: {
@@ -4087,15 +4091,19 @@ export const LearningResourceGenerator = ({
       );
       const referenceSearchKey = buildReferenceSearchKey('quick', section.id, row?.id, columnKey);
       const referenceSearchTerm = referenceSearchTerms[referenceSearchKey] || '';
+      const effectiveReferenceSearchTerm = isMonthWeekReferenceCell ? '' : referenceSearchTerm;
       const filteredReferenceSelectOptions = keepSelectedReferenceOptionVisible(
-        filterReferenceOptions(referenceSelectOptions, referenceSearchTerm),
+        filterReferenceOptions(referenceSelectOptions, effectiveReferenceSearchTerm),
         referenceSelectOptions,
         referenceSelectValue,
       );
-      const showReferenceSearch = referenceSelectOptions.length > 6 || Boolean(referenceSearchTerm);
+      const showReferenceSearch =
+        !isMonthWeekReferenceCell && (referenceSelectOptions.length > 6 || Boolean(effectiveReferenceSearchTerm));
       const referenceLimitHelperText = getReferenceLimitHelperText(sourceProgramCode, sourceProgramLabel);
       const referenceSearchHelperText =
-        referenceEntriesQuery.isFetching && referenceSearchTerm.trim().length >= 2 ? 'Mencari referensi sumber...' : '';
+        referenceEntriesQuery.isFetching && effectiveReferenceSearchTerm.trim().length >= 2
+          ? 'Mencari referensi sumber...'
+          : '';
       const disableReferenceSelect =
         !row?.id || !hasReferenceBinding || (referenceSelectOptions.length === 0 && !referenceSelectValue);
       const referencePlaceholder = !hasReferenceBinding
@@ -4135,7 +4143,7 @@ export const LearningResourceGenerator = ({
           </select>
           {disableReferenceSelect && hasReferenceBinding ? (
             <p className="px-1 text-[10px] leading-4 text-slate-500">Belum ada data sumber yang cocok.</p>
-          ) : referenceSearchTerm && filteredReferenceSelectOptions.length === 0 ? (
+          ) : effectiveReferenceSearchTerm && filteredReferenceSelectOptions.length === 0 ? (
             <p className="px-1 text-[10px] leading-4 text-slate-500">Tidak ada referensi yang cocok dengan pencarian.</p>
           ) : referenceSearchHelperText ? (
             <p className="px-1 text-[10px] leading-4 text-slate-500">{referenceSearchHelperText}</p>
@@ -6032,22 +6040,19 @@ export const LearningResourceGenerator = ({
                                 </div>
 
                                 {quickSections.length > 1 ? (
-                                  <div className="mt-3 flex flex-wrap gap-2">
-                                    {quickSections.map((section) => (
-                                      <button
-                                        key={`quick-section-${section.id}`}
-                                        type="button"
-                                        onClick={() => setQuickEditActiveSectionId(section.id)}
-                                        className={`rounded-full border px-3 py-1 text-xs font-medium transition ${
-                                          section.id === activeQuickSection.id
-                                            ? 'border-blue-300 bg-blue-50 text-blue-700'
-                                            : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
-                                        }`}
-                                      >
-                                        {section.title || 'Bagian tabel'}
-                                      </button>
-                                    ))}
-                                  </div>
+                                  <UnderlineTabBar
+                                    items={quickSections.map((section) => ({
+                                      id: section.id,
+                                      label: section.title || 'Bagian tabel',
+                                      icon: CalendarDays,
+                                    }))}
+                                    activeId={activeQuickSection.id}
+                                    onChange={setQuickEditActiveSectionId}
+                                    className="mt-3"
+                                    innerClassName="gap-2"
+                                    textSizeClassName="text-xs"
+                                    ariaLabel="Tab tabel perangkat ajar"
+                                  />
                                 ) : null}
 
                                 {buildMonthWeekColumnLayout(compactQuickColumns) ? (
