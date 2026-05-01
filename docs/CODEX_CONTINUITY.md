@@ -5,12 +5,12 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-05-01 11:09 WIB
-- Current status: follow-up Program Tahunan selesai. Root cause lanjutan ditemukan: ATP sudah menyimpan `Tujuan Pembelajaran` sebagai multiline lengkap, tetapi Prota entry uji masih menyimpan token referensi lama yang menunjuk hanya ke baris pertama. Backend dan frontend sekarang membuat opsi referensi agregat dinamis seperti `Tujuan Pembelajaran lengkap (4 baris)` untuk setiap sumber multiline, sehingga dokumen berikutnya bisa mengambil seluruh baris sekaligus tanpa hardcode Prota/ATP. Draft Prota uji `entryId=12` juga sudah dikoreksi secara targeted agar langsung memakai 4 baris TP dari ATP `entryId=11`.
+- Last updated: 2026-05-01 11:25 WIB
+- Current status: follow-up korelasi tabel merge perangkat ajar selesai. Arah referensi dikoreksi dari `opsi per-anak TP` menjadi `opsi grup merge`: jika satu row sumber seperti ATP punya `No/Elemen` single cell dan TP/materi/dimensi/JP multiline, dropdown referensi kini membuat satu opsi grup dengan snapshot penuh. Dengan begitu saat guru memilih grup induk seperti `No 1` atau `Elemen Perencanaan...`, semua baris anak yang tergabung dalam cell merge ikut terbawa ke kolom snapshot berikutnya.
 - Objective/task aktif:
   - Melanjutkan pengembangan perangkat ajar dinamis setelah polish tab remedial dan editor tabel guru.
 - Batch terakhir selesai:
-  - `Perangkat ajar follow-up - aggregate multiline reference options for Prota/ATP chain`
+  - `Perangkat ajar follow-up - merged-row group reference semantics`
 - Progress fitur remedial keseluruhan:
   - `100%`
 - Progress presensi terpadu saat ini:
@@ -26,13 +26,13 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
-  - Commit: `2e5fc45`
-  - Title: `fix(teaching-resources): add aggregate reference options`
+  - Commit: `53ffbd0`
+  - Title: `fix(teaching-resources): use merged row reference groups`
   - Summary:
-    - opsi referensi sumber multiline kini selalu menyediakan pilihan agregat `lengkap (n baris)` selain opsi per-baris
-    - pilihan agregat membawa snapshot penuh agar kolom turunan seperti dimensi/alokasi bisa ikut tersalin sebagai multiline
-    - fallback frontend juga mendapat logika yang sama jika opsi projected dari API belum tersedia
-    - data draft Prota uji `entryId=12` diperbaiki targeted dari token baris pertama menjadi token agregat ATP
+    - opsi referensi per-anak seperti `1.1`, `1.2`, dan seterusnya tidak lagi dibuat untuk row sumber yang punya struktur merge
+    - opsi referensi sekarang membawa snapshot full-row/group agar `No`, `Elemen`, TP, materi, dimensi, dan JP tetap berkorelasi
+    - label opsi grup diberi penanda seperti `(4 baris terkait)` atau `lengkap (4 baris)` agar guru paham bahwa pilihan itu membawa satu kelompok
+    - logika ini diterapkan di projected options backend dan fallback options frontend
 - Area/file disentuh:
   - `backend/src/controllers/teachingResourceProgram.controller.ts`
   - `frontend/src/pages/teacher/learning-resources/LearningResourceGenerator.tsx`
