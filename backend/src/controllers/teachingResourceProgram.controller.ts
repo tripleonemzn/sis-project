@@ -328,6 +328,21 @@ const PROSEM_GENAP_WEEK_COLUMNS: TeachingResourceSectionSchema['columns'] = [
   { key: 'juni_4', label: 'Juni-4' },
 ];
 
+const PROSEM_MONTH_WEEK_COLUMN_KEYS = new Set(
+  [...(PROSEM_GANJIL_WEEK_COLUMNS || []), ...(PROSEM_GENAP_WEEK_COLUMNS || [])]
+    .map((column) => String(column.key || '').trim().toLowerCase())
+    .filter(Boolean),
+);
+
+function isProsemMonthWeekColumnKey(key: unknown): boolean {
+  return PROSEM_MONTH_WEEK_COLUMN_KEYS.has(String(key || '').trim().toLowerCase());
+}
+
+function normalizeTeachingResourceRowValue(key: unknown, value: unknown): string {
+  const rawValue = String(value ?? '').replace(/\r\n/g, '\n');
+  return isProsemMonthWeekColumnKey(key) ? rawValue : rawValue.trim();
+}
+
 const MATRIKS_WEEK_COLUMNS: TeachingResourceSectionSchema['columns'] = Array.from({ length: 19 }, (_, index) => ({
   key: `minggu_${index + 1}`,
   label: `Minggu ${index + 1}`,
@@ -1647,7 +1662,7 @@ function cloneProgramSchema(schema: TeachingResourceProgramSchema): TeachingReso
                 Object.entries(row || {}).forEach(([key, value]) => {
                   const rowKey = String(key || '').trim();
                   if (!rowKey) return;
-                  normalizedRow[rowKey] = String(value ?? '').trim();
+                  normalizedRow[rowKey] = normalizeTeachingResourceRowValue(rowKey, value);
                 });
                 return normalizedRow;
               })
@@ -1833,7 +1848,7 @@ function sanitizeProgramSchema(
                 (acc, [key, value]) => {
                   const normalizedKey = String(key || '').trim();
                   if (!normalizedKey) return acc;
-                  acc[normalizedKey] = String(value ?? '').trim();
+                  acc[normalizedKey] = normalizeTeachingResourceRowValue(normalizedKey, value);
                   return acc;
                 },
                 {},
@@ -1981,7 +1996,7 @@ function toReferenceEntrySections(
               Object.entries(row as Record<string, unknown>).forEach(([key, value]) => {
                 const rowKey = String(key || '').trim();
                 if (!rowKey) return;
-                normalizedRow[rowKey] = String(value ?? '').trim();
+                normalizedRow[rowKey] = normalizeTeachingResourceRowValue(rowKey, value);
               });
               return normalizedRow;
             })
@@ -2288,7 +2303,7 @@ function sanitizeEntryContent(raw: unknown): TeachingResourceEntryContent {
                   Object.entries(row as Record<string, unknown>).forEach(([key, value]) => {
                     const rowKey = String(key || '').trim();
                     if (!rowKey) return;
-                    normalizedRow[rowKey] = String(value ?? '').trim();
+                    normalizedRow[rowKey] = normalizeTeachingResourceRowValue(rowKey, value);
                   });
                   return Object.keys(normalizedRow).length ? normalizedRow : null;
                 })

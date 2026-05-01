@@ -645,7 +645,7 @@ const toEntryReferenceSections = (entry: TeachingResourceEntry) => {
               const values = Object.entries(row as Record<string, unknown>).reduce<Record<string, string>>((acc, [key, value]) => {
                 const normalizedKey = String(key || '').trim();
                 if (!normalizedKey) return acc;
-                acc[normalizedKey] = String(value ?? '').trim();
+                acc[normalizedKey] = getRawCellValueForStorage(normalizedKey, value);
                 return acc;
               }, {});
               columns.forEach((column) => {
@@ -1125,8 +1125,13 @@ const formatReferenceOptionLabel = (value: unknown, fallback = 'Referensi tersim
 
 const buildReferenceSnapshotForLine = (snapshot: Record<string, string>, lineIndex: number): Record<string, string> =>
   Object.entries(snapshot || {}).reduce<Record<string, string>>((acc, [key, rawValue]) => {
-    const lines = splitCellLines(rawValue).filter((line) => line.trim().length > 0);
-    acc[key] = lines.length > 1 ? String(lines[Math.min(lineIndex, lines.length - 1)] || '').trim() : String(rawValue || '').trim();
+    const lines = parseMonthWeekColumnKey(key)
+      ? splitEditableCellLines(rawValue)
+      : splitCellLines(rawValue).filter((line) => line.trim().length > 0);
+    acc[key] =
+      lines.length > 1
+        ? getRawCellValueForStorage(key, lines[Math.min(lineIndex, lines.length - 1)])
+        : getRawCellValueForStorage(key, rawValue);
     return acc;
   }, {});
 
@@ -1319,7 +1324,7 @@ const buildReferenceSelectionLineKey = (columnKey: string, lineIndex: number): s
 
 const setCellLineValue = (value: unknown, lineIndex: number, nextLineValue: unknown): string => {
   const safeLineIndex = Math.max(0, Number(lineIndex) || 0);
-  const lines = splitCellLines(value);
+  const lines = splitEditableCellLines(value);
   while (lines.length <= safeLineIndex) lines.push('');
   lines[safeLineIndex] = String(nextLineValue ?? '');
   while (lines.length > safeLineIndex + 1 && lines[lines.length - 1] === '') lines.pop();
@@ -1355,7 +1360,7 @@ const formatCellPrintHtml = (value: unknown, column?: EntrySectionColumnForm): s
 const formatMonthWeekPrintCellHtml = (value: unknown): string => {
   const rawValue = String(value ?? '').trim();
   if (!rawValue) return '';
-  if (isTruthyMark(rawValue)) return '';
+  if (isTruthyMark(rawValue)) return MARK_VALUE;
   return `<span class="month-week-cell-text">${escapeHtml(rawValue.replace(/\s+/g, ' '))}</span>`;
 };
 
@@ -5569,7 +5574,11 @@ export const LearningResourceGenerator = ({
         .join('')}</tr>`;
       const tbody = rows
         .map((row) => {
-          const lineGroups = orderedHeaders.map((header) => splitCellLines(row.values?.[header.key]));
+          const lineGroups = orderedHeaders.map((header) =>
+            parseMonthWeekColumnKey(header.key)
+              ? splitEditableCellLines(row.values?.[header.key])
+              : splitCellLines(row.values?.[header.key]),
+          );
           const maxLineCount = Math.max(1, ...lineGroups.map((lines) => lines.length));
           return Array.from({ length: maxLineCount })
             .map((_, lineIndex) => {
@@ -5580,7 +5589,9 @@ export const LearningResourceGenerator = ({
                   const mergedMonthWeekNote = isMonthWeekColumn ? getMergedMonthWeekNote(row.values?.[header.key]) : null;
                   if (mergedMonthWeekNote && lineIndex > 0) return '';
                   if (!isMonthWeekColumn && lines.length <= 1 && lineIndex > 0) return '';
-                  const lineValue = lines[Math.min(lineIndex, lines.length - 1)];
+                  const lineValue = isMonthWeekColumn
+                    ? lines[lineIndex] ?? ''
+                    : lines[Math.min(lineIndex, lines.length - 1)];
                   const printableValue = mergedMonthWeekNote ? mergedMonthWeekNote.note : lineValue;
                   const className = [
                     getPrintColumnClassName(header.column),
