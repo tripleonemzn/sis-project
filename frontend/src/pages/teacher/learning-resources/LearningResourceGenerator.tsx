@@ -782,6 +782,20 @@ const getProgramReferenceIdentityMap = (program: TeachingResourceProgram | undef
   return map;
 };
 
+const getReferenceSourceCoverageCount = (
+  sourceProgramCode: string,
+  sectionColumns: TeachingResourceProgramColumnSchema[],
+  programMetaByCode: Map<string, TeachingResourceProgram>,
+): number => {
+  const identityMap = getProgramReferenceIdentityMap(programMetaByCode.get(sourceProgramCode));
+  if (identityMap.size === 0) return 0;
+  return sectionColumns.filter((column) =>
+    getColumnIdentityCandidates(column)
+      .filter((candidate) => !CONTEXT_REFERENCE_IDENTITIES.has(candidate))
+      .some((candidate) => Boolean(identityMap.get(candidate))),
+  ).length;
+};
+
 const resolveBestReferenceSource = (
   column: TeachingResourceProgramColumnSchema,
   sectionColumns: TeachingResourceProgramColumnSchema[],
@@ -807,16 +821,16 @@ const resolveBestReferenceSource = (
     localCandidates.forEach((candidate) => {
       const sourceFieldIdentity = identityMap.get(candidate);
       if (!sourceFieldIdentity) return;
-      let score = 10;
-      if (sourceProgramCode === currentSourceProgramCode && currentSourceIdentity === candidate) score += 8;
+      let score = 10 + getReferenceSourceCoverageCount(sourceProgramCode, sectionColumns, programMetaByCode) * 10;
+      if (sourceProgramCode === currentSourceProgramCode && currentSourceIdentity === candidate) score += 4;
       if (sourceProgramCode === currentSourceProgramCode && currentSourceIdentity && !CONTEXT_REFERENCE_IDENTITIES.has(currentSourceIdentity)) {
-        score += 2;
+        score += 1;
       }
       if (sourceProgramCode !== currentSourceProgramCode && CONTEXT_REFERENCE_IDENTITIES.has(currentSourceIdentity)) score += 4;
       const isUsedBySibling = sectionColumns.some(
         (item) => normalizeTeachingResourceProgramCode(item.binding?.sourceProgramCode) === sourceProgramCode && item.key !== column.key,
       );
-      if (isUsedBySibling) score += 2;
+      if (isUsedBySibling) score += 6;
       if (!best || score > best.score) {
         best = { sourceProgramCode, sourceFieldIdentity, score };
       }
@@ -868,6 +882,33 @@ const normalizeTeacherReferenceSections = (
       }
     }
 
+    nextColumns = nextColumns.map((column) => {
+      if (!isDocumentReferencePickerColumn(column)) return column;
+      const bestSource = resolveBestReferenceSource(column, nextColumns, programMetaByCode);
+      if (!bestSource) return column;
+      const currentSourceProgramCode = normalizeTeachingResourceProgramCode(column.binding?.sourceProgramCode);
+      const currentSourceIdentity = normalizeReferenceIdentity(
+        column.binding?.sourceFieldIdentity || column.binding?.sourceDocumentFieldIdentity,
+      );
+      if (
+        currentSourceProgramCode === bestSource.sourceProgramCode &&
+        currentSourceIdentity === normalizeReferenceIdentity(bestSource.sourceFieldIdentity)
+      ) {
+        return column;
+      }
+      return {
+        ...column,
+        binding: {
+          ...(column.binding || {}),
+          sourceProgramCode: bestSource.sourceProgramCode,
+          sourceFieldIdentity: bestSource.sourceFieldIdentity,
+          sourceDocumentFieldIdentity: bestSource.sourceFieldIdentity,
+          selectionMode: column.binding?.selectionMode || 'PICK_SINGLE',
+          syncMode: 'SNAPSHOT_ON_SELECT',
+        },
+      };
+    });
+
     const primaryReference = nextColumns.find(isDocumentReferencePickerColumn);
     const primarySourceProgramCode = normalizeTeachingResourceProgramCode(primaryReference?.binding?.sourceProgramCode);
     const primarySourceIdentityMap = getProgramReferenceIdentityMap(programMetaByCode.get(primarySourceProgramCode));
@@ -895,8 +936,9 @@ const normalizeTeacherReferenceSections = (
 const buildReferenceSnapshot = (
   columns: Array<Partial<EntrySectionColumnForm>>,
   row: Record<string, string>,
+  baseSnapshot: Record<string, string> = {},
 ): Record<string, string> => {
-  const snapshot: Record<string, string> = {};
+  const snapshot: Record<string, string> = { ...baseSnapshot };
   columns.forEach((column) => {
     const key = String(column.key || '').trim();
     const value = String(row[key] || '').trim();
@@ -918,6 +960,44 @@ const buildReferenceSnapshot = (
     snapshot[normalizedKey] = value;
   });
   return snapshot;
+};
+
+const buildEntryContextSnapshot = (
+  entry: TeachingResourceEntry,
+  defaults?: Partial<EntryContextValues>,
+): Record<string, string> => {
+  const contextValues = extractEntryContextValues(entry, defaults);
+  return {
+    mata_pelajaran: contextValues.mataPelajaran,
+    tingkat: contextValues.tingkat,
+    program_keahlian: contextValues.programKeahlian,
+    semester: contextValues.semester,
+    tahun_ajaran: contextValues.tahunAjaran,
+  };
+};
+
+const isGenericSubjectContextValue = (value: unknown): boolean => {
+  const normalized = normalizeReferenceToken(value);
+  if (!normalized) return true;
+  return ['konsentrasi_keahlian', 'mata_pelajaran', 'mapel', 'subject'].includes(normalized);
+};
+
+const extractEntryReferencePointers = (
+  entry: TeachingResourceEntry,
+): Array<{ programCode: string; entryId: number }> => {
+  const pointers = new Map<string, { programCode: string; entryId: number }>();
+  ensureArray<string>(entry.content?.references).forEach((rawReference) => {
+    const [programCodeRaw, entryIdRaw] = String(rawReference || '').split('::');
+    const programCode = normalizeTeachingResourceProgramCode(programCodeRaw);
+    const entryId = Number(entryIdRaw || 0);
+    if (programCode && entryId > 0) pointers.set(`${programCode}::${entryId}`, { programCode, entryId });
+  });
+  ensureArray<TeachingResourceEntryReferenceSelection>(entry.content?.referenceSelections).forEach((selection) => {
+    const programCode = normalizeTeachingResourceProgramCode(selection.sourceProgramCode);
+    const entryId = Number(selection.sourceEntryId || 0);
+    if (programCode && entryId > 0) pointers.set(`${programCode}::${entryId}`, { programCode, entryId });
+  });
+  return Array.from(pointers.values());
 };
 
 const getReferenceRowLineCount = (row: Record<string, string>): number =>
@@ -1182,6 +1262,30 @@ const isSystemManagedColumn = (column: EntrySectionColumnForm): boolean => {
   return Boolean(column.readOnly) || dataType === 'READONLY_BOUND' || (!!valueSource && valueSource !== 'MANUAL');
 };
 
+const isSystemValueColumn = (column: Partial<EntrySectionColumnForm> | null | undefined): boolean => {
+  const sourceType = String(column?.sourceType || '').trim().toUpperCase();
+  const valueSource = String(column?.valueSource || '').trim().toUpperCase();
+  return sourceType === 'SYSTEM' || valueSource.startsWith('SYSTEM_');
+};
+
+const CENTER_ALIGNED_REFERENCE_IDENTITIES = new Set([
+  'no',
+  'nomor',
+  'number',
+  'jp',
+  'alokasi_jp',
+  'alokasi_waktu',
+  'jumlah_jp',
+  'jam',
+  'jumlah_jam',
+]);
+
+const isCenterAlignedTableColumn = (column?: Partial<EntrySectionColumnForm> | null): boolean => {
+  const dataType = getColumnDataType(column);
+  if (['NUMBER', 'BOOLEAN', 'WEEK', 'SEMESTER', 'MONTH', 'WEEK_GRID'].includes(dataType)) return true;
+  return getColumnIdentityCandidates(column).some((candidate) => CENTER_ALIGNED_REFERENCE_IDENTITIES.has(candidate));
+};
+
 const parseWeekGridValue = (value: unknown): string[] => {
   const seen = new Set<string>();
   String(value || '')
@@ -1224,8 +1328,13 @@ const formatOptionalNumericValue = (value: number): string => {
 
 const getPrintColumnClassName = (column?: EntrySectionColumnForm): string => {
   const dataType = getColumnDataType(column);
-  if (dataType === 'WEEK_GRID') return 'print-week-grid-column';
-  if (['NUMBER', 'BOOLEAN', 'WEEK', 'SEMESTER', 'MONTH'].includes(dataType)) return 'print-compact-column';
+  const classes: string[] = [];
+  if (dataType === 'WEEK_GRID') classes.push('print-week-grid-column');
+  if (['NUMBER', 'BOOLEAN', 'WEEK', 'SEMESTER', 'MONTH'].includes(dataType) || isCenterAlignedTableColumn(column)) {
+    classes.push('print-compact-column');
+  }
+  if (isCenterAlignedTableColumn(column)) classes.push('print-center-column');
+  if (classes.length > 0) return Array.from(new Set(classes)).join(' ');
   return '';
 };
 
@@ -1529,7 +1638,11 @@ const hydrateSheetSections = (params: {
           totalJpMingguan,
         });
         if (systemValue) {
-          setIfBlank(values, key, systemValue);
+          if (isSystemValueColumn(column)) {
+            values[key] = systemValue;
+          } else {
+            setIfBlank(values, key, systemValue);
+          }
         }
       });
       return {
@@ -2110,6 +2223,9 @@ export const LearningResourceGenerator = ({
       candidates: string[],
     ): ReferenceOption[] => {
       const sections = toEntryReferenceSections(entry);
+      const entryContextSnapshot = buildEntryContextSnapshot(entry, {
+        tingkat: String(entry.classLevel || '').trim(),
+      });
       const schemaMap = new Map<string, TeachingResourceProgramSectionSchema>();
       ensureArray<TeachingResourceProgramSectionSchema>(sourceProgram?.schema?.sections).forEach((section) => {
         schemaMap.set(String(section.key || '').trim(), section);
@@ -2119,7 +2235,7 @@ export const LearningResourceGenerator = ({
         const schema = schemaMap.get(String(section.schemaKey || '').trim());
         const columns = section.columns.length > 0 ? section.columns : ensureArray<EntrySectionColumnForm>(schema?.columns);
         section.rows.forEach((row, rowIndex) => {
-          const snapshot = buildReferenceSnapshot(columns, row);
+          const snapshot = buildReferenceSnapshot(columns, row, entryContextSnapshot);
           const rowLineCount = getReferenceRowLineCount(row);
           columns.forEach((column) => {
             const columnCandidates = extractReferenceCandidates(column);
@@ -2770,6 +2886,39 @@ export const LearningResourceGenerator = ({
 
   const isSingleRowSheetForm = (_section: EntrySectionForm): boolean => false;
 
+  const applyReferenceContextSnapshotToSections = (
+    sourceSections: EntrySectionForm[],
+    snapshot: Record<string, string> | undefined,
+  ): EntrySectionForm[] => {
+    if (!snapshot) return sourceSections;
+    return sourceSections.map((section) => {
+      if (!isContextLikeTableSection(section)) return section;
+      const columns = resolveSectionColumns(section);
+      const rows = section.rows.length > 0 ? section.rows : createSection(resolveSectionSchema(section), 0).rows;
+      return {
+        ...section,
+        columns,
+        rows: rows.map((row, rowIndex) => {
+          if (rowIndex > 0) return row;
+          const values = { ...row.values };
+          columns.forEach((column) => {
+            const key = String(column.key || '').trim();
+            if (!key) return;
+            const identity = getColumnIdentityCandidates(column).find((candidate) => CONTEXT_REFERENCE_IDENTITIES.has(candidate));
+            if (!identity) return;
+            const resolvedValue = String(snapshot[identity] || '').trim();
+            if (!resolvedValue) return;
+            const currentValue = String(values[key] || '').trim();
+            if (!currentValue || isSystemValueColumn(column)) {
+              values[key] = resolvedValue;
+            }
+          });
+          return { ...row, values };
+        }),
+      };
+    });
+  };
+
   const getColumnWidthClass = (columnKey: string, multiline = false, dataType = 'TEXT'): string => {
     const key = String(columnKey || '').toLowerCase();
     const normalizedDataType = String(dataType || 'TEXT').toUpperCase();
@@ -3097,8 +3246,9 @@ export const LearningResourceGenerator = ({
     lineIndex: number,
     selectionToken: string,
   ) => {
-    setQuickEditSectionsWithDerived((prev) =>
-      prev.map((item) => {
+    setQuickEditSectionsWithDerived((prev) => {
+      let selectedSnapshot: Record<string, string> | undefined;
+      const nextSections = prev.map((item) => {
         if (item.id !== sectionId) return item;
         return {
           ...item,
@@ -3109,6 +3259,7 @@ export const LearningResourceGenerator = ({
             const referenceOptions =
               referenceOptionsByColumnKey.get(`${String(item.schemaKey || '').trim()}::${columnKey}`) || [];
             const selectedOption = referenceOptions.find((option) => option.selectValue === selectionToken);
+            if (selectedOption?.snapshot) selectedSnapshot = selectedOption.snapshot;
             const nextValues = {
               ...row.values,
             };
@@ -3145,7 +3296,10 @@ export const LearningResourceGenerator = ({
               const targetSourceType = String(targetColumn.sourceType || '').trim().toUpperCase();
               const canReceiveSnapshot =
                 targetSourceType === 'DOCUMENT_SNAPSHOT' ||
-                (targetSourceType === 'DOCUMENT_REFERENCE' && isSecondaryReferenceColumn(item, targetColumn));
+                (targetSourceType === 'DOCUMENT_REFERENCE' && isSecondaryReferenceColumn(item, targetColumn)) ||
+                (Boolean(selectedOption) &&
+                  normalizeTeachingResourceProgramCode(targetColumn.binding?.sourceProgramCode) ===
+                    normalizeTeachingResourceProgramCode(selectedOption?.sourceProgramCode));
               if (!canReceiveSnapshot) return;
               const allowManualOverride = Boolean(targetColumn.binding?.allowManualOverride);
               if (!selectedOption) {
@@ -3157,9 +3311,17 @@ export const LearningResourceGenerator = ({
               const resolvedValue = getSnapshotValueForColumn(selectedOption.snapshot, targetColumn);
               if (!resolvedValue) return;
               const targetLineValue = splitCellLines(nextValues[targetKey])[lineIndex] ?? '';
-              if (allowManualOverride && String(targetLineValue || '').trim() && targetSourceType !== 'DOCUMENT_REFERENCE') return;
+              const shouldReplaceWholeTargetCell = Boolean(selectedOption.isAggregate || resolvedValue.includes('\n'));
+              if (
+                allowManualOverride &&
+                String(targetLineValue || '').trim() &&
+                targetSourceType !== 'DOCUMENT_REFERENCE' &&
+                !shouldReplaceWholeTargetCell
+              ) {
+                return;
+              }
               nextValues[targetKey] =
-                selectedOption.isAggregate || resolvedValue.includes('\n')
+                shouldReplaceWholeTargetCell
                   ? resolvedValue
                   : setCellLineValue(nextValues[targetKey], lineIndex, resolvedValue);
             });
@@ -3171,8 +3333,9 @@ export const LearningResourceGenerator = ({
             };
           }),
         };
-      }),
-    );
+      });
+      return applyReferenceContextSnapshotToSections(nextSections, selectedSnapshot);
+    });
   };
 
   const renderQuickEditCellControl = (
@@ -3185,12 +3348,13 @@ export const LearningResourceGenerator = ({
     const value = splitCellLines(row?.values?.[columnKey])[lineIndex] ?? '';
     const dataType = getColumnDataType(column);
     const readOnly = isSystemManagedColumn(column);
+    const centerAligned = isCenterAlignedTableColumn(column);
     const tableCellControlClassName = `block w-full border-0 bg-transparent px-1 py-1 text-xs leading-relaxed text-slate-800 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-400 ${
       readOnly ? 'cursor-not-allowed text-slate-500' : ''
-    }`;
+    } ${centerAligned ? 'text-center' : ''}`;
     const selectClassName = `h-9 w-full rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-700 focus:border-blue-500 focus:outline-none ${
       readOnly ? 'cursor-not-allowed bg-slate-50 text-slate-500' : ''
-    }`;
+    } ${centerAligned ? 'text-center' : ''}`;
 
     if (isDocumentReferencePickerColumn(column) && !isSecondaryReferenceColumn(section, column)) {
       const selectionKey = buildReferenceSelectionLineKey(columnKey, lineIndex);
@@ -3460,8 +3624,9 @@ export const LearningResourceGenerator = ({
     sourceColumn: EntrySectionColumnForm,
     selectionToken: string,
   ) => {
-    setSectionsWithDerived((prev) =>
-      prev.map((item) => {
+    setSectionsWithDerived((prev) => {
+      let selectedSnapshot: Record<string, string> | undefined;
+      const nextSections = prev.map((item) => {
         if (item.id !== sectionId) return item;
         return {
           ...item,
@@ -3471,6 +3636,7 @@ export const LearningResourceGenerator = ({
             const referenceOptions =
               referenceOptionsByColumnKey.get(`${String(item.schemaKey || '').trim()}::${columnKey}`) || [];
             const selectedOption = referenceOptions.find((option) => option.selectValue === selectionToken);
+            if (selectedOption?.snapshot) selectedSnapshot = selectedOption.snapshot;
             const nextValues = {
               ...row.values,
               [columnKey]: selectedOption?.value || '',
@@ -3502,7 +3668,10 @@ export const LearningResourceGenerator = ({
               const targetSourceType = String(targetColumn.sourceType || '').trim().toUpperCase();
               const canReceiveSnapshot =
                 targetSourceType === 'DOCUMENT_SNAPSHOT' ||
-                (targetSourceType === 'DOCUMENT_REFERENCE' && isSecondaryReferenceColumn(item, targetColumn));
+                (targetSourceType === 'DOCUMENT_REFERENCE' && isSecondaryReferenceColumn(item, targetColumn)) ||
+                (Boolean(selectedOption) &&
+                  normalizeTeachingResourceProgramCode(targetColumn.binding?.sourceProgramCode) ===
+                    normalizeTeachingResourceProgramCode(selectedOption?.sourceProgramCode));
               if (!canReceiveSnapshot) return;
               const allowManualOverride = Boolean(targetColumn.binding?.allowManualOverride);
               if (!selectedOption) {
@@ -3511,9 +3680,17 @@ export const LearningResourceGenerator = ({
                 }
                 return;
               }
-              if (allowManualOverride && String(nextValues[targetKey] || '').trim() && targetSourceType !== 'DOCUMENT_REFERENCE') return;
               const resolvedValue = getSnapshotValueForColumn(selectedOption.snapshot, targetColumn);
               if (!resolvedValue) return;
+              const shouldReplaceWholeTargetCell = Boolean(selectedOption.isAggregate || resolvedValue.includes('\n'));
+              if (
+                allowManualOverride &&
+                String(nextValues[targetKey] || '').trim() &&
+                targetSourceType !== 'DOCUMENT_REFERENCE' &&
+                !shouldReplaceWholeTargetCell
+              ) {
+                return;
+              }
               nextValues[targetKey] = resolvedValue;
             });
 
@@ -3524,8 +3701,9 @@ export const LearningResourceGenerator = ({
             };
           }),
         };
-      }),
-    );
+      });
+      return applyReferenceContextSnapshotToSections(nextSections, selectedSnapshot);
+    });
   };
 
   const updateSectionField = (sectionId: string, field: 'title' | 'body', value: string) => {
@@ -3751,7 +3929,7 @@ export const LearningResourceGenerator = ({
           : '';
     const inputClassName = `w-full rounded-md border border-gray-300 px-2 py-1.5 text-xs focus:border-blue-500 focus:outline-none ${
       readOnly ? 'bg-gray-50 text-gray-500' : 'bg-white'
-    }`;
+    } ${isCenterAlignedTableColumn(column) ? 'text-center' : ''}`;
     const selectClassName = `${inputClassName} ${readOnly ? 'cursor-not-allowed' : ''}`;
 
     if (isDocumentReferencePickerColumn(column) && !isSecondaryReferenceColumn(section, column)) {
@@ -3939,7 +4117,7 @@ export const LearningResourceGenerator = ({
           placeholder={column.placeholder || ''}
           className={`w-full resize-y rounded-md border border-gray-300 px-2 py-1.5 text-xs focus:border-blue-500 focus:outline-none ${
             readOnly ? 'bg-gray-50 text-gray-500' : 'bg-white'
-          }`}
+          } ${isCenterAlignedTableColumn(column) ? 'text-center' : ''}`}
         />
       );
     }
@@ -4151,7 +4329,66 @@ export const LearningResourceGenerator = ({
     return `<section><h3>${title}</h3><div class="text-block">${formatMultilineHtml(section.body || '-')}</div></section>`;
   };
 
-  const buildPrintHtml = (entry: TeachingResourceEntry): string => {
+  const isPrintContextFieldSystem = (fieldIdentity: string): boolean =>
+    activeProgramSchemaSections.some((section) => {
+      const key = String(section.key || '').toLowerCase();
+      const label = String(section.label || '').toLowerCase();
+      if (!key.includes('konteks') && !label.includes('konteks') && String(section.blockType || '').toUpperCase() !== 'CONTEXT') {
+        return false;
+      }
+      return ensureArray<EntrySectionColumnForm>(section.columns).some((column) => {
+        const identity = getColumnIdentityCandidates(column).find((candidate) => CONTEXT_REFERENCE_IDENTITIES.has(candidate));
+        return identity === fieldIdentity && isSystemValueColumn(column);
+      });
+    });
+
+  const loadReferenceContextOverride = async (
+    entry: TeachingResourceEntry,
+    depth = 0,
+  ): Promise<Partial<EntryContextValues> | null> => {
+    const pointers = extractEntryReferencePointers(entry);
+    if (pointers.length === 0 || depth > 1) return null;
+    const programCodes = Array.from(new Set(pointers.map((pointer) => pointer.programCode))).sort();
+    try {
+      const response = await teachingResourceProgramService.getReferenceEntries({
+        academicYearId,
+        programCodes,
+        includeRows: true,
+        limitPerProgram: 250,
+      });
+      const referencedRows = ensureArray<{
+        programCode?: string;
+        rows?: TeachingResourceEntry[];
+      }>(response.data?.programs).flatMap((program) => ensureArray<TeachingResourceEntry>(program.rows));
+      const rowsByPointer = new Map(
+        referencedRows.map((row) => [`${normalizeTeachingResourceProgramCode(row.programCode)}::${Number(row.id || 0)}`, row]),
+      );
+      for (const pointer of pointers) {
+        const referencedEntry = rowsByPointer.get(`${pointer.programCode}::${pointer.entryId}`);
+        if (!referencedEntry) continue;
+        const contextValues = extractEntryContextValues(referencedEntry, {
+          tingkat: String(referencedEntry.classLevel || '').trim(),
+        });
+        if (contextValues.mataPelajaran && !isGenericSubjectContextValue(contextValues.mataPelajaran)) {
+          return contextValues;
+        }
+      }
+      if (depth >= 1) return null;
+      for (const pointer of pointers) {
+        const referencedEntry = rowsByPointer.get(`${pointer.programCode}::${pointer.entryId}`);
+        if (!referencedEntry) continue;
+        const nestedContext = await loadReferenceContextOverride(referencedEntry, depth + 1);
+        if (nestedContext?.mataPelajaran && !isGenericSubjectContextValue(nestedContext.mataPelajaran)) {
+          return nestedContext;
+        }
+      }
+    } catch {
+      return null;
+    }
+    return null;
+  };
+
+  const buildPrintHtml = (entry: TeachingResourceEntry, contextOverride?: Partial<EntryContextValues> | null): string => {
     const defaultSections = buildDefaultSections(activeProgramMeta);
     const printableSections = parseEntrySections(entry, defaultSections).filter((section) => {
       const sectionSchema = resolveSectionSchema(section);
@@ -4169,6 +4406,14 @@ export const LearningResourceGenerator = ({
       semester: activeSemesterLabel,
       tahunAjaran: academicYearName,
     });
+    const resolvedContextValues = {
+      ...contextValues,
+      mataPelajaran:
+        contextOverride?.mataPelajaran &&
+        (isPrintContextFieldSystem('mata_pelajaran') || isGenericSubjectContextValue(contextValues.mataPelajaran))
+          ? String(contextOverride.mataPelajaran || '').trim()
+          : contextValues.mataPelajaran,
+    };
     const signatureValues = extractEntrySignatureValues(entry, {
       curriculumTitle: String(signatureDefaultsQuery.data?.teacher?.roleTitle || 'Guru Mata Pelajaran').trim(),
       curriculumName: String(entry.teacher?.name || currentUserProfile?.name || '-').trim(),
@@ -4184,9 +4429,9 @@ export const LearningResourceGenerator = ({
       sanitizeDocumentTitleHtml(entry.content?.titleHtml) || createDocumentTitleHtml(entry.title || effectiveTitle);
     const compactTable = Boolean(programPrintRules?.compactTable);
     const visibleContextRows = [
-      ['Mata Pelajaran', contextValues.mataPelajaran],
-      ['Tingkat', contextValues.tingkat],
-      ['Program Keahlian', contextValues.programKeahlian],
+      ['Mata Pelajaran', resolvedContextValues.mataPelajaran],
+      ['Tingkat', resolvedContextValues.tingkat],
+      ['Program Keahlian', resolvedContextValues.programKeahlian],
     ].filter(([, value]) => String(value || '').trim());
 
     return `
@@ -4223,10 +4468,14 @@ export const LearningResourceGenerator = ({
           .table-wrap { overflow: hidden; border: 1px solid #cbd5e1; border-radius: 6px; }
           table { width: 100%; border-collapse: collapse; font-size: ${compactTable ? '10px' : '11px'}; }
           th, td { border: 1px solid #000; padding: ${compactTable ? '5px 6px' : '6px 8px'}; vertical-align: top; text-align: left; }
-          th { background: #f8fafc; font-weight: 700; }
+          th { background: #f8fafc; font-weight: 700; text-align: center; vertical-align: middle; }
           .print-compact-column {
             text-align: center;
             white-space: nowrap;
+          }
+          .print-center-column {
+            text-align: center;
+            vertical-align: middle;
           }
           .print-week-grid-column {
             min-width: 156px;
@@ -4328,9 +4577,10 @@ export const LearningResourceGenerator = ({
     `;
   };
 
-  const handlePrintEntry = (entry: TeachingResourceEntry) => {
+  const handlePrintEntry = async (entry: TeachingResourceEntry) => {
     try {
-      const html = buildPrintHtml(entry);
+      const contextOverride = await loadReferenceContextOverride(entry);
+      const html = buildPrintHtml(entry, contextOverride);
       const iframe = printIframeRef.current;
       if (!iframe?.contentWindow) {
         toast.error('Frame print tidak tersedia. Coba muat ulang halaman.');
@@ -4696,7 +4946,9 @@ export const LearningResourceGenerator = ({
                                                   <td
                                                     key={`quick-cell-${row.id}-${column.key}-${lineIndex}`}
                                                     style={getQuickColumnStyle(column, compactQuickColumns)}
-                                                    className="border border-slate-300 bg-white p-1 align-top"
+                                                    className={`border border-slate-300 bg-white p-1 align-top ${
+                                                      isCenterAlignedTableColumn(column) ? 'text-center' : ''
+                                                    }`}
                                                   />
                                                 );
                                               }
@@ -4707,7 +4959,7 @@ export const LearningResourceGenerator = ({
                                                   style={getQuickColumnStyle(column, compactQuickColumns)}
                                                   className={`border border-slate-300 bg-white p-1 ${
                                                     cellLines.length <= 1 && maxLineCount > 1 ? 'align-middle' : 'align-top'
-                                                  }`}
+                                                  } ${isCenterAlignedTableColumn(column) ? 'text-center' : ''}`}
                                                 >
                                                   {renderQuickEditCellControl(activeQuickSection, row, column, lineIndex)}
                                                 </td>
@@ -5025,7 +5277,7 @@ export const LearningResourceGenerator = ({
                                           {visibleSectionColumns.map((column) => (
                                             <th
                                               key={column.key}
-                                              className={`whitespace-nowrap border-b border-gray-200 px-2 py-1.5 text-left font-semibold text-gray-600 ${getColumnWidthClass(column.key, Boolean(column.multiline), column.dataType)}`}
+                                              className={`whitespace-nowrap border-b border-gray-200 px-2 py-1.5 text-center font-semibold text-gray-600 ${getColumnWidthClass(column.key, Boolean(column.multiline), column.dataType)}`}
                                             >
                                               {column.label}
                                             </th>
@@ -5041,7 +5293,7 @@ export const LearningResourceGenerator = ({
                                             {visibleSectionColumns.map((column) => (
                                               <td
                                                 key={`${row.id}-${column.key}`}
-                                                className={`px-2 py-1.5 align-top ${getColumnWidthClass(column.key, Boolean(column.multiline), column.dataType)}`}
+                                                className={`px-2 py-1.5 align-top ${isCenterAlignedTableColumn(column) ? 'text-center' : ''} ${getColumnWidthClass(column.key, Boolean(column.multiline), column.dataType)}`}
                                               >
                                                 {renderSectionCellControl(section, row, column, true)}
                                               </td>

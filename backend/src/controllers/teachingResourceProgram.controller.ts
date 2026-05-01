@@ -1117,6 +1117,20 @@ function getProgramReferenceIdentityMap(program: TeachingResourceProgramPayload 
   return map;
 }
 
+function getReferenceSourceCoverageCount(
+  sourceProgramCode: string,
+  sectionColumns: TeachingResourceColumnSchema[],
+  programMetaByCode: Map<string, TeachingResourceProgramPayload>,
+): number {
+  const identityMap = getProgramReferenceIdentityMap(programMetaByCode.get(sourceProgramCode));
+  if (identityMap.size === 0) return 0;
+  return sectionColumns.filter((column) =>
+    getColumnIdentityCandidates(column)
+      .filter((candidate) => !CONTEXT_REFERENCE_IDENTITIES.has(candidate))
+      .some((candidate) => Boolean(identityMap.get(candidate))),
+  ).length;
+}
+
 function resolveBestReferenceSource(
   column: TeachingResourceColumnSchema,
   sectionColumns: TeachingResourceColumnSchema[],
@@ -1142,16 +1156,16 @@ function resolveBestReferenceSource(
     localCandidates.forEach((candidate) => {
       const sourceFieldIdentity = identityMap.get(candidate);
       if (!sourceFieldIdentity) return;
-      let score = 10;
-      if (sourceProgramCode === currentSourceProgramCode && currentSourceIdentity === candidate) score += 8;
+      let score = 10 + getReferenceSourceCoverageCount(sourceProgramCode, sectionColumns, programMetaByCode) * 10;
+      if (sourceProgramCode === currentSourceProgramCode && currentSourceIdentity === candidate) score += 4;
       if (sourceProgramCode === currentSourceProgramCode && currentSourceIdentity && !CONTEXT_REFERENCE_IDENTITIES.has(currentSourceIdentity)) {
-        score += 2;
+        score += 1;
       }
       if (sourceProgramCode !== currentSourceProgramCode && CONTEXT_REFERENCE_IDENTITIES.has(currentSourceIdentity)) score += 4;
       const isUsedBySibling = sectionColumns.some(
         (item) => normalizeProgramCode(item.binding?.sourceProgramCode) === sourceProgramCode && item.key !== column.key,
       );
-      if (isUsedBySibling) score += 2;
+      if (isUsedBySibling) score += 6;
       if (!best || score > best.score) {
         best = { sourceProgramCode, sourceFieldIdentity, score };
       }
@@ -1200,6 +1214,33 @@ function normalizeProgramReferenceSchemas(programs: TeachingResourceProgramPaylo
         }
       }
 
+      nextColumns = nextColumns.map((column) => {
+        if (column.sourceType !== 'DOCUMENT_REFERENCE') return column;
+        const bestSource = resolveBestReferenceSource(column, nextColumns, programMetaByCode);
+        if (!bestSource) return column;
+        const currentSourceProgramCode = normalizeProgramCode(column.binding?.sourceProgramCode);
+        const currentSourceIdentity = normalizeReferenceIdentity(
+          column.binding?.sourceFieldIdentity || column.binding?.sourceDocumentFieldIdentity,
+        );
+        if (
+          currentSourceProgramCode === bestSource.sourceProgramCode &&
+          currentSourceIdentity === normalizeReferenceIdentity(bestSource.sourceFieldIdentity)
+        ) {
+          return column;
+        }
+        return {
+          ...column,
+          binding: {
+            ...(column.binding || {}),
+            sourceProgramCode: bestSource.sourceProgramCode,
+            sourceFieldIdentity: bestSource.sourceFieldIdentity,
+            sourceDocumentFieldIdentity: bestSource.sourceFieldIdentity,
+            selectionMode: column.binding?.selectionMode || 'PICK_SINGLE',
+            syncMode: 'SNAPSHOT_ON_SELECT',
+          },
+        };
+      });
+
       const primaryReference = nextColumns.find((column) => column.sourceType === 'DOCUMENT_REFERENCE');
       const primarySourceProgramCode = normalizeProgramCode(primaryReference?.binding?.sourceProgramCode);
       const primarySourceIdentityMap = getProgramReferenceIdentityMap(programMetaByCode.get(primarySourceProgramCode));
@@ -1230,8 +1271,9 @@ function normalizeProgramReferenceSchemas(programs: TeachingResourceProgramPaylo
 function buildReferenceSnapshotFromRow(
   columns: Array<Partial<TeachingResourceColumnSchema>>,
   row: Record<string, string>,
+  baseSnapshot: Record<string, string> = {},
 ): Record<string, string> {
-  const snapshot: Record<string, string> = {};
+  const snapshot: Record<string, string> = { ...baseSnapshot };
   columns.forEach((column) => {
     const key = String(column.key || '').trim();
     const value = String(row[key] || '').trim();
@@ -1258,6 +1300,7 @@ function splitReferenceCellLines(raw: unknown): string[] {
   const lines = String(raw ?? '')
     .replace(/\r\n/g, '\n')
     .split('\n');
+  while (lines.length > 1 && !String(lines[lines.length - 1] || '').trim()) lines.pop();
   return lines.length > 0 ? lines : [''];
 }
 
@@ -1965,8 +2008,10 @@ function extractReferenceEntryContext(
   });
   const firstRow = contextSection?.rows?.[0] || {};
   return {
+    mata_pelajaran: String(firstRow.mata_pelajaran || '').trim(),
     tingkat: String(firstRow.tingkat || entry.classLevel || '').trim(),
     programKeahlian: String(firstRow.program_keahlian || '').trim(),
+    program_keahlian: String(firstRow.program_keahlian || '').trim(),
     semester: String(firstRow.semester || '').trim(),
   };
 }
@@ -2028,11 +2073,12 @@ function buildProjectedReferenceOptions(
   if (relevantRequests.length === 0) return [];
 
   const sections = toReferenceEntrySections(entry.content, sourceProgram);
+  const entryContextSnapshot = extractReferenceEntryContext(entry, sourceProgram);
   const options: TeachingResourceProjectedReferenceOption[] = [];
 
   sections.forEach((section) => {
     section.rows.forEach((row, rowIndex) => {
-      const snapshot = buildReferenceSnapshotFromRow(section.columns, row);
+      const snapshot = buildReferenceSnapshotFromRow(section.columns, row, entryContextSnapshot);
       const rowLineCount = getReferenceRowLineCount(row);
       section.columns.forEach((column) => {
         const columnKey = String(column.key || '').trim();

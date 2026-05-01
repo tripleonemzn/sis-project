@@ -5,8 +5,8 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-05-01 11:46 WIB
-- Current status: follow-up korelasi tabel merge perangkat ajar selesai. Editor tabel guru sekarang memakai pola `primary reference -> derived snapshot` lintas dokumen: bila satu kolom awal seperti `Elemen` menjadi pemanggil referensi CP/ATP, kolom referensi lain setelahnya yang memakai program sumber sama tidak lagi ditampilkan sebagai dropdown per-subbaris. Kolom sekunder seperti `Tujuan Pembelajaran`, `Materi`, dan `Dimensi` diisi dari snapshot grup induk tersebut, tetap bisa diedit sebagai isi tabel, dan trailing blank line lama dipangkas agar tidak muncul baris kosong tambahan.
+- Last updated: 2026-05-01 13:53 WIB
+- Current status: follow-up perangkat ajar selesai. Engine referensi tabel sekarang memilih sumber dokumen yang paling lengkap untuk satu baris grouping, sehingga kasus PROTA yang kolom TP mengarah ke CP tetapi JP mengarah ke ATP tidak lagi setengah sinkron: primary picker dapat diarahkan ke sumber yang membawa TP + JP + dimensi sekaligus. Snapshot referensi juga membawa konteks dokumen sumber untuk membantu print memakai mapel spesifik seperti NCS saat konteks saat ini masih sistem/generik.
 - Objective/task aktif:
   - Melanjutkan pengembangan perangkat ajar dinamis setelah polish tab remedial dan editor tabel guru.
 - Batch terakhir selesai:
@@ -26,29 +26,33 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
-  - Commit: `d433053`
-  - Title: `fix(teaching-resources): derive fields from primary reference`
+  - Commit: pending
+  - Title: `fix(teaching-resources): align grouped references and print context`
   - Summary:
-    - kolom referensi sekunder dengan source program yang sama sekarang tidak dirender sebagai dropdown lagi
-    - saat primary reference dipilih, snapshot grup mengisi kolom sekunder baik yang dikonfigurasi `DOCUMENT_SNAPSHOT` maupun `DOCUMENT_REFERENCE`
-    - nilai multiline dari snapshot mengganti isi cell secara utuh, bukan disisipkan ke satu subbaris
-    - pembacaan line tabel memangkas trailing blank line agar data lama tidak menambah baris kosong visual
+    - resolver referensi kini menilai coverage field per sumber dokumen agar grouping lintas CP/ATP/PROTA tidak setengah terisi
+    - snapshot multiline dari sumber terpilih boleh mengganti nilai lama pada kolom snapshot/manual override jika memang satu grup terkait
+    - snapshot referensi membawa konteks dokumen sumber, dan print dapat memakai mapel sumber saat konteks dokumen saat ini masih sistem/generik
+    - header tabel dan kolom ringkas seperti No/JP dibuat center konsisten di table view dan print
 - Area/file disentuh:
   - `frontend/src/pages/teacher/learning-resources/LearningResourceGenerator.tsx`
+  - `backend/src/controllers/teachingResourceProgram.controller.ts`
   - `docs/CODEX_CONTINUITY.md`
 - Verifikasi batch ini:
   - `git diff --check`
   - `cd frontend && npm run build`
+  - `cd backend && npm run build`
+  - `cd backend && npm run service:restart`
+  - `cd backend && npm run service:health`
   - `cd frontend && npm run deploy`
   - `curl -I https://siskgb2.id/`
 - Publish/live status:
   - Web sudah deploy live
-  - Backend tidak diubah pada follow-up ini
+  - Backend sudah build, restart, dan health check `200`
   - Tidak ada perubahan mobile pada batch ini
 - Remaining work:
   - Lanjut audit/pengembangan perangkat ajar dinamis sesuai arahan user berikutnya.
 - Residual risk:
-  - Perubahan referensi bersifat aman dan scoped. Data lama yang sengaja memilih satu baris tetap dipertahankan; jika guru ingin mengambil semua baris dari sumber multiline, pilih opsi `lengkap (n baris)` pada dropdown referensi.
+  - Perubahan referensi bersifat aman dan scoped. Untuk dokumen lama yang sudah menyimpan pilihan referensi lama, hasil paling bersih didapat dengan membuka dropdown referensi lalu memilih ulang opsi grup yang tersedia agar snapshot JP/dimensi terbaru tersimpan ke dokumen.
 
 ## Status Saat Ini
 
