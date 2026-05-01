@@ -216,6 +216,8 @@ type TeachingResourceProjectedReferenceOption = {
   selectValue: string;
   value: string;
   label: string;
+  isAggregate?: boolean;
+  lineCount?: number;
   sourceProgramCode: string;
   sourceEntryId: number;
   sourceEntryTitle?: string;
@@ -2035,7 +2037,7 @@ function buildProjectedReferenceOptions(
   const options: TeachingResourceProjectedReferenceOption[] = [];
 
   sections.forEach((section) => {
-    section.rows.forEach((row) => {
+    section.rows.forEach((row, rowIndex) => {
       const snapshot = buildReferenceSnapshotFromRow(section.columns, row);
       section.columns.forEach((column) => {
         const columnKey = String(column.key || '').trim();
@@ -2047,13 +2049,30 @@ function buildProjectedReferenceOptions(
         const valueLines = splitReferenceCellLines(rawValue)
           .map((line) => line.trim())
           .filter(isMeaningfulReferenceValue);
-        const lineOptions =
+        const lineOptions: Array<{
+          value: string;
+          selectValue: string;
+          snapshot: Record<string, string>;
+          label?: string;
+          isAggregate?: boolean;
+          lineCount?: number;
+        }> =
           valueLines.length > 1
-            ? valueLines.map((value, lineIndex) => ({
-                value,
-                snapshot: buildReferenceSnapshotFromRowLine(section.columns, row, lineIndex),
-                selectValue: `${entry.id}::${columnKey}::${lineIndex + 1}::${value}`,
-              }))
+            ? [
+                {
+                  value: rawValue,
+                  snapshot,
+                  selectValue: `${entry.id}::${String(section.schemaKey || 'section').trim()}::${rowIndex + 1}::${columnKey}::ALL`,
+                  isAggregate: true,
+                  lineCount: valueLines.length,
+                  label: `${String(column.label || 'Referensi').trim()} lengkap (${valueLines.length} baris)`,
+                },
+                ...valueLines.map((value, lineIndex) => ({
+                  value,
+                  snapshot: buildReferenceSnapshotFromRowLine(section.columns, row, lineIndex),
+                  selectValue: `${entry.id}::${columnKey}::${lineIndex + 1}::${value}`,
+                })),
+              ]
             : [
                 {
                   value: rawValue,
@@ -2065,15 +2084,18 @@ function buildProjectedReferenceOptions(
         relevantRequests.forEach((request) => {
           if (!columnCandidates.some((candidate) => request.candidates.includes(candidate))) return;
           lineOptions.forEach((lineOption) => {
+            const optionTitle = String(lineOption.label || lineOption.value).trim();
             const label =
-              entry.title && entry.title.trim() && entry.title.trim() !== lineOption.value
-                ? `${lineOption.value} - ${entry.title}`
-                : lineOption.value;
+              entry.title && entry.title.trim() && entry.title.trim() !== optionTitle
+                ? `${optionTitle} - ${entry.title}`
+                : optionTitle;
             options.push({
               requestKey: request.requestKey,
               selectValue: lineOption.selectValue,
               value: lineOption.value,
               label,
+              isAggregate: lineOption.isAggregate,
+              lineCount: lineOption.lineCount,
               sourceProgramCode,
               sourceEntryId: Number(entry.id),
               sourceEntryTitle: String(entry.title || '').trim() || undefined,

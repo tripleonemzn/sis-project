@@ -81,6 +81,8 @@ type ReferenceOption = {
   selectValue: string;
   value: string;
   label: string;
+  isAggregate?: boolean;
+  lineCount?: number;
   sourceProgramCode: string;
   sourceEntryId: number;
   sourceEntryTitle?: string;
@@ -2016,6 +2018,8 @@ export const LearningResourceGenerator = ({
             selectValue: option.selectValue,
             value: option.value,
             label: option.label,
+            isAggregate: option.isAggregate,
+            lineCount: option.lineCount,
             sourceProgramCode: normalizeTeachingResourceProgramCode(option.sourceProgramCode),
             sourceEntryId: Number(option.sourceEntryId || 0),
             sourceEntryTitle: option.sourceEntryTitle,
@@ -2089,7 +2093,7 @@ export const LearningResourceGenerator = ({
       sections.forEach((section) => {
         const schema = schemaMap.get(String(section.schemaKey || '').trim());
         const columns = section.columns.length > 0 ? section.columns : ensureArray<EntrySectionColumnForm>(schema?.columns);
-        section.rows.forEach((row) => {
+        section.rows.forEach((row, rowIndex) => {
           const snapshot = buildReferenceSnapshot(columns, row);
           columns.forEach((column) => {
             const columnCandidates = extractReferenceCandidates(column);
@@ -2100,13 +2104,30 @@ export const LearningResourceGenerator = ({
             const valueLines = splitCellLines(rawValue)
               .map((line) => line.trim())
               .filter(isMeaningfulReferenceValue);
-            const lineOptions =
+            const lineOptions: Array<{
+              value: string;
+              selectValue: string;
+              snapshot: Record<string, string>;
+              label?: string;
+              isAggregate?: boolean;
+              lineCount?: number;
+            }> =
               valueLines.length > 1
-                ? valueLines.map((lineValue, lineIndex) => ({
-                    value: lineValue,
-                    selectValue: `${entry.id}::${columnKey}::${lineIndex + 1}::${lineValue}`,
-                    snapshot: buildReferenceSnapshotForLine(columns, row, lineIndex),
-                  }))
+                ? [
+                    {
+                      value: rawValue,
+                      selectValue: `${entry.id}::${String(section.schemaKey || 'section').trim()}::${rowIndex + 1}::${columnKey}::ALL`,
+                      snapshot,
+                      isAggregate: true,
+                      lineCount: valueLines.length,
+                      label: `${String(column.label || 'Referensi').trim()} lengkap (${valueLines.length} baris)`,
+                    },
+                    ...valueLines.map((lineValue, lineIndex) => ({
+                      value: lineValue,
+                      selectValue: `${entry.id}::${columnKey}::${lineIndex + 1}::${lineValue}`,
+                      snapshot: buildReferenceSnapshotForLine(columns, row, lineIndex),
+                    })),
+                  ]
                 : [
                     {
                       value: rawValue,
@@ -2115,14 +2136,17 @@ export const LearningResourceGenerator = ({
                     },
                   ];
             lineOptions.forEach((lineOption) => {
+              const optionTitle = String(lineOption.label || lineOption.value).trim();
               const label =
-                entry.title && entry.title.trim() && entry.title.trim() !== lineOption.value
-                  ? `${lineOption.value} - ${entry.title}`
-                  : lineOption.value;
+                entry.title && entry.title.trim() && entry.title.trim() !== optionTitle
+                  ? `${optionTitle} - ${entry.title}`
+                  : optionTitle;
               options.push({
                 selectValue: lineOption.selectValue,
                 value: lineOption.value,
                 label,
+                isAggregate: lineOption.isAggregate,
+                lineCount: lineOption.lineCount,
                 sourceProgramCode: normalizeTeachingResourceProgramCode(entry.programCode),
                 sourceEntryId: Number(entry.id),
                 sourceEntryTitle: String(entry.title || '').trim() || undefined,

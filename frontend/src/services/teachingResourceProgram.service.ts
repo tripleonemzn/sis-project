@@ -133,6 +133,8 @@ export interface TeachingResourceProjectedReferenceOption {
   selectValue: string;
   value: string;
   label: string;
+  isAggregate?: boolean;
+  lineCount?: number;
   sourceProgramCode: string;
   sourceEntryId: number;
   sourceEntryTitle?: string;
