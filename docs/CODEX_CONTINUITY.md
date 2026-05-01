@@ -5,12 +5,12 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-05-01 15:01 WIB
-- Current status: follow-up perangkat ajar selesai. Perbaikan tambahan diterapkan untuk UX tabel perangkat ajar: textarea di cell/field sekarang auto-resize saat data panjang sudah tampil dari load awal, dropdown referensi menampilkan label ringkas sesuai isi sumber tanpa suffix teknis `lengkap/baris terkait` dan tanpa judul dokumen panjang, serta CSS print tabel dibuat bisa mulai di halaman pertama dan terpecah alami antar halaman.
+- Last updated: 2026-05-01 17:30 WIB
+- Current status: follow-up perangkat ajar selesai. Program Semester/Promes sekarang memakai renderer matriks bulan-minggu dinamis dari kolom schema seperti `juli_1`, `agustus_2`, dst. Tampilan tabel guru dan print preview memakai header bertingkat bulan + minggu, cell minggu dibuat compact, judul section tabel tidak lagi ditampilkan di print Promes, dan referensi TP/JP Promes otomatis memakai ATP/PROTA tanpa terkunci semester aktif agar cocok untuk kebutuhan ganjil/genap.
 - Objective/task aktif:
   - Melanjutkan pengembangan perangkat ajar dinamis setelah polish tab remedial dan editor tabel guru.
 - Batch terakhir selesai:
-  - `Perangkat ajar follow-up - primary reference drives derived table fields`
+  - `Perangkat ajar follow-up - Promes month/week matrix renderer`
 - Progress fitur remedial keseluruhan:
   - `100%`
 - Progress presensi terpadu saat ini:
@@ -26,13 +26,13 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
-  - Commit: `da0238c`
-  - Title: `fix(teaching-resources): polish table inputs and print flow`
+  - Commit: `72c88d7`
+  - Title: `fix(teaching-resources): render promes month week matrix`
   - Summary:
-    - textarea cell dan field narasi memakai auto-resize saat render dan saat input agar teks panjang terlihat tanpa perlu drag manual
-    - opsi dropdown referensi diformat dari isi sumber saja, sehingga Elemen ATP tidak lagi menampilkan suffix teknis atau judul dokumen panjang
-    - referensi aggregate satu baris seperti Elemen tetap ditampilkan sebagai dropdown; hanya nilai multiline seperti TP yang tampil sebagai cell baris
-    - aturan print table tidak lagi memaksa satu section pindah utuh ke halaman berikutnya, sehingga tabel bisa mulai di halaman pertama setelah konteks dokumen
+    - schema tabel dengan kolom bulan-minggu sekarang otomatis dirender sebagai matriks Promes, bukan tabel datar lebar
+    - editor ringkas guru dan editor lengkap sama-sama menampilkan header bulan di atas nomor minggu
+    - print Promes memakai header bulan/minggu, cell compact, dan cell minggu yang terisi diberi highlight agar mendekati contoh output
+    - referensi TP dan JP Promes otomatis diarahkan ke ATP bila tersedia, fallback ke PROTA, dengan filter konteks mapel/tingkat/jurusan tanpa mengunci semester aktif
 - Area/file disentuh:
   - `frontend/src/pages/teacher/learning-resources/LearningResourceGenerator.tsx`
   - `docs/CODEX_CONTINUITY.md`
@@ -48,7 +48,7 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 - Remaining work:
   - Lanjut audit/pengembangan perangkat ajar dinamis sesuai arahan user berikutnya.
 - Residual risk:
-  - Perubahan referensi bersifat frontend-only dan scoped ke perangkat ajar guru. Endpoint referensi tetap dibatasi `limitPerProgram` maksimal 250 dari client dan 300 dari server; tidak ada polling baru atau perubahan backend runtime.
+  - Perubahan bersifat frontend-only dan scoped ke perangkat ajar guru/print. Tidak ada endpoint baru, polling baru, websocket baru, atau perubahan backend runtime. Jika Wakakur membuat Promes dengan penamaan kolom bulan di luar pola `namaBulan_nomorMinggu`, schema tersebut tetap akan tampil sebagai tabel biasa.
 
 ## Status Saat Ini
 
