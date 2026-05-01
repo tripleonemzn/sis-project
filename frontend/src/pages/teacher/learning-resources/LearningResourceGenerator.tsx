@@ -1343,7 +1343,7 @@ const formatMonthWeekPrintCellHtml = (value: unknown): string => {
   const rawValue = String(value ?? '').trim();
   if (!rawValue) return '';
   if (isTruthyMark(rawValue)) return '';
-  return `<span class="month-week-cell-text">${formatMultilineHtml(rawValue)}</span>`;
+  return `<span class="month-week-cell-text">${escapeHtml(rawValue.replace(/\s+/g, ' '))}</span>`;
 };
 
 const resolveSemesterLabel = (semester: unknown): string => {
@@ -1700,11 +1700,22 @@ const CENTER_ALIGNED_REFERENCE_IDENTITIES = new Set([
   'jumlah_jam',
 ]);
 
+const LEFT_ALIGNED_REFERENCE_IDENTITIES = new Set([
+  'tujuan_pembelajaran',
+  'capaian_pembelajaran',
+  'elemen',
+  'kompetensi',
+  'konten_materi',
+  'dimensi_profil',
+]);
+
 const isCenterAlignedTableColumn = (column?: Partial<EntrySectionColumnForm> | null): boolean => {
   const dataType = getColumnDataType(column);
+  const identityCandidates = getColumnIdentityCandidates(column);
+  if (identityCandidates.some((candidate) => LEFT_ALIGNED_REFERENCE_IDENTITIES.has(candidate))) return false;
   if (isWeekColumnKey(String(column?.key || ''))) return true;
   if (['NUMBER', 'BOOLEAN', 'WEEK', 'SEMESTER', 'MONTH', 'WEEK_GRID'].includes(dataType)) return true;
-  return getColumnIdentityCandidates(column).some((candidate) => CENTER_ALIGNED_REFERENCE_IDENTITIES.has(candidate));
+  return identityCandidates.some((candidate) => CENTER_ALIGNED_REFERENCE_IDENTITIES.has(candidate));
 };
 
 const parseWeekGridValue = (value: unknown): string[] => {
@@ -4125,6 +4136,33 @@ export const LearningResourceGenerator = ({
       readOnly ? 'cursor-not-allowed bg-slate-50 text-slate-500' : ''
     } ${centerAligned ? 'text-center' : ''}`;
 
+    if (isMonthWeekReferenceCell) {
+      return (
+        <textarea
+          ref={(element) => {
+            if (focusKey) quickEditCellRefs.current[focusKey] = element;
+            resizeTextareaToContent(element);
+          }}
+          rows={2}
+          value={value}
+          disabled={readOnly}
+          onChange={(event) =>
+            updateQuickEditRowCellLine(section.id, row?.id || '', columnKey, lineIndex, event.target.value)
+          }
+          onKeyDown={(event) => {
+            if (event.key !== 'Enter' || event.shiftKey || readOnly || !row?.id) return;
+            event.preventDefault();
+            handleQuickEditCellEnter(section.id, row.id, columnKey, lineIndex, value);
+          }}
+          onInput={(event) => {
+            resizeTextareaToContent(event.currentTarget);
+          }}
+          placeholder={column.placeholder || ''}
+          className={`${tableCellControlClassName} min-h-[42px] resize-y overflow-hidden text-left`}
+        />
+      );
+    }
+
     if (isDocumentReferencePickerColumn(column) && !isSecondaryReferenceColumn(section, column)) {
       const selectionKey = buildReferenceSelectionLineKey(columnKey, lineIndex);
       const referenceSelection =
@@ -5778,16 +5816,26 @@ export const LearningResourceGenerator = ({
             background: #fef08a;
             color: #0f172a;
             line-height: 1.1;
+            padding: 0;
+            text-align: center;
+            vertical-align: middle;
           }
           .month-week-cell-text {
-            display: inline-block;
-            max-height: 72px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            height: 100%;
+            max-height: none;
             writing-mode: vertical-rl;
             transform: rotate(180deg);
             overflow: hidden;
+            white-space: nowrap;
             text-align: center;
-            font-size: 7px;
+            text-orientation: mixed;
+            font-size: 6.5px;
             font-weight: 600;
+            line-height: 1;
           }
           .week-grid-print {
             display: grid;
