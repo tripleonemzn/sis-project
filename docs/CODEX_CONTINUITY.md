@@ -5,8 +5,8 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-05-01 14:32 WIB
-- Current status: follow-up perangkat ajar selesai. Perbaikan tambahan diterapkan untuk table renderer guru: kolom referensi utama yang sudah berisi aggregate/multiline sekarang ditampilkan sebagai nilai cell per baris, bukan label dropdown seperti `Tujuan Pembelajaran lengkap...`. Ini menutup regresi tampilan PROTA setelah JP multiline dari ATP berhasil ikut terbaca.
+- Last updated: 2026-05-01 15:01 WIB
+- Current status: follow-up perangkat ajar selesai. Perbaikan tambahan diterapkan untuk UX tabel perangkat ajar: textarea di cell/field sekarang auto-resize saat data panjang sudah tampil dari load awal, dropdown referensi menampilkan label ringkas sesuai isi sumber tanpa suffix teknis `lengkap/baris terkait` dan tanpa judul dokumen panjang, serta CSS print tabel dibuat bisa mulai di halaman pertama dan terpecah alami antar halaman.
 - Objective/task aktif:
   - Melanjutkan pengembangan perangkat ajar dinamis setelah polish tab remedial dan editor tabel guru.
 - Batch terakhir selesai:
@@ -26,12 +26,13 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
-  - Commit: `c3bf1f7`
-  - Title: `fix(teaching-resources): render aggregate references as cells`
+  - Commit: `pending`
+  - Title: `fix(teaching-resources): polish table inputs and print flow`
   - Summary:
-    - renderer quick table membedakan state `belum pilih referensi` vs `referensi aggregate sudah terisi`
-    - saat nilai referensi aggregate/multiline sudah tersedia, cell tampil sebagai textarea per baris agar isi TP seperti `1.1`, `1.2`, dan seterusnya terlihat, bukan label opsi dropdown
-    - perubahan frontend-only dan tetap memakai mekanisme data/referensi dinamis yang sudah ada
+    - textarea cell dan field narasi memakai auto-resize saat render dan saat input agar teks panjang terlihat tanpa perlu drag manual
+    - opsi dropdown referensi diformat dari isi sumber saja, sehingga Elemen ATP tidak lagi menampilkan suffix teknis atau judul dokumen panjang
+    - referensi aggregate satu baris seperti Elemen tetap ditampilkan sebagai dropdown; hanya nilai multiline seperti TP yang tampil sebagai cell baris
+    - aturan print table tidak lagi memaksa satu section pindah utuh ke halaman berikutnya, sehingga tabel bisa mulai di halaman pertama setelah konteks dokumen
 - Area/file disentuh:
   - `frontend/src/pages/teacher/learning-resources/LearningResourceGenerator.tsx`
   - `docs/CODEX_CONTINUITY.md`

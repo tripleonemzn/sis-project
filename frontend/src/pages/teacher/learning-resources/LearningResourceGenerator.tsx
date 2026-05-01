@@ -1003,6 +1003,13 @@ const extractEntryReferencePointers = (
 const getReferenceRowLineCount = (row: Record<string, string>): number =>
   Math.max(1, ...Object.values(row).map((rawValue) => splitCellLines(rawValue).filter(isMeaningfulReferenceValue).length));
 
+const formatReferenceOptionLabel = (value: unknown, fallback = 'Referensi tersimpan'): string => {
+  const firstLine = splitCellLines(value)
+    .map((line) => line.trim())
+    .find(isMeaningfulReferenceValue);
+  return firstLine || fallback;
+};
+
 const getSnapshotValueForColumn = (snapshot: Record<string, string> | undefined, column: EntrySectionColumnForm): string => {
   if (!snapshot) return '';
   const candidates = new Set<string>([
@@ -1736,6 +1743,11 @@ export const LearningResourceGenerator = ({
   const [referenceServerSearchInput, setReferenceServerSearchInput] = useState('');
   const [debouncedReferenceServerSearch, setDebouncedReferenceServerSearch] = useState('');
   const printIframeRef = useRef<HTMLIFrameElement | null>(null);
+  const resizeTextareaToContent = (element: HTMLTextAreaElement | null) => {
+    if (!element) return;
+    element.style.height = 'auto';
+    element.style.height = `${Math.max(element.scrollHeight, 42)}px`;
+  };
   const programCode = useMemo(() => normalizeProgramCode(type), [type]);
   const isPageEditor = editorMode === 'create';
   const resolvedRouteSlug = useMemo(() => {
@@ -2166,7 +2178,7 @@ export const LearningResourceGenerator = ({
           currentOptions.push({
             selectValue: option.selectValue,
             value: option.value,
-            label: option.label,
+            label: formatReferenceOptionLabel(option.value || option.label),
             isAggregate: option.isAggregate,
             lineCount: option.lineCount,
             sourceProgramCode: normalizeTeachingResourceProgramCode(option.sourceProgramCode),
@@ -2258,12 +2270,6 @@ export const LearningResourceGenerator = ({
               .map((line) => line.trim())
               .filter(isMeaningfulReferenceValue);
             const isMergedGroup = rowLineCount > 1;
-            const optionLabel =
-              valueLines.length > 1
-                ? `${String(column.label || 'Referensi').trim()} lengkap (${valueLines.length} baris)`
-                : isMergedGroup
-                  ? `${rawValue} (${rowLineCount} baris terkait)`
-                  : undefined;
             const lineOptions: Array<{
               value: string;
               selectValue: string;
@@ -2281,15 +2287,11 @@ export const LearningResourceGenerator = ({
                 snapshot,
                 isAggregate: isMergedGroup || valueLines.length > 1,
                 lineCount: isMergedGroup || valueLines.length > 1 ? rowLineCount : undefined,
-                label: optionLabel,
+                label: formatReferenceOptionLabel(rawValue),
               },
             ];
             lineOptions.forEach((lineOption) => {
-              const optionTitle = String(lineOption.label || lineOption.value).trim();
-              const label =
-                entry.title && entry.title.trim() && entry.title.trim() !== optionTitle
-                  ? `${optionTitle} - ${entry.title}`
-                  : optionTitle;
+              const label = formatReferenceOptionLabel(lineOption.label || lineOption.value);
               options.push({
                 selectValue: lineOption.selectValue,
                 value: lineOption.value,
@@ -2311,11 +2313,10 @@ export const LearningResourceGenerator = ({
             if (!normalizedKey || !candidates.includes(normalizedKey)) return;
             const value = String(rawValue || '').trim();
             if (!isMeaningfulReferenceValue(value)) return;
-            const label = entry.title && entry.title.trim() && entry.title.trim() !== value ? `${value} - ${entry.title}` : value;
             options.push({
               selectValue: `${entry.id}::${String(key || '').trim()}::${value}`,
               value,
-              label,
+              label: formatReferenceOptionLabel(value),
               sourceProgramCode: normalizeTeachingResourceProgramCode(entry.programCode),
               sourceEntryId: Number(entry.id),
               sourceEntryTitle: String(entry.title || '').trim() || undefined,
@@ -3579,13 +3580,13 @@ export const LearningResourceGenerator = ({
       const shouldRenderReferenceAsCellValue =
         isMeaningfulReferenceValue(effectiveReferenceValue) &&
         (splitCellLines(rawCellValue).length > 1 ||
-          splitCellLines(referenceSelectionValue).length > 1 ||
-          String(referenceSelection?.selectionToken || '').includes('::GROUP'));
+          splitCellLines(referenceSelectionValue).length > 1);
       if (shouldRenderReferenceAsCellValue) {
         return (
           <textarea
             ref={(element) => {
               if (focusKey) quickEditCellRefs.current[focusKey] = element;
+              resizeTextareaToContent(element);
             }}
             rows={2}
             value={effectiveReferenceValue}
@@ -3599,8 +3600,7 @@ export const LearningResourceGenerator = ({
               handleQuickEditCellEnter(section.id, row.id, columnKey, lineIndex, effectiveReferenceValue);
             }}
             onInput={(event) => {
-              event.currentTarget.style.height = 'auto';
-              event.currentTarget.style.height = `${event.currentTarget.scrollHeight}px`;
+              resizeTextareaToContent(event.currentTarget);
             }}
             placeholder={column.placeholder || ''}
             className={`${tableCellControlClassName} min-h-[42px] resize-y overflow-hidden`}
@@ -3619,7 +3619,7 @@ export const LearningResourceGenerator = ({
           ? {
               selectValue: referenceSelectValue,
               value: String(referenceSelection?.value || value || '').trim(),
-              label: String(referenceSelection?.label || referenceSelection?.sourceEntryTitle || value || 'Referensi tersimpan').trim(),
+              label: formatReferenceOptionLabel(referenceSelection?.value || value || referenceSelection?.label),
               sourceProgramCode: sourceProgramCode || String(referenceSelection?.sourceProgramCode || '').trim(),
               sourceEntryId: Number(referenceSelection?.sourceEntryId || 0),
               sourceEntryTitle: String(referenceSelection?.sourceEntryTitle || '').trim() || undefined,
@@ -3833,6 +3833,7 @@ export const LearningResourceGenerator = ({
         <textarea
           ref={(element) => {
             if (focusKey) quickEditCellRefs.current[focusKey] = element;
+            resizeTextareaToContent(element);
           }}
           rows={2}
           value={value}
@@ -3846,8 +3847,7 @@ export const LearningResourceGenerator = ({
             handleQuickEditCellEnter(section.id, row.id, columnKey, lineIndex, value);
           }}
           onInput={(event) => {
-            event.currentTarget.style.height = 'auto';
-            event.currentTarget.style.height = `${event.currentTarget.scrollHeight}px`;
+            resizeTextareaToContent(event.currentTarget);
           }}
           placeholder={column.placeholder || ''}
           className={`${tableCellControlClassName} min-h-[42px] resize-y overflow-hidden`}
@@ -4144,7 +4144,7 @@ export const LearningResourceGenerator = ({
         ? {
             selectValue: referenceSelectValue,
             value: String(referenceSelection?.value || value || '').trim(),
-            label: String(referenceSelection?.label || referenceSelection?.sourceEntryTitle || value || 'Referensi tersimpan').trim(),
+            label: formatReferenceOptionLabel(referenceSelection?.value || value || referenceSelection?.label),
             sourceProgramCode: sourceProgramCode || String(referenceSelection?.sourceProgramCode || '').trim(),
             sourceEntryId: Number(referenceSelection?.sourceEntryId || 0),
             sourceEntryTitle: String(referenceSelection?.sourceEntryTitle || '').trim() || undefined,
@@ -4367,12 +4367,14 @@ export const LearningResourceGenerator = ({
     if (column.multiline || dataType === 'TEXTAREA') {
       return (
         <textarea
+          ref={resizeTextareaToContent}
           rows={dense ? 2 : 3}
           value={value}
           disabled={readOnly}
           onChange={(event) => updateSectionRowCell(section.id, row?.id || '', columnKey, event.target.value)}
+          onInput={(event) => resizeTextareaToContent(event.currentTarget)}
           placeholder={column.placeholder || ''}
-          className={`w-full resize-y rounded-md border border-gray-300 px-2 py-1.5 text-xs focus:border-blue-500 focus:outline-none ${
+          className={`w-full resize-y overflow-hidden rounded-md border border-gray-300 px-2 py-1.5 text-xs focus:border-blue-500 focus:outline-none ${
             readOnly ? 'bg-gray-50 text-gray-500' : 'bg-white'
           } ${isCenterAlignedTableColumn(column) ? 'text-center' : ''}`}
         />
@@ -4716,14 +4718,16 @@ export const LearningResourceGenerator = ({
           .doc-context { width: 100%; max-width: 520px; margin-bottom: 12px; font-size: 13px; border-collapse: collapse; }
           .doc-context td { border: none; padding: 2px 0; }
           .doc-context td:first-child { width: 150px; }
-          section { margin-bottom: 14px; page-break-inside: avoid; }
+          section { margin-bottom: 14px; break-inside: auto; page-break-inside: auto; }
           section h3 { margin: 0 0 8px; font-size: 14px; }
           .text-block {
             border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px;
             font-size: 12px; line-height: 1.6; white-space: normal;
           }
-          .table-wrap { overflow: hidden; border: 1px solid #cbd5e1; border-radius: 6px; }
-          table { width: 100%; border-collapse: collapse; font-size: ${compactTable ? '10px' : '11px'}; }
+          .table-wrap { overflow: visible; border: none; border-radius: 0; }
+          table { width: 100%; border-collapse: collapse; font-size: ${compactTable ? '10px' : '11px'}; page-break-inside: auto; }
+          thead { display: table-header-group; }
+          tr { break-inside: avoid; page-break-inside: avoid; }
           th, td { border: 1px solid #000; padding: ${compactTable ? '5px 6px' : '6px 8px'}; vertical-align: top; text-align: left; }
           th { background: #f8fafc; font-weight: 700; text-align: center; vertical-align: middle; }
           .print-compact-column {
@@ -5366,11 +5370,13 @@ export const LearningResourceGenerator = ({
               <div>
                 <label className="mb-1 block text-xs font-medium text-gray-500">Ringkasan</label>
                 <textarea
+                  ref={resizeTextareaToContent}
                   rows={2}
                   value={entrySummary}
                   onChange={(event) => setEntrySummary(event.target.value)}
+                  onInput={(event) => resizeTextareaToContent(event.currentTarget)}
                   placeholder={activeProgramMeta?.schema?.summaryHint || 'Ringkasan singkat dokumen...'}
-                  className="w-full resize-y rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                  className="w-full resize-y overflow-hidden rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
                 />
               </div>
 
@@ -5560,11 +5566,13 @@ export const LearningResourceGenerator = ({
                               )
                             ) : (
                               <textarea
+                                ref={resizeTextareaToContent}
                                 rows={4}
                                 value={section.body}
                                 onChange={(event) => updateSectionField(section.id, 'body', event.target.value)}
+                                onInput={(event) => resizeTextareaToContent(event.currentTarget)}
                                 placeholder={sectionSchema?.bodyPlaceholder || 'Isi bagian dokumen...'}
-                                className="w-full resize-y rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                                className="w-full resize-y overflow-hidden rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
                               />
                             )}
                           </>
@@ -5579,11 +5587,13 @@ export const LearningResourceGenerator = ({
                 <div>
                   <label className="mb-1 block text-xs font-medium text-gray-500">Catatan Tambahan</label>
                   <textarea
+                    ref={resizeTextareaToContent}
                     rows={2}
                     value={entryNotes}
                     onChange={(event) => setEntryNotes(event.target.value)}
+                    onInput={(event) => resizeTextareaToContent(event.currentTarget)}
                     placeholder="Catatan tambahan (opsional)..."
-                    className="w-full resize-y rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                    className="w-full resize-y overflow-hidden rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
                   />
                 </div>
               ) : null}
