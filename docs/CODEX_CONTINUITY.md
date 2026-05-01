@@ -26,7 +26,7 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
-  - Commit: `pending`
+  - Commit: `da0238c`
   - Title: `fix(teaching-resources): polish table inputs and print flow`
   - Summary:
     - textarea cell dan field narasi memakai auto-resize saat render dan saat input agar teks panjang terlihat tanpa perlu drag manual
