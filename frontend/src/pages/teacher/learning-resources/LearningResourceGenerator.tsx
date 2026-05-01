@@ -894,10 +894,10 @@ const normalizeTeacherReferenceSections = (
     const normalizedCurrentProgramCode = normalizeTeachingResourceProgramCode(currentProgramCode);
     const hasMonthWeekLayout = Boolean(buildMonthWeekColumnLayout(nextColumns));
     if (normalizedCurrentProgramCode === 'PROMES' && hasMonthWeekLayout) {
-      const preferredSourceProgramCode = programMetaByCode.has('ATP')
-        ? 'ATP'
-        : programMetaByCode.has('PROTA')
-          ? 'PROTA'
+      const preferredSourceProgramCode = programMetaByCode.has('PROTA')
+        ? 'PROTA'
+        : programMetaByCode.has('ATP')
+          ? 'ATP'
           : '';
       if (preferredSourceProgramCode) {
         nextColumns = nextColumns.map((column) => {
@@ -1616,6 +1616,32 @@ const isTruthyMark = (value: string): boolean => {
 };
 
 const MARK_VALUE = '✓';
+
+const normalizeMonthWeekCellValue = (value: unknown): string => {
+  const lines = String(value ?? '')
+    .replace(/\r\n/g, '\n')
+    .split('\n')
+    .map((line) => {
+      const trimmed = String(line || '').trim();
+      if (!trimmed) return '';
+      return isTruthyMark(trimmed) ? MARK_VALUE : trimmed;
+    });
+  while (lines.length > 1 && !lines[lines.length - 1]) lines.pop();
+  return lines.join('\n');
+};
+
+const getMergedMonthWeekNote = (value: unknown): { note: string; lineIndex: number } | null => {
+  const lines = splitEditableCellLines(value);
+  const noteIndex = lines.findIndex((line) => {
+    const trimmed = String(line || '').trim();
+    return Boolean(trimmed) && !isTruthyMark(trimmed);
+  });
+  if (noteIndex < 0) return null;
+  return {
+    note: String(lines[noteIndex] || '').trim(),
+    lineIndex: noteIndex,
+  };
+};
 const MONTH_OPTIONS = [
   'Januari',
   'Februari',
@@ -1793,6 +1819,10 @@ const applyDerivedSheetSections = (
       }
 
       columnKeys.forEach((columnKey) => {
+        if (parseMonthWeekColumnKey(columnKey)) {
+          values[columnKey] = normalizeMonthWeekCellValue(values[columnKey]);
+          return;
+        }
         if (isWeekColumnKey(columnKey) || isKktpCriteriaColumnKey(columnKey)) {
           values[columnKey] = isTruthyMark(values[columnKey] || '') ? MARK_VALUE : '';
         }
@@ -2652,10 +2682,17 @@ export const LearningResourceGenerator = ({
       return true;
     };
 
+    const matchesReferenceOptionSemester = (snapshot: Record<string, string> | undefined, targetSemesterLabel: string): boolean => {
+      if (!targetSemesterLabel) return true;
+      const sourceSemester = resolveSemesterLabel(snapshot?.semester || snapshot?.['semester']);
+      return !sourceSemester || sourceSemester.toLowerCase() === targetSemesterLabel;
+    };
+
     const extractOptionsFromEntry = (
       entry: TeachingResourceEntry,
       sourceProgram: TeachingResourceProgram | undefined,
       candidates: string[],
+      targetSemesterLabel = '',
     ): ReferenceOption[] => {
       const sections = toEntryReferenceSections(entry);
       const entryContextSnapshot = buildEntryContextSnapshot(entry, {
@@ -2671,6 +2708,7 @@ export const LearningResourceGenerator = ({
         const columns = section.columns.length > 0 ? section.columns : ensureArray<EntrySectionColumnForm>(schema?.columns);
         section.rows.forEach((row, rowIndex) => {
           const snapshot = buildReferenceSnapshot(columns, row, entryContextSnapshot);
+          if (!matchesReferenceOptionSemester(snapshot, targetSemesterLabel)) return;
           const rowLineCount = getReferenceRowLineCount(row);
           columns.forEach((column) => {
             const columnCandidates = extractReferenceCandidates(column);
@@ -2743,16 +2781,24 @@ export const LearningResourceGenerator = ({
     };
 
     activeProgramSchemaSections.forEach((section) => {
+      const sectionColumns = ensureArray<EntrySectionColumnForm>(section.columns);
+      const sectionHasMonthWeekLayout = programCode === 'PROMES' && Boolean(buildMonthWeekColumnLayout(sectionColumns));
+      const targetSemesterLabel = sectionHasMonthWeekLayout
+        ? resolveSemesterLabel(resolveMonthWeekSemesterFromSection(section, activeAcademicYear?.semester)).toLowerCase()
+        : '';
       ensureArray<EntrySectionColumnForm>(section.columns).forEach((column) => {
         if (!isDocumentReferencePickerColumn(column)) return;
         const requestKey = `${String(section.key || '').trim()}::${String(column.key || '').trim()}`;
         const shouldSplitLineOptions =
           programCode === 'PROMES' &&
-          Boolean(buildMonthWeekColumnLayout(ensureArray<EntrySectionColumnForm>(section.columns))) &&
+          sectionHasMonthWeekLayout &&
           getColumnIdentityCandidates(column).includes('tujuan_pembelajaran');
         const projectedOptions = projectedOptionsByRequestKey.get(requestKey);
         if (projectedOptions) {
-          map.set(requestKey, shouldSplitLineOptions ? splitReferenceOptionsIntoLineOptions(projectedOptions) : projectedOptions);
+          const scopedOptions = projectedOptions.filter((option) =>
+            matchesReferenceOptionSemester(option.snapshot || {}, targetSemesterLabel),
+          );
+          map.set(requestKey, shouldSplitLineOptions ? splitReferenceOptionsIntoLineOptions(scopedOptions) : scopedOptions);
           return;
         }
         const sourceProgramCode = normalizeTeachingResourceProgramCode(column.binding?.sourceProgramCode);
@@ -2764,7 +2810,7 @@ export const LearningResourceGenerator = ({
         const dedupe = new Set<string>();
         const options = referenceEntries
           .filter((entry) => matchesContext(entry, column.binding))
-          .flatMap((entry) => extractOptionsFromEntry(entry, sourceProgram, candidates))
+          .flatMap((entry) => extractOptionsFromEntry(entry, sourceProgram, candidates, targetSemesterLabel))
           .filter((option) => {
             const token = `${String(option.selectValue || '').trim().toLowerCase()}`;
             if (!option.value || !token || dedupe.has(token)) return false;
@@ -2781,6 +2827,7 @@ export const LearningResourceGenerator = ({
     return map;
   }, [
     activeProgramSchemaSections,
+    activeAcademicYear?.semester,
     activeSemesterLabel,
     programMetaByCode,
     programCode,
@@ -3511,8 +3558,9 @@ export const LearningResourceGenerator = ({
     const normalizedDataType = String(dataType || 'TEXT').toUpperCase();
     if (normalizedDataType === 'WEEK_GRID') return 'w-[320px] min-w-[300px]';
     if (parseMonthWeekColumnKey(key)) return 'w-8 min-w-[30px]';
-    if (['no', 'nomor'].includes(key)) return 'w-16 min-w-[56px]';
-    if (key.includes('alokasi') || key.includes('jp')) return 'w-20 min-w-[78px]';
+    if (['no', 'nomor'].includes(key)) return 'w-14 min-w-[48px]';
+    if (key.includes('alokasi') || key.includes('jp')) return 'w-16 min-w-[64px]';
+    if (key.includes('tujuan') || key.includes('pembelajaran')) return 'w-[320px] min-w-[260px]';
     if (['MONTH', 'WEEK', 'SEMESTER', 'NUMBER', 'BOOLEAN'].includes(normalizedDataType)) return 'w-28 min-w-[112px]';
     if (['no', 'bulan', 'semester', 'minggu_ke'].includes(key)) return 'w-24 min-w-[96px]';
     if (
@@ -3844,6 +3892,7 @@ export const LearningResourceGenerator = ({
     value: string,
     readOnly: boolean,
     lineIndex: number,
+    rowSpanCount = 1,
   ) => {
     const checked = isTruthyMark(value);
     const note = checked ? '' : String(value || '').trim();
@@ -3870,6 +3919,7 @@ export const LearningResourceGenerator = ({
           if (clickKey) clearMonthWeekClickTimer(clickKey);
           if (row?.id) promptQuickEditMonthWeekText(section.id, row.id, columnKey, lineIndex, value);
         }}
+        style={rowSpanCount > 1 ? { minHeight: `${Math.max(50, rowSpanCount * 48)}px` } : undefined}
         className={`inline-flex min-h-[50px] w-7 items-center justify-center rounded-md border px-0.5 py-1 text-[10px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
           checked
             ? 'border-emerald-400 bg-emerald-50 text-emerald-700'
@@ -4081,10 +4131,17 @@ export const LearningResourceGenerator = ({
         row?.referenceSelections?.[selectionKey] || (lineIndex === 0 ? row?.referenceSelections?.[columnKey] : undefined);
       const referenceOptions =
         referenceOptionsByColumnKey.get(`${String(section.schemaKey || '').trim()}::${columnKey}`) || [];
+      const sourceProgramCode = normalizeTeachingResourceProgramCode(column.binding?.sourceProgramCode);
+      const sourceFieldIdentity =
+        String(column.binding?.sourceFieldIdentity || column.binding?.sourceDocumentFieldIdentity || '').trim();
+      const storedSelectionSourceProgramCode = normalizeTeachingResourceProgramCode(referenceSelection?.sourceProgramCode);
+      const storedSelectionMatchesBinding =
+        !storedSelectionSourceProgramCode || !sourceProgramCode || storedSelectionSourceProgramCode === sourceProgramCode;
+      const storedSelectionToken = storedSelectionMatchesBinding ? String(referenceSelection?.selectionToken || '').trim() : '';
       const referenceSelectValue =
-        (isMonthWeekReferenceCell ? '' : String(referenceSelection?.selectionToken || '').trim()) ||
+        (isMonthWeekReferenceCell ? '' : storedSelectionToken) ||
         referenceOptions.find((option) => option.value === value)?.selectValue ||
-        String(referenceSelection?.selectionToken || '').trim() ||
+        storedSelectionToken ||
         '';
       const referenceSelectionValue = String(referenceSelection?.value || '').trim();
       const effectiveReferenceValue =
@@ -4120,9 +4177,6 @@ export const LearningResourceGenerator = ({
           />
         );
       }
-      const sourceProgramCode = normalizeTeachingResourceProgramCode(column.binding?.sourceProgramCode);
-      const sourceFieldIdentity =
-        String(column.binding?.sourceFieldIdentity || column.binding?.sourceDocumentFieldIdentity || '').trim();
       const sourceProgramLabel =
         String(programMetaByCode.get(sourceProgramCode)?.label || '').trim() || sourceProgramCode || 'dokumen sumber';
       const hasReferenceBinding = Boolean(sourceProgramCode && sourceFieldIdentity);
@@ -5011,7 +5065,7 @@ export const LearningResourceGenerator = ({
 
     return (
       <div className="mt-3 overflow-x-auto rounded-lg border border-slate-300">
-        <table className="min-w-max border-collapse text-xs">
+        <table className="min-w-full border-collapse text-xs">
           <thead className="bg-slate-100">
             <tr>
               {layout.leadingColumns.map((column) => (
@@ -5055,7 +5109,7 @@ export const LearningResourceGenerator = ({
                 group.columns.map((item) => (
                   <th
                     key={`quick-month-head-week-${section.id}-${group.monthKey}-${item.weekNumber}`}
-                    className="w-9 border border-slate-300 px-1 py-1 text-center text-[10px] font-semibold text-slate-600"
+                    className="w-8 min-w-[30px] border border-slate-300 px-1 py-1 text-center text-[10px] font-semibold text-slate-600"
                   >
                     {item.weekNumber}
                   </th>
@@ -5075,6 +5129,8 @@ export const LearningResourceGenerator = ({
                     const columnKey = String(column.key || '').trim();
                     const cellLines = splitEditableCellLines(row.values[columnKey]);
                     const isMonthWeekColumn = Boolean(parseMonthWeekColumnKey(columnKey));
+                    const mergedMonthWeekNote = isMonthWeekColumn ? getMergedMonthWeekNote(row.values[columnKey]) : null;
+                    if (isMonthWeekColumn && mergedMonthWeekNote && lineIndex > 0) return null;
                     if (!isMonthWeekColumn && cellLines.length <= 1 && lineIndex > 0) return null;
                     if (!isMonthWeekColumn && cellLines.length > 1 && lineIndex >= cellLines.length) {
                       return (
@@ -5088,20 +5144,34 @@ export const LearningResourceGenerator = ({
                         />
                       );
                     }
-                    const rowSpan = !isMonthWeekColumn && cellLines.length <= 1 && maxLineCount > 1 ? maxLineCount : undefined;
+                    const rowSpan = mergedMonthWeekNote
+                      ? maxLineCount
+                      : !isMonthWeekColumn && cellLines.length <= 1 && maxLineCount > 1
+                        ? maxLineCount
+                        : undefined;
                     return (
                       <td
                         key={`quick-month-cell-${row.id}-${columnKey}-${lineIndex}`}
                         rowSpan={rowSpan}
                         className={`border border-slate-200 px-1 py-1 ${
-                          isMonthWeekColumn ? 'w-9 align-middle' : 'align-top'
+                          isMonthWeekColumn ? 'w-8 align-middle' : 'align-top'
                         } ${isCenterAlignedTableColumn(column) ? 'text-center' : ''} ${getColumnWidthClass(
                           column.key,
                           Boolean(column.multiline),
                           column.dataType,
                         )}`}
                       >
-                        {renderQuickEditCellControl(section, row, column, lineIndex)}
+                        {mergedMonthWeekNote
+                          ? renderQuickMonthWeekCellControl(
+                              section,
+                              row,
+                              columnKey,
+                              mergedMonthWeekNote.note,
+                              false,
+                              mergedMonthWeekNote.lineIndex,
+                              maxLineCount,
+                            )
+                          : renderQuickEditCellControl(section, row, column, lineIndex)}
                       </td>
                     );
                   })}
@@ -5129,7 +5199,7 @@ export const LearningResourceGenerator = ({
 
     return (
       <div className="overflow-x-auto rounded-md border border-gray-200">
-        <table className="min-w-max border-collapse text-xs">
+        <table className="min-w-full border-collapse text-xs">
           <thead className="bg-gray-50">
             <tr>
               {layout.leadingColumns.map((column) => (
@@ -5179,7 +5249,7 @@ export const LearningResourceGenerator = ({
                 group.columns.map((item) => (
                   <th
                     key={`month-head-week-${section.id}-${group.monthKey}-${item.weekNumber}`}
-                    className="w-9 border border-gray-200 px-1 py-1 text-center text-[10px] font-semibold text-gray-500"
+                    className="w-8 min-w-[30px] border border-gray-200 px-1 py-1 text-center text-[10px] font-semibold text-gray-500"
                   >
                     {item.weekNumber}
                   </th>
@@ -5197,7 +5267,7 @@ export const LearningResourceGenerator = ({
                     <td
                       key={`${row.id}-${column.key}`}
                       className={`border border-gray-200 px-1.5 py-1.5 ${
-                        isMonthWeekColumn ? 'w-9 align-middle' : 'align-top'
+                        isMonthWeekColumn ? 'w-8 align-middle' : 'align-top'
                       } ${isCenterAlignedTableColumn(column) ? 'text-center' : ''} ${getColumnWidthClass(
                         column.key,
                         Boolean(column.multiline),
@@ -5385,10 +5455,10 @@ export const LearningResourceGenerator = ({
       ];
       const getMonthWeekPrintColumnWidth = (header: { key: string; label: string; column?: EntrySectionColumnForm }) => {
         const key = String(header.key || '').trim().toLowerCase();
-        if (parseMonthWeekColumnKey(key)) return '5.8mm';
-        if (['no', 'nomor'].includes(key)) return '9mm';
-        if (key.includes('alokasi') || key.includes('jp') || key.includes('waktu')) return '13mm';
-        if (key.includes('tujuan') || key.includes('pembelajaran')) return '78mm';
+        if (parseMonthWeekColumnKey(key)) return '5mm';
+        if (['no', 'nomor'].includes(key)) return '8mm';
+        if (key.includes('alokasi') || key.includes('jp') || key.includes('waktu')) return '12mm';
+        if (key.includes('tujuan') || key.includes('pembelajaran')) return '88mm';
         return '18mm';
       };
       const colgroup = `<colgroup>${orderedHeaders
@@ -5428,27 +5498,30 @@ export const LearningResourceGenerator = ({
                   const lines = lineGroups[headerIndex] || [''];
                   if (lines.length <= 1 && lineIndex > 0) return '';
                   const isMonthWeekColumn = Boolean(parseMonthWeekColumnKey(header.key));
+                  const mergedMonthWeekNote = isMonthWeekColumn ? getMergedMonthWeekNote(row.values?.[header.key]) : null;
+                  if (mergedMonthWeekNote && lineIndex > 0) return '';
                   const lineValue = lines[Math.min(lineIndex, lines.length - 1)];
-                  const hasValue = isMeaningfulReferenceValue(lineValue);
+                  const printableValue = mergedMonthWeekNote ? mergedMonthWeekNote.note : lineValue;
                   const className = [
                     getPrintColumnClassName(header.column),
                     isMonthWeekColumn ? 'print-month-week-cell' : '',
-                    isMonthWeekColumn && hasValue ? 'is-active' : '',
-                    isMonthWeekColumn && hasValue && !isTruthyMark(String(lineValue || '')) ? 'has-text' : '',
+                    isMonthWeekColumn && isMeaningfulReferenceValue(printableValue) ? 'is-active' : '',
+                    isMonthWeekColumn && isMeaningfulReferenceValue(printableValue) && !isTruthyMark(String(printableValue || '')) ? 'has-text' : '',
                   ]
                     .filter(Boolean)
                     .join(' ');
                   const classAttribute = renderPrintClassAttribute(className);
-                  const rowSpanAttribute = lines.length <= 1 && maxLineCount > 1 ? ` rowspan="${maxLineCount}"` : '';
+                  const rowSpanAttribute =
+                    mergedMonthWeekNote || (lines.length <= 1 && maxLineCount > 1) ? ` rowspan="${maxLineCount}"` : '';
                   const valignAttribute = rowSpanAttribute ? ' style="vertical-align: middle;"' : '';
                   const content =
                     lines.length > 1 && lineIndex >= lines.length
                       ? ''
                       : isMonthWeekColumn
-                        ? formatMonthWeekPrintCellHtml(lineValue)
-                        : lines.length > 1 && !String(lineValue || '').trim()
+                        ? formatMonthWeekPrintCellHtml(printableValue)
+                        : lines.length > 1 && !String(printableValue || '').trim()
                           ? ''
-                          : formatCellPrintHtml(lineValue, header.column);
+                          : formatCellPrintHtml(printableValue, header.column);
                   return `<td${classAttribute}${rowSpanAttribute}${valignAttribute}>${content}</td>`;
                 })
                 .join('');
@@ -5567,9 +5640,14 @@ export const LearningResourceGenerator = ({
     return null;
   };
 
-  const buildPrintHtml = (entry: TeachingResourceEntry, contextOverride?: Partial<EntryContextValues> | null): string => {
+  const buildPrintHtml = (
+    entry: TeachingResourceEntry,
+    contextOverride?: Partial<EntryContextValues> | null,
+    printableSectionId?: string,
+  ): string => {
     const defaultSections = buildDefaultSections(activeProgramMeta);
     const printableSections = parseEntrySections(entry, defaultSections).filter((section) => {
+      if (printableSectionId && section.id !== printableSectionId) return false;
       const sectionSchema = resolveSectionSchema(section);
       const blockType = String(sectionSchema?.blockType || '').trim().toUpperCase();
       return (
@@ -5652,7 +5730,8 @@ export const LearningResourceGenerator = ({
           th { background: #f8fafc; font-weight: 700; text-align: center; vertical-align: middle; }
           .print-compact-column {
             text-align: center;
-            white-space: nowrap;
+            white-space: normal;
+            overflow-wrap: anywhere;
           }
           .print-center-column {
             text-align: center;
@@ -5663,11 +5742,14 @@ export const LearningResourceGenerator = ({
           }
           .print-month-week-table {
             table-layout: fixed;
+            width: 100%;
             font-size: 8.5px;
           }
           .print-month-week-table th,
           .print-month-week-table td {
             padding: 2px 3px;
+            overflow-wrap: anywhere;
+            word-break: normal;
           }
           .print-month-group-header,
           .print-week-number-header {
@@ -5676,17 +5758,17 @@ export const LearningResourceGenerator = ({
             white-space: nowrap;
           }
           .print-month-week-column {
-            width: 5.8mm;
-            min-width: 5.8mm;
-            max-width: 5.8mm;
+            width: 5mm;
+            min-width: 5mm;
+            max-width: 5mm;
             padding-left: 0;
             padding-right: 0;
             text-align: center;
           }
           .print-month-week-cell {
             height: 18px;
-            min-width: 5.8mm;
-            max-width: 5.8mm;
+            min-width: 5mm;
+            max-width: 5mm;
             padding: 0;
           }
           .print-month-week-cell.is-active {
@@ -5804,10 +5886,10 @@ export const LearningResourceGenerator = ({
     `;
   };
 
-  const handlePrintEntry = async (entry: TeachingResourceEntry) => {
+  const handlePrintEntry = async (entry: TeachingResourceEntry, printableSectionId?: string) => {
     try {
       const contextOverride = await loadReferenceContextOverride(entry);
-      const html = buildPrintHtml(entry, contextOverride);
+      const html = buildPrintHtml(entry, contextOverride, printableSectionId);
       const iframe = printIframeRef.current;
       if (!iframe?.contentWindow) {
         toast.error('Frame print tidak tersedia. Coba muat ulang halaman.');
@@ -6012,7 +6094,7 @@ export const LearningResourceGenerator = ({
                             <div className="flex flex-nowrap items-center justify-end gap-2">
                                 <button
                                   type="button"
-                                  onClick={() => handlePrintEntry(entry)}
+                                  onClick={() => handlePrintEntry(entry, activeQuickSection?.id)}
                                   title="Print"
                                   aria-label="Print"
                                   className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
@@ -6100,33 +6182,34 @@ export const LearningResourceGenerator = ({
                           <tr className="border-b border-gray-100 bg-slate-50/60">
                             <td colSpan={6} className="px-3 py-3">
                               <div className="rounded-lg border border-slate-200 bg-white p-3">
-                                <div className="flex flex-wrap items-center justify-end gap-2">
+                                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200">
+                                  {quickSections.length > 1 ? (
+                                    <UnderlineTabBar
+                                      items={quickSections.map((section) => ({
+                                        id: section.id,
+                                        label: section.title || 'Bagian tabel',
+                                        icon: CalendarDays,
+                                      }))}
+                                      activeId={activeQuickSection.id}
+                                      onChange={setQuickEditActiveSectionId}
+                                      className="min-w-0 flex-1"
+                                      innerClassName="gap-2"
+                                      textSizeClassName="text-xs"
+                                      ariaLabel="Tab tabel perangkat ajar"
+                                    />
+                                  ) : (
+                                    <div className="min-h-10 flex-1" />
+                                  )}
                                   <button
                                     type="button"
                                     onClick={() => quickEditMutation.mutate(entry)}
                                     disabled={quickEditMutation.isPending}
-                                    className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+                                    className="mb-2 inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
                                   >
                                     <Save size={12} />
                                     {quickEditMutation.isPending ? 'Menyimpan...' : 'Simpan Tabel'}
                                   </button>
                                 </div>
-
-                                {quickSections.length > 1 ? (
-                                  <UnderlineTabBar
-                                    items={quickSections.map((section) => ({
-                                      id: section.id,
-                                      label: section.title || 'Bagian tabel',
-                                      icon: CalendarDays,
-                                    }))}
-                                    activeId={activeQuickSection.id}
-                                    onChange={setQuickEditActiveSectionId}
-                                    className="mt-3"
-                                    innerClassName="gap-2"
-                                    textSizeClassName="text-xs"
-                                    ariaLabel="Tab tabel perangkat ajar"
-                                  />
-                                ) : null}
 
                                 {buildMonthWeekColumnLayout(compactQuickColumns) ? (
                                   renderQuickEditMonthWeekTable(activeQuickSection, compactQuickColumns, compactQuickRows)
