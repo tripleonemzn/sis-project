@@ -5,12 +5,12 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-05-01 17:30 WIB
-- Current status: follow-up perangkat ajar selesai. Program Semester/Promes sekarang memakai renderer matriks bulan-minggu dinamis dari kolom schema seperti `juli_1`, `agustus_2`, dst. Tampilan tabel guru dan print preview memakai header bertingkat bulan + minggu, cell minggu dibuat compact, judul section tabel tidak lagi ditampilkan di print Promes, dan referensi TP/JP Promes otomatis memakai ATP/PROTA tanpa terkunci semester aktif agar cocok untuk kebutuhan ganjil/genap.
+- Last updated: 2026-05-01 18:05 WIB
+- Current status: follow-up perangkat ajar selesai. Program Semester/Promes sekarang memakai referensi TP per baris dari dokumen sumber, JP/alokasi otomatis ikut snapshot referensi dan dikunci agar tidak tampak sebagai input manual, jumlah minggu per bulan dibentuk otomatis dari tanggal semester tahun ajaran aktif, serta cell minggu bisa dicentang atau diberi keterangan libur/kegiatan lewat modal dengan output print vertikal.
 - Objective/task aktif:
   - Melanjutkan pengembangan perangkat ajar dinamis setelah polish tab remedial dan editor tabel guru.
 - Batch terakhir selesai:
-  - `Perangkat ajar follow-up - Promes month/week matrix renderer`
+  - `Perangkat ajar follow-up - Promes reference scheduling polish`
 - Progress fitur remedial keseluruhan:
   - `100%`
 - Progress presensi terpadu saat ini:
@@ -26,13 +26,13 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
-  - Commit: `72c88d7`
-  - Title: `fix(teaching-resources): render promes month week matrix`
+  - Commit: `f916212`
+  - Title: `fix(teaching-resources): refine promes reference scheduling`
   - Summary:
-    - schema tabel dengan kolom bulan-minggu sekarang otomatis dirender sebagai matriks Promes, bukan tabel datar lebar
-    - editor ringkas guru dan editor lengkap sama-sama menampilkan header bulan di atas nomor minggu
-    - print Promes memakai header bulan/minggu, cell compact, dan cell minggu yang terisi diberi highlight agar mendekati contoh output
-    - referensi TP dan JP Promes otomatis diarahkan ke ATP bila tersedia, fallback ke PROTA, dengan filter konteks mapel/tingkat/jurusan tanpa mengunci semester aktif
+    - opsi referensi TP Promes dari ATP/PROTA dipecah menjadi baris TP individual, bukan label agregat panjang
+    - snapshot JP/alokasi, dimensi, dan kolom terkait mengikuti baris referensi yang dipilih
+    - cell minggu pada Promes bisa dicentang per baris TP dan bisa diisi keterangan libur/kegiatan melalui modal
+    - print Promes menampilkan keterangan minggu secara vertikal dan jumlah minggu per bulan mengikuti kalender semester aktif secara dinamis
 - Area/file disentuh:
   - `frontend/src/pages/teacher/learning-resources/LearningResourceGenerator.tsx`
   - `docs/CODEX_CONTINUITY.md`
@@ -48,7 +48,7 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 - Remaining work:
   - Lanjut audit/pengembangan perangkat ajar dinamis sesuai arahan user berikutnya.
 - Residual risk:
-  - Perubahan bersifat frontend-only dan scoped ke perangkat ajar guru/print. Tidak ada endpoint baru, polling baru, websocket baru, atau perubahan backend runtime. Jika Wakakur membuat Promes dengan penamaan kolom bulan di luar pola `namaBulan_nomorMinggu`, schema tersebut tetap akan tampil sebagai tabel biasa.
+  - Perubahan bersifat frontend-only dan scoped ke perangkat ajar guru/print. Tidak ada endpoint baru, polling baru, websocket baru, atau perubahan backend runtime. Jika Wakakur membuat Promes dengan penamaan kolom bulan di luar pola `namaBulan_nomorMinggu`, schema tersebut tetap tampil sebagai tabel biasa.
 
 ## Status Saat Ini
 
