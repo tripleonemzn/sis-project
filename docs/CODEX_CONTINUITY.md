@@ -5,12 +5,12 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-05-01 10:51 WIB
-- Current status: follow-up Program Tahunan selesai. Root cause ditemukan: schema Prota aktif tersimpan sebagai orphan `DOCUMENT_SNAPSHOT` untuk kolom berlabel `Tujuan Pembelajaran`, sehingga tidak pernah membuat dropdown reference seperti ATP dan sempat jatuh ke field konteks seperti `mata_pelajaran`. API program dan UI guru sekarang menormalisasi schema lama secara dinamis agar kolom sumber yang semestinya picker dipulihkan menjadi `DOCUMENT_REFERENCE`, lalu snapshot lain dalam section mengikuti source picker yang sama jika source program tersebut punya field yang cocok. Builder Wakakur juga tidak lagi otomatis memilih field pertama saat ganti program sumber; ia memilih field sumber yang paling cocok dengan label/key/field identity kolom target.
+- Last updated: 2026-05-01 11:09 WIB
+- Current status: follow-up Program Tahunan selesai. Root cause lanjutan ditemukan: ATP sudah menyimpan `Tujuan Pembelajaran` sebagai multiline lengkap, tetapi Prota entry uji masih menyimpan token referensi lama yang menunjuk hanya ke baris pertama. Backend dan frontend sekarang membuat opsi referensi agregat dinamis seperti `Tujuan Pembelajaran lengkap (4 baris)` untuk setiap sumber multiline, sehingga dokumen berikutnya bisa mengambil seluruh baris sekaligus tanpa hardcode Prota/ATP. Draft Prota uji `entryId=12` juga sudah dikoreksi secara targeted agar langsung memakai 4 baris TP dari ATP `entryId=11`.
 - Objective/task aktif:
   - Melanjutkan pengembangan perangkat ajar dinamis setelah polish tab remedial dan editor tabel guru.
 - Batch terakhir selesai:
-  - `Perangkat ajar follow-up - repair Prota reference picker and Wakakur source-field matching`
+  - `Perangkat ajar follow-up - aggregate multiline reference options for Prota/ATP chain`
 - Progress fitur remedial keseluruhan:
   - `100%`
 - Progress presensi terpadu saat ini:
@@ -26,17 +26,17 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
-  - Commit: `6412617`
-  - Title: `fix(teaching-resources): repair prota references`
+  - Commit: `2e5fc45`
+  - Title: `fix(teaching-resources): add aggregate reference options`
   - Summary:
-    - schema program yang telanjur punya snapshot dokumen tanpa picker dipulihkan saat dibaca API sehingga guru tetap mendapat dropdown referensi
-    - kolom `Tujuan Pembelajaran` Prota yang identitasnya ditulis pendek seperti `tp` bisa dicocokkan ke field sumber `tujuan_pembelajaran`
-    - snapshot turunan seperti `Dimensi Profil Lulusan` mengikuti source picker utama dalam section jika source program tersebut mengekspos field yang sama
-    - builder Wakakur memilih field sumber terbaik berdasarkan identitas/label kolom target, bukan selalu field pertama program sumber
+    - opsi referensi sumber multiline kini selalu menyediakan pilihan agregat `lengkap (n baris)` selain opsi per-baris
+    - pilihan agregat membawa snapshot penuh agar kolom turunan seperti dimensi/alokasi bisa ikut tersalin sebagai multiline
+    - fallback frontend juga mendapat logika yang sama jika opsi projected dari API belum tersedia
+    - data draft Prota uji `entryId=12` diperbaiki targeted dari token baris pertama menjadi token agregat ATP
 - Area/file disentuh:
   - `backend/src/controllers/teachingResourceProgram.controller.ts`
   - `frontend/src/pages/teacher/learning-resources/LearningResourceGenerator.tsx`
-  - `frontend/src/pages/teacher/wakasek/curriculum/TeachingResourceProgramManagementPage.tsx`
+  - `frontend/src/services/teachingResourceProgram.service.ts`
   - `docs/CODEX_CONTINUITY.md`
 - Verifikasi batch ini:
   - `git diff --check`
@@ -45,6 +45,7 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `cd backend && npm run service:health`
   - `cd frontend && npm run build`
   - `cd frontend && npm run deploy`
+  - `curl -I https://siskgb2.id/`
 - Publish/live status:
   - Web sudah deploy live
   - Backend sudah restart ringan dan health check `Backend:200`, `Backend API:200`
@@ -52,7 +53,7 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 - Remaining work:
   - Lanjut audit/pengembangan perangkat ajar dinamis sesuai arahan user berikutnya.
 - Residual risk:
-  - Perubahan referensi bersifat aman dan scoped, tetapi untuk data lama yang sudah menyimpan pilihan referensi multiline, selected state dropdown per-subbaris bisa bergantung pada kecocokan value tersimpan. Nilai tabelnya tetap tersimpan sebagai multiline dan menjadi source of truth tampilan/print.
+  - Perubahan referensi bersifat aman dan scoped. Data lama yang sengaja memilih satu baris tetap dipertahankan; jika guru ingin mengambil semua baris dari sumber multiline, pilih opsi `lengkap (n baris)` pada dropdown referensi.
 
 ## Status Saat Ini
 
