@@ -17,6 +17,7 @@ import {
   type TeachingResourceFieldBinding,
   type TeachingResourceFieldSourceType,
   type TeachingResourceProgram,
+  type TeachingResourceProgramColumnSchema,
   type TeachingResourceProgramSectionSchema,
   type TeachingResourceProjectedReferenceOption,
   type TeachingResourceReferenceProjectionRequest,
@@ -705,6 +706,169 @@ const extractReferenceCandidates = (column: Partial<EntrySectionColumnForm> | nu
 
 const isDocumentReferencePickerColumn = (column: Partial<EntrySectionColumnForm> | null | undefined): boolean =>
   String(column?.sourceType || '').trim().toUpperCase() === 'DOCUMENT_REFERENCE';
+
+const REFERENCE_IDENTITY_ALIASES: Record<string, string> = {
+  tp: 'tujuan_pembelajaran',
+  tujuan_pembelajaran: 'tujuan_pembelajaran',
+  tujuan_pembelajaran_tp: 'tujuan_pembelajaran',
+  dpl: 'dimensi_profil',
+  dimensi_profil_lulusan: 'dimensi_profil',
+  dimensi_profil: 'dimensi_profil',
+  profil_lulusan: 'dimensi_profil',
+  materi_pokok: 'konten_materi',
+  konten_materi: 'konten_materi',
+  konten_materi_pokok: 'konten_materi',
+};
+
+const CONTEXT_REFERENCE_IDENTITIES = new Set(['mata_pelajaran', 'tingkat', 'program_keahlian', 'semester', 'tahun_ajaran']);
+
+const normalizeReferenceIdentity = (value: unknown): string => {
+  const token = normalizeReferenceToken(value);
+  return REFERENCE_IDENTITY_ALIASES[token] || token;
+};
+
+const getColumnIdentityCandidates = (column: Partial<EntrySectionColumnForm> | null | undefined): string[] => {
+  const candidates = new Set<string>();
+  [
+    column?.binding?.sourceFieldIdentity,
+    column?.binding?.sourceDocumentFieldIdentity,
+    column?.fieldIdentity,
+    column?.semanticKey,
+    column?.bindingKey,
+    column?.key,
+    column?.label,
+  ].forEach((item) => {
+    const token = normalizeReferenceIdentity(item);
+    if (token) candidates.add(token);
+  });
+  return Array.from(candidates);
+};
+
+const getProgramReferenceIdentityMap = (program: TeachingResourceProgram | undefined): Map<string, string> => {
+  const map = new Map<string, string>();
+  ensureArray<TeachingResourceProgramSectionSchema>(program?.schema?.sections).forEach((section) => {
+    if ((section.editorType || 'TABLE') !== 'TABLE') return;
+    ensureArray<TeachingResourceProgramColumnSchema>(section.columns).forEach((column) => {
+      const sourceValue = String(column.fieldIdentity || column.semanticKey || column.bindingKey || column.key || '').trim();
+      const sourceLabel = String(column.label || '').trim();
+      const normalizedValue = normalizeReferenceIdentity(sourceValue);
+      if (normalizedValue && !map.has(normalizedValue)) map.set(normalizedValue, normalizeReferenceToken(sourceValue) || normalizedValue);
+      const normalizedLabel = normalizeReferenceIdentity(sourceLabel);
+      if (normalizedLabel && !map.has(normalizedLabel)) map.set(normalizedLabel, normalizeReferenceToken(sourceValue) || normalizedLabel);
+    });
+  });
+  return map;
+};
+
+const resolveBestReferenceSource = (
+  column: TeachingResourceProgramColumnSchema,
+  sectionColumns: TeachingResourceProgramColumnSchema[],
+  programMetaByCode: Map<string, TeachingResourceProgram>,
+): { sourceProgramCode: string; sourceFieldIdentity: string } | null => {
+  const currentSourceProgramCode = normalizeTeachingResourceProgramCode(column.binding?.sourceProgramCode);
+  const currentSourceIdentity = normalizeReferenceIdentity(
+    column.binding?.sourceFieldIdentity || column.binding?.sourceDocumentFieldIdentity,
+  );
+  const localCandidates = getColumnIdentityCandidates(column).filter((candidate) => !CONTEXT_REFERENCE_IDENTITIES.has(candidate));
+  const sourceProgramCodes = Array.from(
+    new Set(
+      [
+        currentSourceProgramCode,
+        ...sectionColumns.map((item) => normalizeTeachingResourceProgramCode(item.binding?.sourceProgramCode)),
+      ].filter(Boolean),
+    ),
+  );
+
+  let best: { sourceProgramCode: string; sourceFieldIdentity: string; score: number } | null = null;
+  sourceProgramCodes.forEach((sourceProgramCode) => {
+    const identityMap = getProgramReferenceIdentityMap(programMetaByCode.get(sourceProgramCode));
+    localCandidates.forEach((candidate) => {
+      const sourceFieldIdentity = identityMap.get(candidate);
+      if (!sourceFieldIdentity) return;
+      let score = 10;
+      if (sourceProgramCode === currentSourceProgramCode && currentSourceIdentity === candidate) score += 8;
+      if (sourceProgramCode === currentSourceProgramCode && currentSourceIdentity && !CONTEXT_REFERENCE_IDENTITIES.has(currentSourceIdentity)) {
+        score += 2;
+      }
+      if (sourceProgramCode !== currentSourceProgramCode && CONTEXT_REFERENCE_IDENTITIES.has(currentSourceIdentity)) score += 4;
+      const isUsedBySibling = sectionColumns.some(
+        (item) => normalizeTeachingResourceProgramCode(item.binding?.sourceProgramCode) === sourceProgramCode && item.key !== column.key,
+      );
+      if (isUsedBySibling) score += 2;
+      if (!best || score > best.score) {
+        best = { sourceProgramCode, sourceFieldIdentity, score };
+      }
+    });
+  });
+
+  if (!best) return null;
+  const resolved = best as { sourceProgramCode: string; sourceFieldIdentity: string; score: number };
+  return { sourceProgramCode: resolved.sourceProgramCode, sourceFieldIdentity: resolved.sourceFieldIdentity };
+};
+
+const normalizeTeacherReferenceSections = (
+  sections: TeachingResourceProgramSectionSchema[],
+  programMetaByCode: Map<string, TeachingResourceProgram>,
+): TeachingResourceProgramSectionSchema[] =>
+  sections.map((section) => {
+    const columns = ensureArray<TeachingResourceProgramColumnSchema>(section.columns);
+    if ((section.editorType || 'TABLE') !== 'TABLE' || columns.length === 0) return section;
+
+    let nextColumns = columns.map((column) => ({ ...column, binding: column.binding ? { ...column.binding } : undefined }));
+    const hasReferencePicker = nextColumns.some(isDocumentReferencePickerColumn);
+
+    if (!hasReferencePicker) {
+      const promotedIndex = nextColumns.findIndex((column) => {
+        if (String(column.sourceType || '').trim().toUpperCase() !== 'DOCUMENT_SNAPSHOT') return false;
+        return Boolean(resolveBestReferenceSource(column, nextColumns, programMetaByCode));
+      });
+      if (promotedIndex >= 0) {
+        const promoted = nextColumns[promotedIndex];
+        const bestSource = resolveBestReferenceSource(promoted, nextColumns, programMetaByCode);
+        if (bestSource) {
+          nextColumns[promotedIndex] = {
+            ...promoted,
+            sourceType: 'DOCUMENT_REFERENCE' as const,
+            valueSource: 'MANUAL' as const,
+            readOnly: false,
+            teacherEditMode: 'TEACHER_EDITABLE' as const,
+            exposeAsReference: false,
+            binding: {
+              ...(promoted.binding || {}),
+              sourceProgramCode: bestSource.sourceProgramCode,
+              sourceFieldIdentity: bestSource.sourceFieldIdentity,
+              sourceDocumentFieldIdentity: bestSource.sourceFieldIdentity,
+              selectionMode: promoted.binding?.selectionMode || 'PICK_SINGLE',
+              syncMode: 'SNAPSHOT_ON_SELECT',
+            },
+          };
+        }
+      }
+    }
+
+    const primaryReference = nextColumns.find(isDocumentReferencePickerColumn);
+    const primarySourceProgramCode = normalizeTeachingResourceProgramCode(primaryReference?.binding?.sourceProgramCode);
+    const primarySourceIdentityMap = getProgramReferenceIdentityMap(programMetaByCode.get(primarySourceProgramCode));
+    if (primarySourceProgramCode && primarySourceIdentityMap.size > 0) {
+      nextColumns = nextColumns.map((column) => {
+        if (isDocumentReferencePickerColumn(column)) return column;
+        if (String(column.sourceType || '').trim().toUpperCase() !== 'DOCUMENT_SNAPSHOT') return column;
+        const match = getColumnIdentityCandidates(column).map((candidate) => primarySourceIdentityMap.get(candidate)).find(Boolean);
+        if (!match) return column;
+        return {
+          ...column,
+          binding: {
+            ...(column.binding || {}),
+            sourceProgramCode: primarySourceProgramCode,
+            sourceFieldIdentity: match,
+            sourceDocumentFieldIdentity: match,
+          },
+        };
+      });
+    }
+
+    return { ...section, columns: nextColumns };
+  });
 
 const buildReferenceSnapshot = (
   columns: Array<Partial<EntrySectionColumnForm>>,
@@ -1453,10 +1617,31 @@ export const LearningResourceGenerator = ({
     staleTime: 2 * 60 * 1000,
   });
 
+  const programConfigRows = useMemo(() => toProgramConfigArray(programConfigQuery.data), [programConfigQuery.data]);
+  const programMetaByCode = useMemo(() => {
+    const map = new Map<string, TeachingResourceProgram>();
+    programConfigRows.forEach((program) => {
+      map.set(normalizeTeachingResourceProgramCode(program.code), program);
+    });
+    return map;
+  }, [programConfigRows]);
+
+  const rawActiveProgramMeta = useMemo<TeachingResourceProgram | null>(() => {
+    return programConfigRows.find((program) => normalizeTeachingResourceProgramCode(program.code) === programCode) || null;
+  }, [programCode, programConfigRows]);
+
   const activeProgramMeta = useMemo<TeachingResourceProgram | null>(() => {
-    const programs = toProgramConfigArray(programConfigQuery.data);
-    return programs.find((program) => normalizeTeachingResourceProgramCode(program.code) === programCode) || null;
-  }, [programCode, programConfigQuery.data]);
+    if (!rawActiveProgramMeta) return null;
+    if (!rawActiveProgramMeta.schema) return rawActiveProgramMeta;
+    const schemaSections = Array.isArray(rawActiveProgramMeta.schema.sections) ? rawActiveProgramMeta.schema.sections : [];
+    return {
+      ...rawActiveProgramMeta,
+      schema: {
+        ...rawActiveProgramMeta.schema,
+        sections: normalizeTeacherReferenceSections(schemaSections, programMetaByCode),
+      },
+    };
+  }, [programMetaByCode, rawActiveProgramMeta]);
 
   const effectiveTitle = useMemo(() => {
     const fromConfig = String(activeProgramMeta?.label || '').trim();
@@ -1492,13 +1677,6 @@ export const LearningResourceGenerator = ({
     });
     return map;
   }, [activeProgramSchemaSections]);
-  const programMetaByCode = useMemo(() => {
-    const map = new Map<string, TeachingResourceProgram>();
-    toProgramConfigArray(programConfigQuery.data).forEach((program) => {
-      map.set(normalizeTeachingResourceProgramCode(program.code), program);
-    });
-    return map;
-  }, [programConfigQuery.data]);
   const referenceSourceProgramCodes = useMemo(() => {
     const codes = new Set<string>();
     activeProgramSchemaSections.forEach((section) => {

@@ -1065,6 +1065,166 @@ function extractReferenceCandidatesFromColumn(column: Partial<TeachingResourceCo
   return Array.from(candidates);
 }
 
+const REFERENCE_IDENTITY_ALIASES: Record<string, string> = {
+  tp: 'tujuan_pembelajaran',
+  tujuan_pembelajaran: 'tujuan_pembelajaran',
+  dpl: 'dimensi_profil',
+  dimensi_profil_lulusan: 'dimensi_profil',
+  dimensi_profil: 'dimensi_profil',
+  materi_pokok: 'konten_materi',
+  konten_materi: 'konten_materi',
+};
+
+const CONTEXT_REFERENCE_IDENTITIES = new Set(['mata_pelajaran', 'tingkat', 'program_keahlian', 'semester', 'tahun_ajaran']);
+
+function normalizeReferenceIdentity(raw: unknown): string {
+  const token = normalizeReferenceToken(raw);
+  return REFERENCE_IDENTITY_ALIASES[token] || token;
+}
+
+function getColumnIdentityCandidates(column: Partial<TeachingResourceColumnSchema> | null | undefined): string[] {
+  const candidates = new Set<string>();
+  [
+    column?.binding?.sourceFieldIdentity,
+    column?.binding?.sourceDocumentFieldIdentity,
+    column?.fieldIdentity,
+    column?.semanticKey,
+    column?.bindingKey,
+    column?.key,
+    column?.label,
+  ].forEach((item) => {
+    const token = normalizeReferenceIdentity(item);
+    if (token) candidates.add(token);
+  });
+  return Array.from(candidates);
+}
+
+function getProgramReferenceIdentityMap(program: TeachingResourceProgramPayload | undefined): Map<string, string> {
+  const map = new Map<string, string>();
+  (program?.schema?.sections || []).forEach((section) => {
+    if ((section.editorType || 'TABLE') !== 'TABLE') return;
+    (section.columns || []).forEach((column) => {
+      const sourceValue = String(column.fieldIdentity || column.semanticKey || column.bindingKey || column.key || '').trim();
+      const sourceLabel = String(column.label || '').trim();
+      const normalizedValue = normalizeReferenceIdentity(sourceValue);
+      if (normalizedValue && !map.has(normalizedValue)) map.set(normalizedValue, normalizeReferenceToken(sourceValue) || normalizedValue);
+      const normalizedLabel = normalizeReferenceIdentity(sourceLabel);
+      if (normalizedLabel && !map.has(normalizedLabel)) map.set(normalizedLabel, normalizeReferenceToken(sourceValue) || normalizedLabel);
+    });
+  });
+  return map;
+}
+
+function resolveBestReferenceSource(
+  column: TeachingResourceColumnSchema,
+  sectionColumns: TeachingResourceColumnSchema[],
+  programMetaByCode: Map<string, TeachingResourceProgramPayload>,
+): { sourceProgramCode: string; sourceFieldIdentity: string } | null {
+  const currentSourceProgramCode = normalizeProgramCode(column.binding?.sourceProgramCode);
+  const currentSourceIdentity = normalizeReferenceIdentity(
+    column.binding?.sourceFieldIdentity || column.binding?.sourceDocumentFieldIdentity,
+  );
+  const localCandidates = getColumnIdentityCandidates(column).filter((candidate) => !CONTEXT_REFERENCE_IDENTITIES.has(candidate));
+  const sourceProgramCodes = Array.from(
+    new Set(
+      [
+        currentSourceProgramCode,
+        ...sectionColumns.map((item) => normalizeProgramCode(item.binding?.sourceProgramCode)),
+      ].filter(Boolean),
+    ),
+  );
+
+  let best: { sourceProgramCode: string; sourceFieldIdentity: string; score: number } | null = null;
+  sourceProgramCodes.forEach((sourceProgramCode) => {
+    const identityMap = getProgramReferenceIdentityMap(programMetaByCode.get(sourceProgramCode));
+    localCandidates.forEach((candidate) => {
+      const sourceFieldIdentity = identityMap.get(candidate);
+      if (!sourceFieldIdentity) return;
+      let score = 10;
+      if (sourceProgramCode === currentSourceProgramCode && currentSourceIdentity === candidate) score += 8;
+      if (sourceProgramCode === currentSourceProgramCode && currentSourceIdentity && !CONTEXT_REFERENCE_IDENTITIES.has(currentSourceIdentity)) {
+        score += 2;
+      }
+      if (sourceProgramCode !== currentSourceProgramCode && CONTEXT_REFERENCE_IDENTITIES.has(currentSourceIdentity)) score += 4;
+      const isUsedBySibling = sectionColumns.some(
+        (item) => normalizeProgramCode(item.binding?.sourceProgramCode) === sourceProgramCode && item.key !== column.key,
+      );
+      if (isUsedBySibling) score += 2;
+      if (!best || score > best.score) {
+        best = { sourceProgramCode, sourceFieldIdentity, score };
+      }
+    });
+  });
+
+  if (!best) return null;
+  const resolved = best as { sourceProgramCode: string; sourceFieldIdentity: string; score: number };
+  return { sourceProgramCode: resolved.sourceProgramCode, sourceFieldIdentity: resolved.sourceFieldIdentity };
+}
+
+function normalizeProgramReferenceSchemas(programs: TeachingResourceProgramPayload[]): TeachingResourceProgramPayload[] {
+  const programMetaByCode = new Map(programs.map((program) => [normalizeProgramCode(program.code), program]));
+  return programs.map((program) => {
+    const sections = program.schema.sections.map((section) => {
+      const columns = section.columns || [];
+      if ((section.editorType || 'TABLE') !== 'TABLE' || columns.length === 0) return section;
+
+      let nextColumns = columns.map((column) => ({ ...column, binding: column.binding ? { ...column.binding } : undefined }));
+      const hasReferencePicker = nextColumns.some((column) => column.sourceType === 'DOCUMENT_REFERENCE');
+      if (!hasReferencePicker) {
+        const promotedIndex = nextColumns.findIndex(
+          (column) => column.sourceType === 'DOCUMENT_SNAPSHOT' && Boolean(resolveBestReferenceSource(column, nextColumns, programMetaByCode)),
+        );
+        if (promotedIndex >= 0) {
+          const promoted = nextColumns[promotedIndex];
+          const bestSource = resolveBestReferenceSource(promoted, nextColumns, programMetaByCode);
+          if (bestSource) {
+            nextColumns[promotedIndex] = {
+              ...promoted,
+              sourceType: 'DOCUMENT_REFERENCE',
+              valueSource: 'MANUAL',
+              readOnly: false,
+              teacherEditMode: 'TEACHER_EDITABLE',
+              exposeAsReference: false,
+              binding: {
+                ...(promoted.binding || {}),
+                sourceProgramCode: bestSource.sourceProgramCode,
+                sourceFieldIdentity: bestSource.sourceFieldIdentity,
+                sourceDocumentFieldIdentity: bestSource.sourceFieldIdentity,
+                selectionMode: promoted.binding?.selectionMode || 'PICK_SINGLE',
+                syncMode: 'SNAPSHOT_ON_SELECT',
+              },
+            };
+          }
+        }
+      }
+
+      const primaryReference = nextColumns.find((column) => column.sourceType === 'DOCUMENT_REFERENCE');
+      const primarySourceProgramCode = normalizeProgramCode(primaryReference?.binding?.sourceProgramCode);
+      const primarySourceIdentityMap = getProgramReferenceIdentityMap(programMetaByCode.get(primarySourceProgramCode));
+      if (primarySourceProgramCode && primarySourceIdentityMap.size > 0) {
+        nextColumns = nextColumns.map((column) => {
+          if (column.sourceType === 'DOCUMENT_REFERENCE') return column;
+          if (column.sourceType !== 'DOCUMENT_SNAPSHOT') return column;
+          const match = getColumnIdentityCandidates(column).map((candidate) => primarySourceIdentityMap.get(candidate)).find(Boolean);
+          if (!match) return column;
+          return {
+            ...column,
+            binding: {
+              ...(column.binding || {}),
+              sourceProgramCode: primarySourceProgramCode,
+              sourceFieldIdentity: match,
+              sourceDocumentFieldIdentity: match,
+            },
+          };
+        });
+      }
+
+      return { ...section, columns: nextColumns };
+    });
+    return { ...program, schema: { ...program.schema, sections } };
+  });
+}
+
 function buildReferenceSnapshotFromRow(
   columns: Array<Partial<TeachingResourceColumnSchema>>,
   row: Record<string, string>,
@@ -2290,9 +2450,10 @@ function mapPrograms(
     });
   });
 
-  return Array.from(mergedByCode.values()).sort(
+  const programs = Array.from(mergedByCode.values()).sort(
     (a, b) => Number(a.order || 0) - Number(b.order || 0) || String(a.label || '').localeCompare(String(b.label || '')),
   );
+  return normalizeProgramReferenceSchemas(programs);
 }
 
 async function loadPrograms(academicYearId: number): Promise<TeachingResourceProgramPayload[]> {

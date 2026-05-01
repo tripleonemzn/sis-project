@@ -868,6 +868,46 @@ function getProgramReferenceFieldOptions(program?: Pick<TeachingResourceProgram,
   return options;
 }
 
+const REFERENCE_FIELD_ALIASES: Record<string, string> = {
+  tp: 'tujuan_pembelajaran',
+  tujuan_pembelajaran: 'tujuan_pembelajaran',
+  dpl: 'dimensi_profil',
+  dimensi_profil_lulusan: 'dimensi_profil',
+  dimensi_profil: 'dimensi_profil',
+  materi_pokok: 'konten_materi',
+  konten_materi: 'konten_materi',
+};
+
+const normalizeReferenceFieldAlias = (value: unknown): string => {
+  const token = normalizeSchemaKey(value, '');
+  return REFERENCE_FIELD_ALIASES[token] || token;
+};
+
+function resolveBestSourceFieldOption(
+  sourceProgram: Pick<TeachingResourceProgram, 'schema'> | null | undefined,
+  targetColumn: TeachingResourceProgramColumnSchema,
+): string {
+  const options = getProgramReferenceFieldOptions(sourceProgram);
+  if (options.length === 0) return '';
+  const candidates = [
+    targetColumn.binding?.sourceFieldIdentity,
+    targetColumn.binding?.sourceDocumentFieldIdentity,
+    targetColumn.fieldIdentity,
+    targetColumn.semanticKey,
+    targetColumn.bindingKey,
+    targetColumn.key,
+    targetColumn.label,
+  ]
+    .map(normalizeReferenceFieldAlias)
+    .filter(Boolean);
+
+  const directMatch = options.find((option) => candidates.includes(normalizeReferenceFieldAlias(option.value)));
+  if (directMatch) return directMatch.value;
+
+  const labelMatch = options.find((option) => candidates.includes(normalizeReferenceFieldAlias(option.label)));
+  return labelMatch?.value || options[0]?.value || '';
+}
+
 function getReferenceSourceLabel(
   rows: ProgramFormRow[],
   sourceProgramCode: string,
@@ -2118,11 +2158,12 @@ export default function TeachingResourceProgramManagementPage() {
   ) => {
     const normalizedSourceProgramCode = normalizeTeachingResourceProgramCode(sourceProgramCode);
     const sourceRow = rows.find((row) => normalizeTeachingResourceProgramCode(row.code) === normalizedSourceProgramCode);
-    const firstSourceField = getProgramReferenceFieldOptions(sourceRow)[0]?.value || '';
+    const targetColumn = createDraft.schema.sections[sectionIndex]?.columns?.[columnIndex];
+    const bestSourceField = targetColumn ? resolveBestSourceFieldOption(sourceRow, targetColumn) : '';
     handleColumnBindingPatch(sectionIndex, columnIndex, {
       sourceProgramCode: normalizedSourceProgramCode || undefined,
-      sourceFieldIdentity: firstSourceField || undefined,
-      sourceDocumentFieldIdentity: firstSourceField || undefined,
+      sourceFieldIdentity: bestSourceField || undefined,
+      sourceDocumentFieldIdentity: bestSourceField || undefined,
       filterByContext: true,
       matchBySubject: true,
       matchByClassLevel: true,

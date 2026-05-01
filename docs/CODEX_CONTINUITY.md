@@ -5,12 +5,12 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-05-01 10:35 WIB
-- Current status: perbaikan singkat sebelum lanjut roadmap perangkat ajar sudah selesai. Tab `Remedial` pada `Input Nilai Siswa` kini bertahan saat refresh/kembali ke halaman, print semua dokumen perangkat ajar memakai margin `1cm`, input teks `Judul Bagian` di atas tabel perangkat ajar tidak lagi editable, dan referensi tabel guru sudah line-aware untuk subbaris sehingga Program Tahunan/ATP bisa memilih TP per subbaris tanpa kembali ke placeholder `-`.
+- Last updated: 2026-05-01 10:51 WIB
+- Current status: follow-up Program Tahunan selesai. Root cause ditemukan: schema Prota aktif tersimpan sebagai orphan `DOCUMENT_SNAPSHOT` untuk kolom berlabel `Tujuan Pembelajaran`, sehingga tidak pernah membuat dropdown reference seperti ATP dan sempat jatuh ke field konteks seperti `mata_pelajaran`. API program dan UI guru sekarang menormalisasi schema lama secara dinamis agar kolom sumber yang semestinya picker dipulihkan menjadi `DOCUMENT_REFERENCE`, lalu snapshot lain dalam section mengikuti source picker yang sama jika source program tersebut punya field yang cocok. Builder Wakakur juga tidak lagi otomatis memilih field pertama saat ganti program sumber; ia memilih field sumber yang paling cocok dengan label/key/field identity kolom target.
 - Objective/task aktif:
   - Melanjutkan pengembangan perangkat ajar dinamis setelah polish tab remedial dan editor tabel guru.
 - Batch terakhir selesai:
-  - `Perangkat ajar polish - tab persistence, print margin, section title cleanup, line-aware references`
+  - `Perangkat ajar follow-up - repair Prota reference picker and Wakakur source-field matching`
 - Progress fitur remedial keseluruhan:
   - `100%`
 - Progress presensi terpadu saat ini:
@@ -26,18 +26,17 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
-  - Commit: `08f3516`
-  - Title: `fix(teaching-resources): improve references and print layout`
+  - Commit: `pending`
+  - Title: `fix(teaching-resources): repair prota references`
   - Summary:
-    - tab aktif `Input Nilai Siswa` dipersist agar refresh/kembali halaman tidak memaksa kembali ke tab `Input Nilai`
-    - margin print perangkat ajar diubah dari `2cm` menjadi `1cm`
-    - input teks `Judul Bagian` di atas table view perangkat ajar dihapus/diganti label read-only
-    - nilai referensi placeholder `-` tidak lagi ditawarkan sebagai opsi referensi dokumen
-    - referensi cepat di tabel guru dibuat per-subbaris/line-aware agar kolom seperti `No`, `Tujuan Pembelajaran`, dan snapshot turunannya bisa bertambah sejajar saat guru menekan Enter pada satu logical row
+    - schema program yang telanjur punya snapshot dokumen tanpa picker dipulihkan saat dibaca API sehingga guru tetap mendapat dropdown referensi
+    - kolom `Tujuan Pembelajaran` Prota yang identitasnya ditulis pendek seperti `tp` bisa dicocokkan ke field sumber `tujuan_pembelajaran`
+    - snapshot turunan seperti `Dimensi Profil Lulusan` mengikuti source picker utama dalam section jika source program tersebut mengekspos field yang sama
+    - builder Wakakur memilih field sumber terbaik berdasarkan identitas/label kolom target, bukan selalu field pertama program sumber
 - Area/file disentuh:
   - `backend/src/controllers/teachingResourceProgram.controller.ts`
-  - `frontend/src/pages/teacher/TeacherGradesPage.tsx`
   - `frontend/src/pages/teacher/learning-resources/LearningResourceGenerator.tsx`
+  - `frontend/src/pages/teacher/wakasek/curriculum/TeachingResourceProgramManagementPage.tsx`
   - `docs/CODEX_CONTINUITY.md`
 - Verifikasi batch ini:
   - `git diff --check`
