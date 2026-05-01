@@ -900,18 +900,8 @@ const buildReferenceSnapshot = (
   return snapshot;
 };
 
-const buildReferenceSnapshotForLine = (
-  columns: Array<Partial<EntrySectionColumnForm>>,
-  row: Record<string, string>,
-  lineIndex: number,
-): Record<string, string> => {
-  const projectedRow = Object.entries(row).reduce<Record<string, string>>((acc, [key, rawValue]) => {
-    const lines = splitCellLines(rawValue);
-    acc[key] = lines.length > 1 ? String(lines[lineIndex] || '').trim() : String(rawValue || '').trim();
-    return acc;
-  }, {});
-  return buildReferenceSnapshot(columns, projectedRow);
-};
+const getReferenceRowLineCount = (row: Record<string, string>): number =>
+  Math.max(1, ...Object.values(row).map((rawValue) => splitCellLines(rawValue).filter(isMeaningfulReferenceValue).length));
 
 const resolveEntryContextLabel = (
   entry: TeachingResourceEntry,
@@ -2095,6 +2085,7 @@ export const LearningResourceGenerator = ({
         const columns = section.columns.length > 0 ? section.columns : ensureArray<EntrySectionColumnForm>(schema?.columns);
         section.rows.forEach((row, rowIndex) => {
           const snapshot = buildReferenceSnapshot(columns, row);
+          const rowLineCount = getReferenceRowLineCount(row);
           columns.forEach((column) => {
             const columnCandidates = extractReferenceCandidates(column);
             if (!columnCandidates.some((candidate) => candidates.includes(candidate))) return;
@@ -2104,6 +2095,13 @@ export const LearningResourceGenerator = ({
             const valueLines = splitCellLines(rawValue)
               .map((line) => line.trim())
               .filter(isMeaningfulReferenceValue);
+            const isMergedGroup = rowLineCount > 1;
+            const optionLabel =
+              valueLines.length > 1
+                ? `${String(column.label || 'Referensi').trim()} lengkap (${valueLines.length} baris)`
+                : isMergedGroup
+                  ? `${rawValue} (${rowLineCount} baris terkait)`
+                  : undefined;
             const lineOptions: Array<{
               value: string;
               selectValue: string;
@@ -2111,30 +2109,19 @@ export const LearningResourceGenerator = ({
               label?: string;
               isAggregate?: boolean;
               lineCount?: number;
-            }> =
-              valueLines.length > 1
-                ? [
-                    {
-                      value: rawValue,
-                      selectValue: `${entry.id}::${String(section.schemaKey || 'section').trim()}::${rowIndex + 1}::${columnKey}::ALL`,
-                      snapshot,
-                      isAggregate: true,
-                      lineCount: valueLines.length,
-                      label: `${String(column.label || 'Referensi').trim()} lengkap (${valueLines.length} baris)`,
-                    },
-                    ...valueLines.map((lineValue, lineIndex) => ({
-                      value: lineValue,
-                      selectValue: `${entry.id}::${columnKey}::${lineIndex + 1}::${lineValue}`,
-                      snapshot: buildReferenceSnapshotForLine(columns, row, lineIndex),
-                    })),
-                  ]
-                : [
-                    {
-                      value: rawValue,
-                      selectValue: `${entry.id}::${columnKey}::${rawValue}`,
-                      snapshot,
-                    },
-                  ];
+            }> = [
+              {
+                value: rawValue,
+                selectValue:
+                  valueLines.length > 1 || isMergedGroup
+                    ? `${entry.id}::${String(section.schemaKey || 'section').trim()}::${rowIndex + 1}::${columnKey}::GROUP`
+                    : `${entry.id}::${columnKey}::${rawValue}`,
+                snapshot,
+                isAggregate: isMergedGroup || valueLines.length > 1,
+                lineCount: isMergedGroup || valueLines.length > 1 ? rowLineCount : undefined,
+                label: optionLabel,
+              },
+            ];
             lineOptions.forEach((lineOption) => {
               const optionTitle = String(lineOption.label || lineOption.value).trim();
               const label =

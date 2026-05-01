@@ -1261,17 +1261,11 @@ function splitReferenceCellLines(raw: unknown): string[] {
   return lines.length > 0 ? lines : [''];
 }
 
-function buildReferenceSnapshotFromRowLine(
-  columns: Array<Partial<TeachingResourceColumnSchema>>,
-  row: Record<string, string>,
-  lineIndex: number,
-): Record<string, string> {
-  const projectedRow = Object.entries(row).reduce<Record<string, string>>((acc, [key, rawValue]) => {
-    const lines = splitReferenceCellLines(rawValue);
-    acc[key] = lines.length > 1 ? String(lines[lineIndex] || '').trim() : String(rawValue || '').trim();
-    return acc;
-  }, {});
-  return buildReferenceSnapshotFromRow(columns, projectedRow);
+function getReferenceRowLineCount(row: Record<string, string>): number {
+  return Math.max(
+    1,
+    ...Object.values(row).map((rawValue) => splitReferenceCellLines(rawValue).filter(isMeaningfulReferenceValue).length),
+  );
 }
 
 function parseReferenceProjectionRequests(raw: unknown): TeachingResourceReferenceProjectionRequest[] {
@@ -2039,6 +2033,7 @@ function buildProjectedReferenceOptions(
   sections.forEach((section) => {
     section.rows.forEach((row, rowIndex) => {
       const snapshot = buildReferenceSnapshotFromRow(section.columns, row);
+      const rowLineCount = getReferenceRowLineCount(row);
       section.columns.forEach((column) => {
         const columnKey = String(column.key || '').trim();
         if (!columnKey) return;
@@ -2049,6 +2044,13 @@ function buildProjectedReferenceOptions(
         const valueLines = splitReferenceCellLines(rawValue)
           .map((line) => line.trim())
           .filter(isMeaningfulReferenceValue);
+        const isMergedGroup = rowLineCount > 1;
+        const optionLabel =
+          valueLines.length > 1
+            ? `${String(column.label || 'Referensi').trim()} lengkap (${valueLines.length} baris)`
+            : isMergedGroup
+              ? `${rawValue} (${rowLineCount} baris terkait)`
+              : undefined;
         const lineOptions: Array<{
           value: string;
           selectValue: string;
@@ -2056,30 +2058,19 @@ function buildProjectedReferenceOptions(
           label?: string;
           isAggregate?: boolean;
           lineCount?: number;
-        }> =
-          valueLines.length > 1
-            ? [
-                {
-                  value: rawValue,
-                  snapshot,
-                  selectValue: `${entry.id}::${String(section.schemaKey || 'section').trim()}::${rowIndex + 1}::${columnKey}::ALL`,
-                  isAggregate: true,
-                  lineCount: valueLines.length,
-                  label: `${String(column.label || 'Referensi').trim()} lengkap (${valueLines.length} baris)`,
-                },
-                ...valueLines.map((value, lineIndex) => ({
-                  value,
-                  snapshot: buildReferenceSnapshotFromRowLine(section.columns, row, lineIndex),
-                  selectValue: `${entry.id}::${columnKey}::${lineIndex + 1}::${value}`,
-                })),
-              ]
-            : [
-                {
-                  value: rawValue,
-                  snapshot,
-                  selectValue: `${entry.id}::${columnKey}::${rawValue}`,
-                },
-              ];
+        }> = [
+          {
+            value: rawValue,
+            snapshot,
+            selectValue:
+              valueLines.length > 1 || isMergedGroup
+                ? `${entry.id}::${String(section.schemaKey || 'section').trim()}::${rowIndex + 1}::${columnKey}::GROUP`
+                : `${entry.id}::${columnKey}::${rawValue}`,
+            isAggregate: isMergedGroup || valueLines.length > 1,
+            lineCount: isMergedGroup || valueLines.length > 1 ? rowLineCount : undefined,
+            label: optionLabel,
+          },
+        ];
 
         relevantRequests.forEach((request) => {
           if (!columnCandidates.some((candidate) => request.candidates.includes(candidate))) return;
