@@ -5,12 +5,12 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-05-01 11:25 WIB
-- Current status: follow-up korelasi tabel merge perangkat ajar selesai. Arah referensi dikoreksi dari `opsi per-anak TP` menjadi `opsi grup merge`: jika satu row sumber seperti ATP punya `No/Elemen` single cell dan TP/materi/dimensi/JP multiline, dropdown referensi kini membuat satu opsi grup dengan snapshot penuh. Dengan begitu saat guru memilih grup induk seperti `No 1` atau `Elemen Perencanaan...`, semua baris anak yang tergabung dalam cell merge ikut terbawa ke kolom snapshot berikutnya.
+- Last updated: 2026-05-01 11:46 WIB
+- Current status: follow-up korelasi tabel merge perangkat ajar selesai. Editor tabel guru sekarang memakai pola `primary reference -> derived snapshot` lintas dokumen: bila satu kolom awal seperti `Elemen` menjadi pemanggil referensi CP/ATP, kolom referensi lain setelahnya yang memakai program sumber sama tidak lagi ditampilkan sebagai dropdown per-subbaris. Kolom sekunder seperti `Tujuan Pembelajaran`, `Materi`, dan `Dimensi` diisi dari snapshot grup induk tersebut, tetap bisa diedit sebagai isi tabel, dan trailing blank line lama dipangkas agar tidak muncul baris kosong tambahan.
 - Objective/task aktif:
   - Melanjutkan pengembangan perangkat ajar dinamis setelah polish tab remedial dan editor tabel guru.
 - Batch terakhir selesai:
-  - `Perangkat ajar follow-up - merged-row group reference semantics`
+  - `Perangkat ajar follow-up - primary reference drives derived table fields`
 - Progress fitur remedial keseluruhan:
   - `100%`
 - Progress presensi terpadu saat ini:
@@ -26,29 +26,24 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
-  - Commit: `53ffbd0`
-  - Title: `fix(teaching-resources): use merged row reference groups`
+  - Commit: `d433053`
+  - Title: `fix(teaching-resources): derive fields from primary reference`
   - Summary:
-    - opsi referensi per-anak seperti `1.1`, `1.2`, dan seterusnya tidak lagi dibuat untuk row sumber yang punya struktur merge
-    - opsi referensi sekarang membawa snapshot full-row/group agar `No`, `Elemen`, TP, materi, dimensi, dan JP tetap berkorelasi
-    - label opsi grup diberi penanda seperti `(4 baris terkait)` atau `lengkap (4 baris)` agar guru paham bahwa pilihan itu membawa satu kelompok
-    - logika ini diterapkan di projected options backend dan fallback options frontend
+    - kolom referensi sekunder dengan source program yang sama sekarang tidak dirender sebagai dropdown lagi
+    - saat primary reference dipilih, snapshot grup mengisi kolom sekunder baik yang dikonfigurasi `DOCUMENT_SNAPSHOT` maupun `DOCUMENT_REFERENCE`
+    - nilai multiline dari snapshot mengganti isi cell secara utuh, bukan disisipkan ke satu subbaris
+    - pembacaan line tabel memangkas trailing blank line agar data lama tidak menambah baris kosong visual
 - Area/file disentuh:
-  - `backend/src/controllers/teachingResourceProgram.controller.ts`
   - `frontend/src/pages/teacher/learning-resources/LearningResourceGenerator.tsx`
-  - `frontend/src/services/teachingResourceProgram.service.ts`
   - `docs/CODEX_CONTINUITY.md`
 - Verifikasi batch ini:
   - `git diff --check`
-  - `cd backend && npm run build`
-  - `cd backend && npm run service:restart`
-  - `cd backend && npm run service:health`
   - `cd frontend && npm run build`
   - `cd frontend && npm run deploy`
   - `curl -I https://siskgb2.id/`
 - Publish/live status:
   - Web sudah deploy live
-  - Backend sudah restart ringan dan health check `Backend:200`, `Backend API:200`
+  - Backend tidak diubah pada follow-up ini
   - Tidak ada perubahan mobile pada batch ini
 - Remaining work:
   - Lanjut audit/pengembangan perangkat ajar dinamis sesuai arahan user berikutnya.
