@@ -26,7 +26,7 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
-  - Commit: pending
+  - Commit: `7d2fda7`
   - Title: `fix(teaching-resources): align grouped references and print context`
   - Summary:
     - resolver referensi kini menilai coverage field per sumber dokumen agar grouping lintas CP/ATP/PROTA tidak setengah terisi
