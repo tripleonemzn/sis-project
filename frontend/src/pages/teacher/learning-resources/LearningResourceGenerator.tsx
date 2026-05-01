@@ -2254,6 +2254,19 @@ export const LearningResourceGenerator = ({
       },
     };
   }, [programMetaByCode, rawActiveProgramMeta]);
+  const isActiveProgramMonthWeekPromes = useMemo(() => {
+    const token = `${programCode} ${activeProgramMeta?.code || ''} ${activeProgramMeta?.label || ''} ${
+      activeProgramMeta?.shortLabel || ''
+    } ${activeProgramMeta?.schema?.sourceSheet || ''} ${activeProgramMeta?.schema?.documentTitle || ''}`.toLowerCase();
+    return token.includes('promes') || token.includes('prosem') || token.includes('program semester');
+  }, [
+    activeProgramMeta?.code,
+    activeProgramMeta?.label,
+    activeProgramMeta?.schema?.documentTitle,
+    activeProgramMeta?.schema?.sourceSheet,
+    activeProgramMeta?.shortLabel,
+    programCode,
+  ]);
 
   const effectiveTitle = useMemo(() => {
     const fromConfig = String(activeProgramMeta?.label || '').trim();
@@ -2525,7 +2538,7 @@ export const LearningResourceGenerator = ({
     section: Pick<EntrySectionForm, 'schemaKey' | 'title'>,
     columns: EntrySectionColumnForm[],
   ): EntrySectionColumnForm[] => {
-    if (programCode !== 'PROMES' || !buildMonthWeekColumnLayout(columns)) return columns;
+    if (!isActiveProgramMonthWeekPromes || !buildMonthWeekColumnLayout(columns)) return columns;
     const semester = resolveMonthWeekSemesterFromSection(section, activeAcademicYear?.semester);
     return expandMonthWeekColumnsByCalendar(columns, activeAcademicYear, semester).filter(
       (column) => !isPromesMonthWeekHiddenColumn(column),
@@ -2806,7 +2819,7 @@ export const LearningResourceGenerator = ({
 
     activeProgramSchemaSections.forEach((section) => {
       const sectionColumns = ensureArray<EntrySectionColumnForm>(section.columns);
-      const sectionHasMonthWeekLayout = programCode === 'PROMES' && Boolean(buildMonthWeekColumnLayout(sectionColumns));
+      const sectionHasMonthWeekLayout = isActiveProgramMonthWeekPromes && Boolean(buildMonthWeekColumnLayout(sectionColumns));
       const targetSemesterLabel = sectionHasMonthWeekLayout
         ? resolveSemesterLabel(resolveMonthWeekSemesterFromSection(section, activeAcademicYear?.semester)).toLowerCase()
         : '';
@@ -2814,7 +2827,7 @@ export const LearningResourceGenerator = ({
         if (!isDocumentReferencePickerColumn(column)) return;
         const requestKey = `${String(section.key || '').trim()}::${String(column.key || '').trim()}`;
         const shouldSplitLineOptions =
-          programCode === 'PROMES' &&
+          isActiveProgramMonthWeekPromes &&
           sectionHasMonthWeekLayout &&
           getColumnIdentityCandidates(column).includes('tujuan_pembelajaran');
         const projectedOptions = projectedOptionsByRequestKey.get(requestKey);
@@ -2932,7 +2945,7 @@ export const LearningResourceGenerator = ({
     if (sourceEntries.length === 0) return '';
     const sectionColumns = resolveSectionColumnsForSnapshot(section);
     const currentSnapshot = buildComparableRowSnapshot(sectionColumns, row);
-    const isPromesMonthWeekSection = programCode === 'PROMES' && Boolean(buildMonthWeekColumnLayout(sectionColumns));
+    const isPromesMonthWeekSection = isActiveProgramMonthWeekPromes && Boolean(buildMonthWeekColumnLayout(sectionColumns));
     const targetSemesterLabel = isPromesMonthWeekSection
       ? resolveSemesterLabel(resolveMonthWeekSemesterFromSection(section, activeAcademicYear?.semester)).toLowerCase()
       : '';
@@ -2997,7 +3010,7 @@ export const LearningResourceGenerator = ({
     const nextSections = sourceSections.map((section) => {
       const columns = resolveSectionColumnsForSnapshot(section);
       if (columns.length === 0 || section.rows.length === 0) return section;
-      const isPromesMonthWeekSection = programCode === 'PROMES' && Boolean(buildMonthWeekColumnLayout(columns));
+      const isPromesMonthWeekSection = isActiveProgramMonthWeekPromes && Boolean(buildMonthWeekColumnLayout(columns));
       const nextRows = section.rows.map((row, rowIndex) => {
         let nextValues = row.values;
         Object.entries(row.referenceSelections || {}).forEach(([selectionKey, selection]) => {
@@ -4166,7 +4179,7 @@ export const LearningResourceGenerator = ({
     const readOnly = isSystemManagedColumn(column);
     const centerAligned = isCenterAlignedTableColumn(column);
     const isMonthWeekReferenceCell =
-      programCode === 'PROMES' &&
+      isActiveProgramMonthWeekPromes &&
       Boolean(buildMonthWeekColumnLayout(section.columns)) &&
       getColumnIdentityCandidates(column).includes('tujuan_pembelajaran');
     const focusKey =
