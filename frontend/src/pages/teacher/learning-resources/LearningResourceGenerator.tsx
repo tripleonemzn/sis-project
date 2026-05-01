@@ -497,6 +497,11 @@ const buildDefaultSections = (programMeta: TeachingResourceProgram | null): Entr
   return generated.length ? generated : [createSection()];
 };
 
+const getRawCellValueForStorage = (key: string, value: unknown): string => {
+  const rawValue = String(value ?? '').replace(/\r\n/g, '\n');
+  return parseMonthWeekColumnKey(key) ? rawValue : rawValue.trim();
+};
+
 const parseEntrySections = (
   entry: TeachingResourceEntry,
   defaultSections: EntrySectionForm[],
@@ -532,7 +537,7 @@ const parseEntrySections = (
               (acc, [key, value]) => {
                 const normalizedKey = String(key || '').trim();
                 if (!normalizedKey) return acc;
-                acc[normalizedKey] = String(value ?? '').trim();
+                acc[normalizedKey] = getRawCellValueForStorage(normalizedKey, value);
                 return acc;
               },
               {},
@@ -1539,6 +1544,14 @@ const buildMonthWeekColumnLayout = <TColumn extends { key?: unknown }>(
   return { leadingColumns, weekGroups, trailingColumns };
 };
 
+const PROMES_MONTH_WEEK_HIDDEN_COLUMN_KEYS = new Set(['keterangan', 'ket', 'catatan']);
+
+const isPromesMonthWeekHiddenColumn = (column: { key?: unknown; label?: unknown }): boolean => {
+  const key = String(column.key || '').trim().toLowerCase();
+  const label = String(column.label || '').trim().toLowerCase();
+  return PROMES_MONTH_WEEK_HIDDEN_COLUMN_KEYS.has(key) || PROMES_MONTH_WEEK_HIDDEN_COLUMN_KEYS.has(label);
+};
+
 const expandMonthWeekColumnsByCalendar = <TColumn extends { key?: unknown; label?: unknown }>(
   columns: TColumn[],
   academicYear: AcademicYearDateLike | null | undefined,
@@ -2109,6 +2122,7 @@ export const LearningResourceGenerator = ({
   const [quickEditSections, setQuickEditSections] = useState<EntrySectionForm[]>([]);
   const quickEditSectionsRef = useRef<EntrySectionForm[]>([]);
   const quickEditCellRefs = useRef<Record<string, HTMLTextAreaElement | HTMLInputElement | null>>({});
+  const monthWeekClickTimersRef = useRef<Record<string, number>>({});
   const [quickEditActiveSectionId, setQuickEditActiveSectionId] = useState('');
   const [monthWeekNoteModal, setMonthWeekNoteModal] = useState<{
     mode: 'quick' | 'editor';
@@ -2127,6 +2141,13 @@ export const LearningResourceGenerator = ({
     element.style.height = 'auto';
     element.style.height = `${Math.max(element.scrollHeight, 42)}px`;
   };
+  useEffect(
+    () => () => {
+      Object.values(monthWeekClickTimersRef.current).forEach((timer) => window.clearTimeout(timer));
+      monthWeekClickTimersRef.current = {};
+    },
+    [],
+  );
   const programCode = useMemo(() => normalizeProgramCode(type), [type]);
   const isPageEditor = editorMode === 'create';
   const resolvedRouteSlug = useMemo(() => {
@@ -2239,13 +2260,14 @@ export const LearningResourceGenerator = ({
     return derivedSections
       .map((section) => {
         const normalizedColumns = sanitizeSectionColumns(resolveSectionColumns(section));
+        const allowedColumnKeys = new Set(normalizedColumns.map((column) => String(column.key || '').trim()).filter(Boolean));
         const normalizedRows = section.rows
           .map((row) => {
             const values = Object.entries(row.values || {}).reduce<Record<string, string>>((acc, [key, value]) => {
               const normalizedKey = String(key || '').trim();
               if (!normalizedKey) return acc;
-              const rawValue = String(value ?? '').replace(/\r\n/g, '\n');
-              acc[normalizedKey] = parseMonthWeekColumnKey(normalizedKey) ? rawValue : rawValue.trim();
+              if (allowedColumnKeys.size > 0 && !allowedColumnKeys.has(normalizedKey)) return acc;
+              acc[normalizedKey] = getRawCellValueForStorage(normalizedKey, value);
               return acc;
             }, {});
             return Object.values(values).some((value) => value) ? values : null;
@@ -2451,7 +2473,9 @@ export const LearningResourceGenerator = ({
   ): EntrySectionColumnForm[] => {
     if (programCode !== 'PROMES' || !buildMonthWeekColumnLayout(columns)) return columns;
     const semester = resolveMonthWeekSemesterFromSection(section, activeAcademicYear?.semester);
-    return expandMonthWeekColumnsByCalendar(columns, activeAcademicYear, semester);
+    return expandMonthWeekColumnsByCalendar(columns, activeAcademicYear, semester).filter(
+      (column) => !isPromesMonthWeekHiddenColumn(column),
+    );
   };
   const referenceProjectionRequests = useMemo<TeachingResourceReferenceProjectionRequest[]>(() => {
     const requests: TeachingResourceReferenceProjectionRequest[] = [];
@@ -3486,7 +3510,9 @@ export const LearningResourceGenerator = ({
     const key = String(columnKey || '').toLowerCase();
     const normalizedDataType = String(dataType || 'TEXT').toUpperCase();
     if (normalizedDataType === 'WEEK_GRID') return 'w-[320px] min-w-[300px]';
-    if (parseMonthWeekColumnKey(key)) return 'w-9 min-w-[34px]';
+    if (parseMonthWeekColumnKey(key)) return 'w-8 min-w-[30px]';
+    if (['no', 'nomor'].includes(key)) return 'w-16 min-w-[56px]';
+    if (key.includes('alokasi') || key.includes('jp')) return 'w-20 min-w-[78px]';
     if (['MONTH', 'WEEK', 'SEMESTER', 'NUMBER', 'BOOLEAN'].includes(normalizedDataType)) return 'w-28 min-w-[112px]';
     if (['no', 'bulan', 'semester', 'minggu_ke'].includes(key)) return 'w-24 min-w-[96px]';
     if (
@@ -3789,6 +3815,28 @@ export const LearningResourceGenerator = ({
     });
   };
 
+  const buildMonthWeekClickKey = (
+    scope: 'quick' | 'editor',
+    sectionId: string,
+    rowId: string,
+    columnKey: string,
+    lineIndex: number,
+  ) => `${scope}:${sectionId}:${rowId}:${columnKey}:${lineIndex}`;
+
+  const clearMonthWeekClickTimer = (key: string) => {
+    const timer = monthWeekClickTimersRef.current[key];
+    if (timer) window.clearTimeout(timer);
+    delete monthWeekClickTimersRef.current[key];
+  };
+
+  const scheduleMonthWeekToggle = (key: string, action: () => void) => {
+    clearMonthWeekClickTimer(key);
+    monthWeekClickTimersRef.current[key] = window.setTimeout(() => {
+      delete monthWeekClickTimersRef.current[key];
+      action();
+    }, 220);
+  };
+
   const renderQuickMonthWeekCellControl = (
     section: EntrySectionForm,
     row: EntrySectionForm['rows'][number] | undefined,
@@ -3799,22 +3847,30 @@ export const LearningResourceGenerator = ({
   ) => {
     const checked = isTruthyMark(value);
     const note = checked ? '' : String(value || '').trim();
+    const clickKey = row?.id ? buildMonthWeekClickKey('quick', section.id, row.id, columnKey, lineIndex) : '';
     return (
       <button
         type="button"
         disabled={readOnly || !row?.id}
         title="Klik untuk ceklis/kosong. Klik dua kali atau klik kanan untuk isi keterangan libur/kegiatan."
-        onClick={() => (row?.id ? toggleQuickEditRowLineMark(section.id, row.id, columnKey, lineIndex, value) : null)}
+        onClick={() => {
+          if (!row?.id || !clickKey) return;
+          scheduleMonthWeekToggle(clickKey, () =>
+            toggleQuickEditRowLineMark(section.id, row.id, columnKey, lineIndex, value),
+          );
+        }}
         onDoubleClick={(event) => {
           event.preventDefault();
           event.stopPropagation();
+          if (clickKey) clearMonthWeekClickTimer(clickKey);
           if (row?.id) promptQuickEditMonthWeekText(section.id, row.id, columnKey, lineIndex, value);
         }}
         onContextMenu={(event) => {
           event.preventDefault();
+          if (clickKey) clearMonthWeekClickTimer(clickKey);
           if (row?.id) promptQuickEditMonthWeekText(section.id, row.id, columnKey, lineIndex, value);
         }}
-        className={`inline-flex min-h-[54px] w-8 items-center justify-center rounded-md border px-0.5 py-1 text-[10px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
+        className={`inline-flex min-h-[50px] w-7 items-center justify-center rounded-md border px-0.5 py-1 text-[10px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
           checked
             ? 'border-emerald-400 bg-emerald-50 text-emerald-700'
             : note
@@ -4562,22 +4618,28 @@ export const LearningResourceGenerator = ({
   ) => {
     const checked = isTruthyMark(value);
     const note = checked ? '' : String(value || '').trim();
+    const clickKey = row?.id ? buildMonthWeekClickKey('editor', section.id, row.id, columnKey, 0) : '';
     return (
       <button
         type="button"
         disabled={readOnly || !row?.id}
         title="Klik untuk ceklis/kosong. Klik dua kali atau klik kanan untuk isi keterangan libur/kegiatan."
-        onClick={() => (row?.id ? toggleSectionRowMark(section.id, row.id, columnKey) : null)}
+        onClick={() => {
+          if (!row?.id || !clickKey) return;
+          scheduleMonthWeekToggle(clickKey, () => toggleSectionRowMark(section.id, row.id, columnKey));
+        }}
         onDoubleClick={(event) => {
           event.preventDefault();
           event.stopPropagation();
+          if (clickKey) clearMonthWeekClickTimer(clickKey);
           if (row?.id) promptSectionMonthWeekText(section.id, row.id, columnKey, value);
         }}
         onContextMenu={(event) => {
           event.preventDefault();
+          if (clickKey) clearMonthWeekClickTimer(clickKey);
           if (row?.id) promptSectionMonthWeekText(section.id, row.id, columnKey, value);
         }}
-        className={`inline-flex min-h-[54px] w-8 items-center justify-center rounded-md border px-0.5 py-1 text-[10px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
+        className={`inline-flex min-h-[50px] w-7 items-center justify-center rounded-md border px-0.5 py-1 text-[10px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
           checked
             ? 'border-emerald-400 bg-emerald-50 text-emerald-700'
             : note
@@ -5292,7 +5354,7 @@ export const LearningResourceGenerator = ({
   };
 
   const renderSectionTableHtml = (section: EntrySectionForm): string => {
-    const schemaColumns = resolveSectionColumns(section);
+    const schemaColumns = applyMonthWeekCalendarColumns(section, resolveSectionColumns(section));
     const rows = Array.isArray(section.rows) ? section.rows : [];
     if (rows.length === 0) return '<p style="margin:0;color:#64748b;">-</p>';
 
@@ -5321,6 +5383,17 @@ export const LearningResourceGenerator = ({
         ...monthWeekLayout.weekGroups.flatMap((group) => group.columns.map((item) => item.column)),
         ...monthWeekLayout.trailingColumns,
       ];
+      const getMonthWeekPrintColumnWidth = (header: { key: string; label: string; column?: EntrySectionColumnForm }) => {
+        const key = String(header.key || '').trim().toLowerCase();
+        if (parseMonthWeekColumnKey(key)) return '5.8mm';
+        if (['no', 'nomor'].includes(key)) return '9mm';
+        if (key.includes('alokasi') || key.includes('jp') || key.includes('waktu')) return '13mm';
+        if (key.includes('tujuan') || key.includes('pembelajaran')) return '78mm';
+        return '18mm';
+      };
+      const colgroup = `<colgroup>${orderedHeaders
+        .map((header) => `<col style="width:${getMonthWeekPrintColumnWidth(header)};" />`)
+        .join('')}</colgroup>`;
       const firstHeaderRow = `<tr>${monthWeekLayout.leadingColumns
         .map((header) => {
           const classAttribute = renderPrintClassAttribute(getPrintColumnClassName(header.column));
@@ -5385,7 +5458,7 @@ export const LearningResourceGenerator = ({
         })
         .join('');
 
-      return `<div class="table-wrap month-week-table-wrap"><table class="print-month-week-table"><thead>${firstHeaderRow}${secondHeaderRow}</thead><tbody>${tbody}</tbody></table></div>`;
+      return `<div class="table-wrap month-week-table-wrap"><table class="print-month-week-table">${colgroup}<thead>${firstHeaderRow}${secondHeaderRow}</thead><tbody>${tbody}</tbody></table></div>`;
     }
 
     const thead = `<tr>${headers
@@ -5590,11 +5663,11 @@ export const LearningResourceGenerator = ({
           }
           .print-month-week-table {
             table-layout: fixed;
-            font-size: 9px;
+            font-size: 8.5px;
           }
           .print-month-week-table th,
           .print-month-week-table td {
-            padding: 3px 4px;
+            padding: 2px 3px;
           }
           .print-month-group-header,
           .print-week-number-header {
@@ -5603,17 +5676,17 @@ export const LearningResourceGenerator = ({
             white-space: nowrap;
           }
           .print-month-week-column {
-            width: 18px;
-            min-width: 18px;
-            max-width: 18px;
+            width: 5.8mm;
+            min-width: 5.8mm;
+            max-width: 5.8mm;
             padding-left: 0;
             padding-right: 0;
             text-align: center;
           }
           .print-month-week-cell {
-            height: 22px;
-            min-width: 18px;
-            max-width: 18px;
+            height: 18px;
+            min-width: 5.8mm;
+            max-width: 5.8mm;
             padding: 0;
           }
           .print-month-week-cell.is-active {
@@ -5626,12 +5699,12 @@ export const LearningResourceGenerator = ({
           }
           .month-week-cell-text {
             display: inline-block;
-            max-height: 92px;
+            max-height: 72px;
             writing-mode: vertical-rl;
             transform: rotate(180deg);
             overflow: hidden;
             text-align: center;
-            font-size: 9px;
+            font-size: 7px;
             font-weight: 600;
           }
           .week-grid-print {

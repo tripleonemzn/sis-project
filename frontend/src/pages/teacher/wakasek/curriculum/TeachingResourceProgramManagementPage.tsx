@@ -1683,6 +1683,32 @@ function createDefaultDraft(seed: number): CreateProgramDraft {
   };
 }
 
+const MONTH_WEEK_SCHEMA_MONTH_KEYS = new Set([
+  'januari',
+  'februari',
+  'maret',
+  'april',
+  'mei',
+  'juni',
+  'juli',
+  'agustus',
+  'september',
+  'oktober',
+  'november',
+  'nopember',
+  'desember',
+]);
+
+function isMonthWeekSchemaColumnKey(key: unknown): boolean {
+  const match = String(key || '')
+    .trim()
+    .toLowerCase()
+    .match(/^([a-z]+)_(\d{1,2})$/);
+  if (!match) return false;
+  const weekNumber = Number(match[2]);
+  return MONTH_WEEK_SCHEMA_MONTH_KEYS.has(match[1]) && Number.isInteger(weekNumber) && weekNumber >= 1 && weekNumber <= 6;
+}
+
 function inferBlueprintMode(schema?: TeachingResourceProgramSchema): ProgramBlueprintMode {
   const sections = Array.isArray(schema?.sections) ? schema?.sections : [];
   if (sections.length === 0) return 'FREEFORM';
@@ -1691,8 +1717,11 @@ function inferBlueprintMode(schema?: TeachingResourceProgramSchema): ProgramBlue
   const hasTextSection = sections.some((section) => section.editorType === 'TEXT');
   const allColumns = tableSections.flatMap((section) => section.columns || []);
   const dataTypes = new Set(allColumns.map((column) => column.dataType || 'TEXT'));
+  const sourceSheet = normalizeTeachingResourceProgramCode(schema?.sourceSheet || '');
+  const hasMonthWeekColumns = allColumns.some((column) => isMonthWeekSchemaColumnKey(column.key));
 
   if (dataTypes.has('WEEK_GRID')) return 'MATRIX_GRID';
+  if (sourceSheet === 'PROMES' || sourceSheet === 'PROSEM' || hasMonthWeekColumns) return 'TIME_DISTRIBUTION';
   if (dataTypes.has('MONTH') || dataTypes.has('WEEK') || dataTypes.has('SEMESTER')) return 'TIME_DISTRIBUTION';
   if (hasTextSection && tableSections.length > 0) return 'RICH_MIXED';
   if (tableSections.some((section) => section.repeatable) || tableSections.some((section) => (section.columns || []).length >= 5)) {
