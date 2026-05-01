@@ -5,12 +5,12 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-05-01 22:33 WIB
-- Current status: follow-up regresi quick table Promes selesai. Kolom `Tujuan Pembelajaran` pada tabel cepat Promes tidak lagi menampilkan dropdown/pesan `Isi Program Tahunan dulu` saat referensi belum siap, kolom teks pembelajaran dikunci rata kiri agar tidak ikut center, dan teks catatan minggu pada print dibuat satu blok vertikal tanpa wrap agar hasil merge lebih konsisten dengan tabel view.
+- Last updated: 2026-05-01 22:52 WIB
+- Current status: follow-up regresi Promes selesai. Engine referensi sekarang membaca nilai sumber yang tersimpan melalui `referenceSelections`, sehingga Prota yang berisi pilihan dari ATP/CP tetap bisa menjadi sumber Promes. Promes juga memfilter sumber berdasarkan semester section, kolom TP Promes tampil sebagai nilai referensi read-only, dan print hanya merge kotak minggu yang memang punya catatan merge.
 - Objective/task aktif:
   - Melanjutkan pengembangan perangkat ajar dinamis setelah polish tab remedial dan editor tabel guru.
 - Batch terakhir selesai:
-  - `Perangkat ajar follow-up - Promes quick grid regression cleanup`
+  - `Perangkat ajar follow-up - Promes source and print merge alignment`
 - Progress fitur remedial keseluruhan:
   - `100%`
 - Progress presensi terpadu saat ini:
@@ -26,12 +26,14 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
-  - Commit: `0055857`
-  - Title: `fix(teaching-resources): clean promes quick grid regressions`
+  - Commit: `321e96e`
+  - Title: `fix(teaching-resources): align promes source merge behavior`
   - Summary:
-    - quick table Promes tidak lagi merender kolom `Tujuan Pembelajaran` sebagai dropdown sumber saat tidak ada opsi referensi yang cocok; field tetap tampil sebagai teks langsung dan editable
-    - kolom teks pembelajaran seperti `Tujuan Pembelajaran`, `Capaian Pembelajaran`, `Elemen`, `Kompetensi`, `Konten/Materi`, dan `Dimensi Profil` dipaksa rata kiri sehingga tidak terdampak alignment angka/JP
-    - print Promes menampilkan catatan minggu hasil merge sebagai teks vertikal satu baris tanpa wrap agar tidak pecah/nabrak kotak minggu
+    - sumber referensi dari dokumen lain kini memasukkan nilai `referenceSelections`, bukan hanya nilai mentah di row, sehingga Prota yang memakai pilihan ATP tetap terbaca sebagai sumber Promes
+    - Promes memfilter sumber berdasarkan semester section dan memaksa sinkronisasi kolom `Tujuan Pembelajaran`/`Alokasi JP` dari sumber yang sesuai
+    - quick table Promes menampilkan TP sebagai nilai referensi read-only agar tidak terlihat seperti input manual
+    - print Promes tidak lagi memberi `rowspan` ke semua kotak minggu kosong; hanya kotak minggu yang benar-benar punya catatan merge yang digabung
+    - teks catatan minggu pada table view dan print dibuat tidak terpotong agar keterangan merge terbaca utuh
 - Area/file disentuh:
   - `frontend/src/pages/teacher/learning-resources/LearningResourceGenerator.tsx`
   - `docs/CODEX_CONTINUITY.md`
