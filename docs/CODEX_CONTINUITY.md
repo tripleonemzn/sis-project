@@ -5,12 +5,12 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-05-01 18:05 WIB
-- Current status: follow-up perangkat ajar selesai. Program Semester/Promes sekarang memakai referensi TP per baris dari dokumen sumber, JP/alokasi otomatis ikut snapshot referensi dan dikunci agar tidak tampak sebagai input manual, jumlah minggu per bulan dibentuk otomatis dari tanggal semester tahun ajaran aktif, serta cell minggu bisa dicentang atau diberi keterangan libur/kegiatan lewat modal dengan output print vertikal.
+- Last updated: 2026-05-01 18:29 WIB
+- Current status: follow-up perangkat ajar selesai. UI inline Promes sudah dirapikan: tab semester/tabel memakai `UnderlineTabBar` standar, kotak search referensi inline pada cell TP Promes dihapus agar tabel tidak penuh, dan bug simpan keterangan minggu diperbaiki dengan menjaga line index cell minggu baik di state cepat maupun payload simpan tabel.
 - Objective/task aktif:
   - Melanjutkan pengembangan perangkat ajar dinamis setelah polish tab remedial dan editor tabel guru.
 - Batch terakhir selesai:
-  - `Perangkat ajar follow-up - Promes reference scheduling polish`
+  - `Perangkat ajar follow-up - Promes inline editing polish`
 - Progress fitur remedial keseluruhan:
   - `100%`
 - Progress presensi terpadu saat ini:
@@ -26,13 +26,13 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
-  - Commit: `f916212`
-  - Title: `fix(teaching-resources): refine promes reference scheduling`
+  - Commit: `0f15a94`
+  - Title: `fix(teaching-resources): polish promes inline editing`
   - Summary:
-    - opsi referensi TP Promes dari ATP/PROTA dipecah menjadi baris TP individual, bukan label agregat panjang
-    - snapshot JP/alokasi, dimensi, dan kolom terkait mengikuti baris referensi yang dipilih
-    - cell minggu pada Promes bisa dicentang per baris TP dan bisa diisi keterangan libur/kegiatan melalui modal
-    - print Promes menampilkan keterangan minggu secara vertikal dan jumlah minggu per bulan mengikuti kalender semester aktif secara dinamis
+    - tab section/tabel Promes di editor cepat guru diganti ke `UnderlineTabBar` standar project
+    - input pencarian referensi inline pada dropdown TP Promes dihapus khusus tampilan tabel cepat
+    - update cell minggu sekarang mem-padding line sebelum menyimpan, sehingga keterangan pada baris TP ke-2/ke-3 tidak hilang
+    - payload simpan tabel mempertahankan newline pada kolom bulan-minggu agar posisi keterangan tetap sesuai baris TP setelah reload
 - Area/file disentuh:
   - `frontend/src/pages/teacher/learning-resources/LearningResourceGenerator.tsx`
   - `docs/CODEX_CONTINUITY.md`
