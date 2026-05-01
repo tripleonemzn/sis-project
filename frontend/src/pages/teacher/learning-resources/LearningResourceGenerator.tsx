@@ -97,6 +97,27 @@ type ReferenceProgramMeta = {
   loaded: number;
 };
 
+type MonthWeekColumnMeta = {
+  monthKey: string;
+  monthLabel: string;
+  weekNumber: number;
+};
+
+type MonthWeekColumnGroup<TColumn> = {
+  monthKey: string;
+  monthLabel: string;
+  columns: Array<{
+    column: TColumn;
+    weekNumber: number;
+  }>;
+};
+
+type MonthWeekColumnLayout<TColumn> = {
+  leadingColumns: TColumn[];
+  weekGroups: Array<MonthWeekColumnGroup<TColumn>>;
+  trailingColumns: TColumn[];
+};
+
 type OutletUser = {
   id?: number;
   role?: string;
@@ -845,12 +866,73 @@ const resolveBestReferenceSource = (
 const normalizeTeacherReferenceSections = (
   sections: TeachingResourceProgramSectionSchema[],
   programMetaByCode: Map<string, TeachingResourceProgram>,
+  currentProgramCode = '',
 ): TeachingResourceProgramSectionSchema[] =>
   sections.map((section) => {
     const columns = ensureArray<TeachingResourceProgramColumnSchema>(section.columns);
     if ((section.editorType || 'TABLE') !== 'TABLE' || columns.length === 0) return section;
 
     let nextColumns = columns.map((column) => ({ ...column, binding: column.binding ? { ...column.binding } : undefined }));
+    const normalizedCurrentProgramCode = normalizeTeachingResourceProgramCode(currentProgramCode);
+    const hasMonthWeekLayout = Boolean(buildMonthWeekColumnLayout(nextColumns));
+    if (normalizedCurrentProgramCode === 'PROMES' && hasMonthWeekLayout) {
+      const preferredSourceProgramCode = programMetaByCode.has('ATP')
+        ? 'ATP'
+        : programMetaByCode.has('PROTA')
+          ? 'PROTA'
+          : '';
+      if (preferredSourceProgramCode) {
+        nextColumns = nextColumns.map((column) => {
+          const candidates = getColumnIdentityCandidates(column);
+          if (candidates.includes('tujuan_pembelajaran') && !isDocumentReferencePickerColumn(column)) {
+            return {
+              ...column,
+              sourceType: 'DOCUMENT_REFERENCE' as const,
+              valueSource: 'MANUAL' as const,
+              readOnly: false,
+              teacherEditMode: 'TEACHER_EDITABLE' as const,
+              binding: {
+                ...(column.binding || {}),
+                sourceProgramCode: preferredSourceProgramCode,
+                sourceFieldIdentity: 'tujuan_pembelajaran',
+                sourceDocumentFieldIdentity: 'tujuan_pembelajaran',
+                filterByContext: true,
+                matchBySubject: true,
+                matchByClassLevel: true,
+                matchByMajor: true,
+                matchByActiveSemester: false,
+                selectionMode: 'PICK_SINGLE',
+                syncMode: 'SNAPSHOT_ON_SELECT',
+              },
+            };
+          }
+          if (candidates.includes('alokasi_jp')) {
+            return {
+              ...column,
+              sourceType: 'DOCUMENT_SNAPSHOT' as const,
+              valueSource: 'BOUND' as const,
+              readOnly: false,
+              teacherEditMode: 'TEACHER_EDITABLE' as const,
+              binding: {
+                ...(column.binding || {}),
+                sourceProgramCode: preferredSourceProgramCode,
+                sourceFieldIdentity: 'alokasi_jp',
+                sourceDocumentFieldIdentity: 'alokasi_jp',
+                filterByContext: true,
+                matchBySubject: true,
+                matchByClassLevel: true,
+                matchByMajor: true,
+                matchByActiveSemester: false,
+                selectionMode: 'PICK_SINGLE',
+                syncMode: 'SNAPSHOT_ON_SELECT',
+                allowManualOverride: true,
+              },
+            };
+          }
+          return column;
+        });
+      }
+    }
     const hasReferencePicker = nextColumns.some(isDocumentReferencePickerColumn);
 
     if (!hasReferencePicker) {
@@ -1199,6 +1281,13 @@ const formatCellPrintHtml = (value: unknown, column?: EntrySectionColumnForm): s
   return formatMultilineHtml(rawValue);
 };
 
+const formatMonthWeekPrintCellHtml = (value: unknown): string => {
+  const rawValue = String(value ?? '').trim();
+  if (!rawValue) return '';
+  if (isTruthyMark(rawValue)) return '';
+  return `<span class="month-week-cell-text">${formatMultilineHtml(rawValue)}</span>`;
+};
+
 const resolveSemesterLabel = (semester: unknown): string => {
   const token = String(semester || '').trim().toUpperCase();
   if (!token) return '';
@@ -1222,6 +1311,71 @@ const WEEK_COLUMN_PREFIXES = [
   'nopember_',
   'desember_',
 ];
+
+const MONTH_WEEK_COLUMN_LABELS: Record<string, string> = {
+  januari: 'Januari',
+  februari: 'Februari',
+  maret: 'Maret',
+  april: 'April',
+  mei: 'Mei',
+  juni: 'Juni',
+  juli: 'Juli',
+  agustus: 'Agustus',
+  september: 'September',
+  oktober: 'Oktober',
+  nopember: 'November',
+  november: 'November',
+  desember: 'Desember',
+};
+
+const parseMonthWeekColumnKey = (columnKey: unknown): MonthWeekColumnMeta | null => {
+  const key = String(columnKey || '').trim().toLowerCase();
+  const match = key.match(/^([a-z]+)_(\d{1,2})$/);
+  if (!match) return null;
+  const monthKey = match[1];
+  const monthLabel = MONTH_WEEK_COLUMN_LABELS[monthKey];
+  const weekNumber = Number(match[2]);
+  if (!monthLabel || !Number.isInteger(weekNumber) || weekNumber < 1 || weekNumber > 6) return null;
+  return { monthKey, monthLabel, weekNumber };
+};
+
+const buildMonthWeekColumnLayout = <TColumn extends { key?: unknown }>(
+  columns: TColumn[],
+): MonthWeekColumnLayout<TColumn> | null => {
+  const leadingColumns: TColumn[] = [];
+  const trailingColumns: TColumn[] = [];
+  const weekGroups: Array<MonthWeekColumnGroup<TColumn>> = [];
+  let hasSeenWeekColumn = false;
+
+  columns.forEach((column) => {
+    const parsed = parseMonthWeekColumnKey(column.key);
+    if (!parsed) {
+      if (hasSeenWeekColumn) {
+        trailingColumns.push(column);
+      } else {
+        leadingColumns.push(column);
+      }
+      return;
+    }
+
+    hasSeenWeekColumn = true;
+    const existingGroup = weekGroups.find((group) => group.monthKey === parsed.monthKey);
+    if (existingGroup) {
+      existingGroup.columns.push({ column, weekNumber: parsed.weekNumber });
+      return;
+    }
+
+    weekGroups.push({
+      monthKey: parsed.monthKey,
+      monthLabel: parsed.monthLabel,
+      columns: [{ column, weekNumber: parsed.weekNumber }],
+    });
+  });
+
+  const weekColumnCount = weekGroups.reduce((total, group) => total + group.columns.length, 0);
+  if (weekGroups.length === 0 || weekColumnCount < 2) return null;
+  return { leadingColumns, weekGroups, trailingColumns };
+};
 
 const isWeekColumnKey = (columnKey: string): boolean => {
   const key = String(columnKey || '').trim().toLowerCase();
@@ -1294,6 +1448,7 @@ const CENTER_ALIGNED_REFERENCE_IDENTITIES = new Set([
 
 const isCenterAlignedTableColumn = (column?: Partial<EntrySectionColumnForm> | null): boolean => {
   const dataType = getColumnDataType(column);
+  if (isWeekColumnKey(String(column?.key || ''))) return true;
   if (['NUMBER', 'BOOLEAN', 'WEEK', 'SEMESTER', 'MONTH', 'WEEK_GRID'].includes(dataType)) return true;
   return getColumnIdentityCandidates(column).some((candidate) => CENTER_ALIGNED_REFERENCE_IDENTITIES.has(candidate));
 };
@@ -1342,6 +1497,7 @@ const getPrintColumnClassName = (column?: EntrySectionColumnForm): string => {
   const dataType = getColumnDataType(column);
   const classes: string[] = [];
   if (dataType === 'WEEK_GRID') classes.push('print-week-grid-column');
+  if (isWeekColumnKey(String(column?.key || ''))) classes.push('print-month-week-column');
   if (['NUMBER', 'BOOLEAN', 'WEEK', 'SEMESTER', 'MONTH'].includes(dataType) || isCenterAlignedTableColumn(column)) {
     classes.push('print-compact-column');
   }
@@ -1796,7 +1952,7 @@ export const LearningResourceGenerator = ({
       ...rawActiveProgramMeta,
       schema: {
         ...rawActiveProgramMeta.schema,
-        sections: normalizeTeacherReferenceSections(schemaSections, programMetaByCode),
+        sections: normalizeTeacherReferenceSections(schemaSections, programMetaByCode, rawActiveProgramMeta.code),
       },
     };
   }, [programMetaByCode, rawActiveProgramMeta]);
@@ -3087,6 +3243,7 @@ export const LearningResourceGenerator = ({
     const key = String(columnKey || '').toLowerCase();
     const normalizedDataType = String(dataType || 'TEXT').toUpperCase();
     if (normalizedDataType === 'WEEK_GRID') return 'w-[320px] min-w-[300px]';
+    if (parseMonthWeekColumnKey(key)) return 'w-9 min-w-[34px]';
     if (['MONTH', 'WEEK', 'SEMESTER', 'NUMBER', 'BOOLEAN'].includes(normalizedDataType)) return 'w-28 min-w-[112px]';
     if (['no', 'bulan', 'semester', 'minggu_ke'].includes(key)) return 'w-24 min-w-[96px]';
     if (
@@ -4393,6 +4550,237 @@ export const LearningResourceGenerator = ({
     );
   };
 
+  const renderQuickEditMonthWeekTable = (
+    section: EntrySectionForm,
+    columns: EntrySectionColumnForm[],
+    rows: EntrySectionRowForm[],
+  ) => {
+    const layout = buildMonthWeekColumnLayout(columns);
+    if (!layout) return null;
+    const orderedColumns = [
+      ...layout.leadingColumns,
+      ...layout.weekGroups.flatMap((group) => group.columns.map((item) => item.column)),
+      ...layout.trailingColumns,
+    ];
+
+    return (
+      <div className="mt-3 overflow-x-auto rounded-lg border border-slate-300">
+        <table className="min-w-max border-collapse text-xs">
+          <thead className="bg-slate-100">
+            <tr>
+              {layout.leadingColumns.map((column) => (
+                <th
+                  key={`quick-month-head-main-${section.id}-${column.key}`}
+                  rowSpan={2}
+                  className={`border border-slate-300 px-2 py-2 text-center text-[11px] font-semibold uppercase leading-snug text-slate-700 ${getColumnWidthClass(
+                    column.key,
+                    Boolean(column.multiline),
+                    column.dataType,
+                  )}`}
+                >
+                  {column.label}
+                </th>
+              ))}
+              {layout.weekGroups.map((group) => (
+                <th
+                  key={`quick-month-head-group-${section.id}-${group.monthKey}`}
+                  colSpan={group.columns.length}
+                  className="border border-slate-300 bg-slate-50 px-1 py-2 text-center text-[11px] font-semibold uppercase leading-snug text-slate-700"
+                >
+                  {group.monthLabel}
+                </th>
+              ))}
+              {layout.trailingColumns.map((column) => (
+                <th
+                  key={`quick-month-head-tail-${section.id}-${column.key}`}
+                  rowSpan={2}
+                  className={`border border-slate-300 px-2 py-2 text-center text-[11px] font-semibold uppercase leading-snug text-slate-700 ${getColumnWidthClass(
+                    column.key,
+                    Boolean(column.multiline),
+                    column.dataType,
+                  )}`}
+                >
+                  {column.label}
+                </th>
+              ))}
+            </tr>
+            <tr>
+              {layout.weekGroups.flatMap((group) =>
+                group.columns.map((item) => (
+                  <th
+                    key={`quick-month-head-week-${section.id}-${group.monthKey}-${item.weekNumber}`}
+                    className="w-9 border border-slate-300 px-1 py-1 text-center text-[10px] font-semibold text-slate-600"
+                  >
+                    {item.weekNumber}
+                  </th>
+                )),
+              )}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => {
+              const lineCounts = orderedColumns.map((column) =>
+                splitEditableCellLines(row.values[String(column.key || '').trim()]).length,
+              );
+              const maxLineCount = Math.max(1, ...lineCounts);
+              return Array.from({ length: maxLineCount }).map((_, lineIndex) => (
+                <tr key={`quick-month-row-${row.id}-${lineIndex}`} className="border-b border-slate-100 last:border-b-0">
+                  {orderedColumns.map((column) => {
+                    const columnKey = String(column.key || '').trim();
+                    const cellLines = splitEditableCellLines(row.values[columnKey]);
+                    if (cellLines.length <= 1 && lineIndex > 0) return null;
+                    if (cellLines.length > 1 && lineIndex >= cellLines.length) {
+                      return (
+                        <td
+                          key={`quick-month-cell-empty-${row.id}-${columnKey}-${lineIndex}`}
+                          className={`border border-slate-200 px-1 py-1 align-middle ${getColumnWidthClass(
+                            column.key,
+                            Boolean(column.multiline),
+                            column.dataType,
+                          )}`}
+                        />
+                      );
+                    }
+                    const rowSpan = cellLines.length <= 1 && maxLineCount > 1 ? maxLineCount : undefined;
+                    const isMonthWeekColumn = Boolean(parseMonthWeekColumnKey(columnKey));
+                    return (
+                      <td
+                        key={`quick-month-cell-${row.id}-${columnKey}-${lineIndex}`}
+                        rowSpan={rowSpan}
+                        className={`border border-slate-200 px-1 py-1 ${
+                          isMonthWeekColumn ? 'w-9 align-middle' : 'align-top'
+                        } ${isCenterAlignedTableColumn(column) ? 'text-center' : ''} ${getColumnWidthClass(
+                          column.key,
+                          Boolean(column.multiline),
+                          column.dataType,
+                        )}`}
+                      >
+                        {renderQuickEditCellControl(section, row, column, lineIndex)}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ));
+            })}
+          </tbody>
+        </table>
+      </div>
+    );
+  };
+
+  const renderSectionMonthWeekTable = (
+    section: EntrySectionForm,
+    columns: EntrySectionColumnForm[],
+    minRowCount: number,
+  ) => {
+    const layout = buildMonthWeekColumnLayout(columns);
+    if (!layout) return null;
+    const orderedColumns = [
+      ...layout.leadingColumns,
+      ...layout.weekGroups.flatMap((group) => group.columns.map((item) => item.column)),
+      ...layout.trailingColumns,
+    ];
+
+    return (
+      <div className="overflow-x-auto rounded-md border border-gray-200">
+        <table className="min-w-max border-collapse text-xs">
+          <thead className="bg-gray-50">
+            <tr>
+              {layout.leadingColumns.map((column) => (
+                <th
+                  key={`month-head-main-${section.id}-${column.key}`}
+                  rowSpan={2}
+                  className={`border border-gray-200 px-2 py-1.5 text-center font-semibold text-gray-600 ${getColumnWidthClass(
+                    column.key,
+                    Boolean(column.multiline),
+                    column.dataType,
+                  )}`}
+                >
+                  {column.label}
+                </th>
+              ))}
+              {layout.weekGroups.map((group) => (
+                <th
+                  key={`month-head-group-${section.id}-${group.monthKey}`}
+                  colSpan={group.columns.length}
+                  className="border border-gray-200 bg-gray-50 px-2 py-1.5 text-center font-semibold text-gray-600"
+                >
+                  {group.monthLabel}
+                </th>
+              ))}
+              {layout.trailingColumns.map((column) => (
+                <th
+                  key={`month-head-tail-${section.id}-${column.key}`}
+                  rowSpan={2}
+                  className={`border border-gray-200 px-2 py-1.5 text-center font-semibold text-gray-600 ${getColumnWidthClass(
+                    column.key,
+                    Boolean(column.multiline),
+                    column.dataType,
+                  )}`}
+                >
+                  {column.label}
+                </th>
+              ))}
+              <th
+                rowSpan={2}
+                className="sticky right-0 border border-gray-200 bg-gray-50 px-2 py-1.5 text-right font-semibold text-gray-600"
+              >
+                Aksi
+              </th>
+            </tr>
+            <tr>
+              {layout.weekGroups.flatMap((group) =>
+                group.columns.map((item) => (
+                  <th
+                    key={`month-head-week-${section.id}-${group.monthKey}-${item.weekNumber}`}
+                    className="w-9 border border-gray-200 px-1 py-1 text-center text-[10px] font-semibold text-gray-500"
+                  >
+                    {item.weekNumber}
+                  </th>
+                )),
+              )}
+            </tr>
+          </thead>
+          <tbody>
+            {section.rows.map((row, rowIndex) => (
+              <tr key={row.id} className="border-b border-gray-100 last:border-b-0">
+                {orderedColumns.map((column) => {
+                  const columnKey = String(column.key || '').trim();
+                  const isMonthWeekColumn = Boolean(parseMonthWeekColumnKey(columnKey));
+                  return (
+                    <td
+                      key={`${row.id}-${column.key}`}
+                      className={`border border-gray-200 px-1.5 py-1.5 ${
+                        isMonthWeekColumn ? 'w-9 align-middle' : 'align-top'
+                      } ${isCenterAlignedTableColumn(column) ? 'text-center' : ''} ${getColumnWidthClass(
+                        column.key,
+                        Boolean(column.multiline),
+                        column.dataType,
+                      )}`}
+                    >
+                      {renderSectionCellControl(section, row, column, true)}
+                    </td>
+                  );
+                })}
+                <td className="sticky right-0 border border-gray-200 bg-white px-2 py-1.5 text-right align-top">
+                  <button
+                    type="button"
+                    onClick={() => removeSectionRow(section.id, row.id)}
+                    disabled={section.rows.length <= minRowCount}
+                    className="rounded-md border border-rose-200 bg-rose-50 px-2 py-1 text-[11px] font-medium text-rose-700 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Hapus
+                  </button>
+                  <p className="mt-1 text-[10px] text-gray-400">Baris {rowIndex + 1}</p>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  };
+
   const addSectionColumn = (sectionId: string) => {
     setSectionsWithDerived((prev) =>
       prev.map((item) => {
@@ -4531,7 +4919,7 @@ export const LearningResourceGenerator = ({
       }, new Set<string>()),
     );
 
-    const headers =
+    const headers: Array<{ key: string; label: string; column?: EntrySectionColumnForm }> =
       schemaColumns.length > 0
         ? schemaColumns
             .map((column) => ({
@@ -4541,6 +4929,80 @@ export const LearningResourceGenerator = ({
             }))
             .filter((header) => header.key)
         : dynamicKeys.map((key) => ({ key, label: key, column: undefined }));
+    const monthWeekLayout = buildMonthWeekColumnLayout(headers);
+
+    if (monthWeekLayout) {
+      const orderedHeaders = [
+        ...monthWeekLayout.leadingColumns,
+        ...monthWeekLayout.weekGroups.flatMap((group) => group.columns.map((item) => item.column)),
+        ...monthWeekLayout.trailingColumns,
+      ];
+      const firstHeaderRow = `<tr>${monthWeekLayout.leadingColumns
+        .map((header) => {
+          const classAttribute = renderPrintClassAttribute(getPrintColumnClassName(header.column));
+          return `<th${classAttribute} rowspan="2">${escapeHtml(header.label)}</th>`;
+        })
+        .join('')}${monthWeekLayout.weekGroups
+        .map(
+          (group) =>
+            `<th class="print-month-group-header" colspan="${group.columns.length}">${escapeHtml(group.monthLabel)}</th>`,
+        )
+        .join('')}${monthWeekLayout.trailingColumns
+        .map((header) => {
+          const classAttribute = renderPrintClassAttribute(getPrintColumnClassName(header.column));
+          return `<th${classAttribute} rowspan="2">${escapeHtml(header.label)}</th>`;
+        })
+        .join('')}</tr>`;
+      const secondHeaderRow = `<tr>${monthWeekLayout.weekGroups
+        .flatMap((group) =>
+          group.columns.map(
+            (item) => `<th class="print-week-number-header">${escapeHtml(String(item.weekNumber))}</th>`,
+          ),
+        )
+        .join('')}</tr>`;
+      const tbody = rows
+        .map((row) => {
+          const lineGroups = orderedHeaders.map((header) => splitCellLines(row.values?.[header.key]));
+          const maxLineCount = Math.max(1, ...lineGroups.map((lines) => lines.length));
+          return Array.from({ length: maxLineCount })
+            .map((_, lineIndex) => {
+              const cells = orderedHeaders
+                .map((header, headerIndex) => {
+                  const lines = lineGroups[headerIndex] || [''];
+                  if (lines.length <= 1 && lineIndex > 0) return '';
+                  const isMonthWeekColumn = Boolean(parseMonthWeekColumnKey(header.key));
+                  const lineValue = lines[Math.min(lineIndex, lines.length - 1)];
+                  const hasValue = isMeaningfulReferenceValue(lineValue);
+                  const className = [
+                    getPrintColumnClassName(header.column),
+                    isMonthWeekColumn ? 'print-month-week-cell' : '',
+                    isMonthWeekColumn && hasValue ? 'is-active' : '',
+                    isMonthWeekColumn && hasValue && !isTruthyMark(String(lineValue || '')) ? 'has-text' : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' ');
+                  const classAttribute = renderPrintClassAttribute(className);
+                  const rowSpanAttribute = lines.length <= 1 && maxLineCount > 1 ? ` rowspan="${maxLineCount}"` : '';
+                  const valignAttribute = rowSpanAttribute ? ' style="vertical-align: middle;"' : '';
+                  const content =
+                    lines.length > 1 && lineIndex >= lines.length
+                      ? ''
+                      : isMonthWeekColumn
+                        ? formatMonthWeekPrintCellHtml(lineValue)
+                        : lines.length > 1 && !String(lineValue || '').trim()
+                          ? ''
+                          : formatCellPrintHtml(lineValue, header.column);
+                  return `<td${classAttribute}${rowSpanAttribute}${valignAttribute}>${content}</td>`;
+                })
+                .join('');
+              return `<tr>${cells}</tr>`;
+            })
+            .join('');
+        })
+        .join('');
+
+      return `<div class="table-wrap month-week-table-wrap"><table class="print-month-week-table"><thead>${firstHeaderRow}${secondHeaderRow}</thead><tbody>${tbody}</tbody></table></div>`;
+    }
 
     const thead = `<tr>${headers
       .map((header) => {
@@ -4583,7 +5045,8 @@ export const LearningResourceGenerator = ({
   const renderSectionPrintHtml = (section: EntrySectionForm): string => {
     const title = escapeHtml(section.title || 'Bagian');
     if (isTableSection(section)) {
-      return `<section><h3>${title}</h3>${renderSectionTableHtml(section)}</section>`;
+      const hasMonthWeekLayout = Boolean(buildMonthWeekColumnLayout(resolveSectionColumns(section)));
+      return `<section>${hasMonthWeekLayout ? '' : `<h3>${title}</h3>`}${renderSectionTableHtml(section)}</section>`;
     }
     return `<section><h3>${title}</h3><div class="text-block">${formatMultilineHtml(section.body || '-')}</div></section>`;
   };
@@ -4740,6 +5203,52 @@ export const LearningResourceGenerator = ({
           }
           .print-week-grid-column {
             min-width: 156px;
+          }
+          .print-month-week-table {
+            table-layout: fixed;
+            font-size: 9px;
+          }
+          .print-month-week-table th,
+          .print-month-week-table td {
+            padding: 3px 4px;
+          }
+          .print-month-group-header,
+          .print-week-number-header {
+            text-align: center;
+            vertical-align: middle;
+            white-space: nowrap;
+          }
+          .print-month-week-column {
+            width: 18px;
+            min-width: 18px;
+            max-width: 18px;
+            padding-left: 0;
+            padding-right: 0;
+            text-align: center;
+          }
+          .print-month-week-cell {
+            height: 22px;
+            min-width: 18px;
+            max-width: 18px;
+            padding: 0;
+          }
+          .print-month-week-cell.is-active {
+            background: #0ea5e9;
+          }
+          .print-month-week-cell.has-text {
+            background: #fef08a;
+            color: #0f172a;
+            line-height: 1.1;
+          }
+          .month-week-cell-text {
+            display: inline-block;
+            max-height: 92px;
+            writing-mode: vertical-rl;
+            transform: rotate(180deg);
+            overflow: hidden;
+            text-align: center;
+            font-size: 9px;
+            font-weight: 600;
           }
           .week-grid-print {
             display: grid;
@@ -5165,66 +5674,70 @@ export const LearningResourceGenerator = ({
                                   </div>
                                 ) : null}
 
-                                <div className="mt-3 rounded-lg border border-slate-300">
-                                  <table className="w-full table-fixed border-collapse text-xs">
-                                    <thead className="bg-slate-100">
-                                      <tr>
-                                        {compactQuickColumns.map((column) => (
-                                          <th
-                                            key={`quick-head-${activeQuickSection.id}-${column.key}`}
-                                            style={getQuickColumnStyle(column, compactQuickColumns)}
-                                            className="border border-slate-300 px-2 py-2 text-center text-[11px] font-semibold uppercase leading-snug text-slate-700"
-                                          >
-                                            {column.label}
-                                          </th>
-                                        ))}
-                                      </tr>
-                                    </thead>
-                                    <tbody>
-                                      {compactQuickRows.map((row) => {
-                                        const lineCounts = compactQuickColumns.map((column) =>
-                                          splitEditableCellLines(row.values[String(column.key || '').trim()]).length,
-                                        );
-                                        const maxLineCount = Math.max(1, ...lineCounts);
-                                        return Array.from({ length: maxLineCount }).map((_, lineIndex) => (
-                                          <tr
-                                            key={`quick-row-${row.id}-${lineIndex}`}
-                                            className="border-b border-slate-100 last:border-b-0"
-                                          >
-                                            {compactQuickColumns.map((column) => {
-                                              const columnKey = String(column.key || '').trim();
-                                              const cellLines = splitEditableCellLines(row.values[columnKey]);
-                                              if (cellLines.length <= 1 && lineIndex > 0) return null;
-                                              if (cellLines.length > 1 && lineIndex >= cellLines.length) {
+                                {buildMonthWeekColumnLayout(compactQuickColumns) ? (
+                                  renderQuickEditMonthWeekTable(activeQuickSection, compactQuickColumns, compactQuickRows)
+                                ) : (
+                                  <div className="mt-3 rounded-lg border border-slate-300">
+                                    <table className="w-full table-fixed border-collapse text-xs">
+                                      <thead className="bg-slate-100">
+                                        <tr>
+                                          {compactQuickColumns.map((column) => (
+                                            <th
+                                              key={`quick-head-${activeQuickSection.id}-${column.key}`}
+                                              style={getQuickColumnStyle(column, compactQuickColumns)}
+                                              className="border border-slate-300 px-2 py-2 text-center text-[11px] font-semibold uppercase leading-snug text-slate-700"
+                                            >
+                                              {column.label}
+                                            </th>
+                                          ))}
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {compactQuickRows.map((row) => {
+                                          const lineCounts = compactQuickColumns.map((column) =>
+                                            splitEditableCellLines(row.values[String(column.key || '').trim()]).length,
+                                          );
+                                          const maxLineCount = Math.max(1, ...lineCounts);
+                                          return Array.from({ length: maxLineCount }).map((_, lineIndex) => (
+                                            <tr
+                                              key={`quick-row-${row.id}-${lineIndex}`}
+                                              className="border-b border-slate-100 last:border-b-0"
+                                            >
+                                              {compactQuickColumns.map((column) => {
+                                                const columnKey = String(column.key || '').trim();
+                                                const cellLines = splitEditableCellLines(row.values[columnKey]);
+                                                if (cellLines.length <= 1 && lineIndex > 0) return null;
+                                                if (cellLines.length > 1 && lineIndex >= cellLines.length) {
+                                                  return (
+                                                    <td
+                                                      key={`quick-cell-${row.id}-${column.key}-${lineIndex}`}
+                                                      style={getQuickColumnStyle(column, compactQuickColumns)}
+                                                      className={`border border-slate-300 bg-white p-1 align-top ${
+                                                        isCenterAlignedTableColumn(column) ? 'text-center' : ''
+                                                      }`}
+                                                    />
+                                                  );
+                                                }
                                                 return (
                                                   <td
                                                     key={`quick-cell-${row.id}-${column.key}-${lineIndex}`}
+                                                    rowSpan={cellLines.length <= 1 ? maxLineCount : undefined}
                                                     style={getQuickColumnStyle(column, compactQuickColumns)}
-                                                    className={`border border-slate-300 bg-white p-1 align-top ${
-                                                      isCenterAlignedTableColumn(column) ? 'text-center' : ''
-                                                    }`}
-                                                  />
+                                                    className={`border border-slate-300 bg-white p-1 ${
+                                                      cellLines.length <= 1 && maxLineCount > 1 ? 'align-middle' : 'align-top'
+                                                    } ${isCenterAlignedTableColumn(column) ? 'text-center' : ''}`}
+                                                  >
+                                                    {renderQuickEditCellControl(activeQuickSection, row, column, lineIndex)}
+                                                  </td>
                                                 );
-                                              }
-                                              return (
-                                                <td
-                                                  key={`quick-cell-${row.id}-${column.key}-${lineIndex}`}
-                                                  rowSpan={cellLines.length <= 1 ? maxLineCount : undefined}
-                                                  style={getQuickColumnStyle(column, compactQuickColumns)}
-                                                  className={`border border-slate-300 bg-white p-1 ${
-                                                    cellLines.length <= 1 && maxLineCount > 1 ? 'align-middle' : 'align-top'
-                                                  } ${isCenterAlignedTableColumn(column) ? 'text-center' : ''}`}
-                                                >
-                                                  {renderQuickEditCellControl(activeQuickSection, row, column, lineIndex)}
-                                                </td>
-                                              );
-                                            })}
-                                          </tr>
-                                        ));
-                                      })}
-                                    </tbody>
-                                  </table>
-                                </div>
+                                              })}
+                                            </tr>
+                                          ));
+                                        })}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                )}
                                 <div className="mt-3 flex items-center gap-2">
                                   <button
                                     type="button"
@@ -5442,7 +5955,10 @@ export const LearningResourceGenerator = ({
                               </div>
                             ) : null}
 
-                            {usesSheetTemplate && tableMode && visibleSectionColumns.length > 0 ? (
+                            {usesSheetTemplate &&
+                            tableMode &&
+                            visibleSectionColumns.length > 0 &&
+                            !buildMonthWeekColumnLayout(visibleSectionColumns) ? (
                               <div className="mb-2 rounded-md border border-gray-200 bg-gray-50 p-2">
                                 <p className="mb-1 text-[11px] font-medium text-gray-500">
                                   Struktur kolom (editable seperti lembar kerja)
@@ -5509,50 +6025,54 @@ export const LearningResourceGenerator = ({
                                 </div>
                               ) : (
                                 <div className="space-y-2">
-                                  <div className="overflow-x-auto rounded-md border border-gray-200">
-                                    <table className="min-w-max text-xs">
-                                      <thead className="bg-gray-50">
-                                          <tr>
-                                          {visibleSectionColumns.map((column) => (
-                                            <th
-                                              key={column.key}
-                                              className={`whitespace-nowrap border-b border-gray-200 px-2 py-1.5 text-center font-semibold text-gray-600 ${getColumnWidthClass(column.key, Boolean(column.multiline), column.dataType)}`}
-                                            >
-                                              {column.label}
-                                            </th>
-                                          ))}
-                                          <th className="sticky right-0 whitespace-nowrap border-b border-gray-200 bg-gray-50 px-2 py-1.5 text-right font-semibold text-gray-600">
-                                            Aksi
-                                          </th>
-                                        </tr>
-                                      </thead>
-                                      <tbody>
-                                        {section.rows.map((row, rowIndex) => (
-                                          <tr key={row.id} className="border-b border-gray-100 last:border-b-0">
+                                  {buildMonthWeekColumnLayout(visibleSectionColumns) ? (
+                                    renderSectionMonthWeekTable(section, visibleSectionColumns, minRowCount)
+                                  ) : (
+                                    <div className="overflow-x-auto rounded-md border border-gray-200">
+                                      <table className="min-w-max text-xs">
+                                        <thead className="bg-gray-50">
+                                            <tr>
                                             {visibleSectionColumns.map((column) => (
-                                              <td
-                                                key={`${row.id}-${column.key}`}
-                                                className={`px-2 py-1.5 align-top ${isCenterAlignedTableColumn(column) ? 'text-center' : ''} ${getColumnWidthClass(column.key, Boolean(column.multiline), column.dataType)}`}
+                                              <th
+                                                key={column.key}
+                                                className={`whitespace-nowrap border-b border-gray-200 px-2 py-1.5 text-center font-semibold text-gray-600 ${getColumnWidthClass(column.key, Boolean(column.multiline), column.dataType)}`}
                                               >
-                                                {renderSectionCellControl(section, row, column, true)}
-                                              </td>
+                                                {column.label}
+                                              </th>
                                             ))}
-                                            <td className="sticky right-0 bg-white px-2 py-1.5 text-right align-top">
-                                              <button
-                                                type="button"
-                                                onClick={() => removeSectionRow(section.id, row.id)}
-                                                disabled={section.rows.length <= minRowCount}
-                                                className="rounded-md border border-rose-200 bg-rose-50 px-2 py-1 text-[11px] font-medium text-rose-700 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
-                                              >
-                                                Hapus
-                                              </button>
-                                              <p className="mt-1 text-[10px] text-gray-400">Baris {rowIndex + 1}</p>
-                                            </td>
+                                            <th className="sticky right-0 whitespace-nowrap border-b border-gray-200 bg-gray-50 px-2 py-1.5 text-right font-semibold text-gray-600">
+                                              Aksi
+                                            </th>
                                           </tr>
-                                        ))}
-                                      </tbody>
-                                    </table>
-                                  </div>
+                                        </thead>
+                                        <tbody>
+                                          {section.rows.map((row, rowIndex) => (
+                                            <tr key={row.id} className="border-b border-gray-100 last:border-b-0">
+                                              {visibleSectionColumns.map((column) => (
+                                                <td
+                                                  key={`${row.id}-${column.key}`}
+                                                  className={`px-2 py-1.5 align-top ${isCenterAlignedTableColumn(column) ? 'text-center' : ''} ${getColumnWidthClass(column.key, Boolean(column.multiline), column.dataType)}`}
+                                                >
+                                                  {renderSectionCellControl(section, row, column, true)}
+                                                </td>
+                                              ))}
+                                              <td className="sticky right-0 bg-white px-2 py-1.5 text-right align-top">
+                                                <button
+                                                  type="button"
+                                                  onClick={() => removeSectionRow(section.id, row.id)}
+                                                  disabled={section.rows.length <= minRowCount}
+                                                  className="rounded-md border border-rose-200 bg-rose-50 px-2 py-1 text-[11px] font-medium text-rose-700 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
+                                                >
+                                                  Hapus
+                                                </button>
+                                                <p className="mt-1 text-[10px] text-gray-400">Baris {rowIndex + 1}</p>
+                                              </td>
+                                            </tr>
+                                          ))}
+                                        </tbody>
+                                      </table>
+                                    </div>
+                                  )}
                                   {canAddRowForSection(section) ? (
                                     <button
                                       type="button"
