@@ -5,12 +5,12 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-05-01 18:29 WIB
-- Current status: follow-up perangkat ajar selesai. UI inline Promes sudah dirapikan: tab semester/tabel memakai `UnderlineTabBar` standar, kotak search referensi inline pada cell TP Promes dihapus agar tabel tidak penuh, dan bug simpan keterangan minggu diperbaiki dengan menjaga line index cell minggu baik di state cepat maupun payload simpan tabel.
+- Last updated: 2026-05-01 18:57 WIB
+- Current status: follow-up perangkat ajar selesai. Promes/Program Semester kini diarahkan sebagai `Distribusi Waktu` saat schema memakai kolom bulan-minggu, catatan pada kotak minggu tidak lagi tertimpa toggle klik saat double-click/klik kanan, newline posisi minggu tetap dipertahankan saat parse/simpan, kolom `Keterangan/Ket/Catatan` stale disembunyikan/dibuang dari payload Promes, dan print Promes diberi lebar kolom eksplisit agar lebih proporsional di A4 landscape.
 - Objective/task aktif:
   - Melanjutkan pengembangan perangkat ajar dinamis setelah polish tab remedial dan editor tabel guru.
 - Batch terakhir selesai:
-  - `Perangkat ajar follow-up - Promes inline editing polish`
+  - `Perangkat ajar follow-up - Promes distribusi waktu, catatan minggu, dan print layout`
 - Progress fitur remedial keseluruhan:
   - `100%`
 - Progress presensi terpadu saat ini:
@@ -26,15 +26,17 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
-  - Commit: `0f15a94`
-  - Title: `fix(teaching-resources): polish promes inline editing`
+  - Commit: `a843b0e`
+  - Title: `fix(teaching-resources): stabilize promes week notes`
   - Summary:
-    - tab section/tabel Promes di editor cepat guru diganti ke `UnderlineTabBar` standar project
-    - input pencarian referensi inline pada dropdown TP Promes dihapus khusus tampilan tabel cepat
-    - update cell minggu sekarang mem-padding line sebelum menyimpan, sehingga keterangan pada baris TP ke-2/ke-3 tidak hilang
-    - payload simpan tabel mempertahankan newline pada kolom bulan-minggu agar posisi keterangan tetap sesuai baris TP setelah reload
+    - deteksi bentuk dokumen Wakakur sekarang mengenali `PROMES/PROSEM` atau schema kolom `bulan_minggu` sebagai `Distribusi Waktu`, bukan jatuh ke `Analisis / Pemetaan`
+    - klik tunggal dan double-click/klik kanan pada kotak minggu Promes dipisah dengan timer pendek, sehingga input catatan libur/kegiatan tidak tertimpa toggle ceklis
+    - parse dan payload simpan mempertahankan newline pada kolom bulan-minggu agar posisi catatan tetap menempel pada baris TP yang benar setelah reload
+    - kolom `Keterangan`, `Ket`, atau `Catatan` lama disembunyikan dari Promes bulan-minggu dan dibuang dari payload simpan tabel agar tidak muncul lagi di guru/print
+    - tabel view dan print Promes dipadatkan: kolom `No`, `Alokasi Waktu`, dan minggu dibuat lebih ramping, sementara kolom TP diberi lebar eksplisit agar print A4 landscape tidak bertumpuk
 - Area/file disentuh:
   - `frontend/src/pages/teacher/learning-resources/LearningResourceGenerator.tsx`
+  - `frontend/src/pages/teacher/wakasek/curriculum/TeachingResourceProgramManagementPage.tsx`
   - `docs/CODEX_CONTINUITY.md`
 - Verifikasi batch ini:
   - `git diff --check`
