@@ -5,12 +5,12 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-05-01 23:17 WIB
-- Current status: batch penyederhanaan setup Promes Wakakur selesai dan sudah deploy web. Wakakur kini mendapat panel `Setup Program Semester` untuk memilih cakupan semester, dokumen sumber, kolom TP, dan kolom JP tanpa mengatur kolom teknis bulan-minggu satu per satu. Sisi guru tetap memakai engine Promes yang sama, dengan guard tambahan agar kode/label `Promes/Prosem/Program Semester` tetap terbaca sebagai dokumen bulan-minggu.
+- Last updated: 2026-05-01 23:31 WIB
+- Current status: bug sinkronisasi kotak minggu Promes/Program Semester sudah diperbaiki dan live. Backend sekarang mempertahankan newline khusus kolom bulan-minggu Promes saat menyimpan entry, sehingga ceklis/keterangan pada subbaris tidak naik ke baris pertama setelah save/reload. Print preview juga memakai baris yang sama dengan tabel view dan kembali menampilkan tanda ceklis.
 - Objective/task aktif:
   - Melanjutkan pengembangan perangkat ajar dinamis setelah polish tab remedial dan editor tabel guru.
 - Batch terakhir selesai:
-  - `Perangkat ajar follow-up - simplified Wakakur Promes setup`
+  - `Perangkat ajar follow-up - fix Promes week cell persistence`
 - Progress fitur remedial keseluruhan:
   - `100%`
 - Progress presensi terpadu saat ini:
@@ -26,30 +26,32 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
-  - Commit: `1dcb5b0`
-  - Title: `feat(teaching-resources): simplify promes setup`
+  - Commit: `d0f77e0`
+  - Title: `fix(teaching-resources): preserve promes week cells`
   - Summary:
-    - modal tambah/edit program Wakakur menampilkan panel sederhana `Setup Program Semester` untuk dokumen Promes/Prosem/Program Semester
-    - Wakakur cukup memilih semester yang dibuat, dokumen sumber, kolom Tujuan Pembelajaran, dan kolom Alokasi JP; schema teknis bulan-minggu digenerate otomatis
-    - tabel teknis `Kolom & Integrasi Dokumen` disembunyikan khusus Promes agar setup tidak membingungkan user non-teknis
-    - generator guru tetap memakai hasil layout bulan-minggu existing, dengan deteksi Promes yang lebih dinamis dari kode/label/sourceSheet
+    - backend `teachingResourceProgram.controller` tidak lagi `trim()` isi cell bulan-minggu Promes agar posisi subbaris `\n✓`/keterangan tetap utuh setelah simpan
+    - frontend reference helper ikut mempertahankan raw value kolom bulan-minggu agar snapshot/reload tidak menggeser line index
+    - print Promes memakai `splitEditableCellLines` untuk kolom minggu dan menampilkan tanda ceklis, bukan mengosongkannya
 - Area/file disentuh:
   - `frontend/src/pages/teacher/learning-resources/LearningResourceGenerator.tsx`
-  - `frontend/src/pages/teacher/wakasek/curriculum/TeachingResourceProgramManagementPage.tsx`
+  - `backend/src/controllers/teachingResourceProgram.controller.ts`
   - `docs/CODEX_CONTINUITY.md`
 - Verifikasi batch ini:
   - `git diff --check`
+  - `cd backend && npm run build`
   - `cd frontend && npm run build`
+  - `cd backend && npm run service:restart`
+  - `cd backend && npm run service:health`
   - `cd frontend && npm run deploy`
   - `curl -I https://siskgb2.id/`
 - Publish/live status:
   - Web sudah deploy live
-  - Backend tidak diubah pada batch ini
+  - Backend sudah reload via PM2 dan health check `200/200`
   - Tidak ada perubahan mobile pada batch ini
 - Remaining work:
   - Lanjut audit/pengembangan perangkat ajar dinamis sesuai arahan user berikutnya.
 - Residual risk:
-  - Perubahan bersifat frontend-only dan scoped ke perangkat ajar Wakakur/guru. Tidak ada endpoint baru, polling baru, websocket baru, atau perubahan backend runtime. Setup sederhana Promes bergantung pada dokumen sumber yang sudah punya field referensi TP/JP; jika field sumber belum tersedia, Wakakur tetap perlu memilih sumber/kolom yang benar sebelum menyimpan.
+  - Data Promes yang sudah telanjur tersimpan dalam kondisi salah sebelum fix tidak bisa ditebak ulang posisinya secara otomatis. Setelah fix live, klik/simpan berikutnya akan mempertahankan posisi subbaris yang benar.
 
 ## Status Saat Ini
 
