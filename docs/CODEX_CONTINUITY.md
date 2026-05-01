@@ -5,12 +5,12 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-05-01 22:52 WIB
-- Current status: follow-up regresi Promes selesai. Engine referensi sekarang membaca nilai sumber yang tersimpan melalui `referenceSelections`, sehingga Prota yang berisi pilihan dari ATP/CP tetap bisa menjadi sumber Promes. Promes juga memfilter sumber berdasarkan semester section, kolom TP Promes tampil sebagai nilai referensi read-only, dan print hanya merge kotak minggu yang memang punya catatan merge.
+- Last updated: 2026-05-01 23:17 WIB
+- Current status: batch penyederhanaan setup Promes Wakakur selesai dan sudah deploy web. Wakakur kini mendapat panel `Setup Program Semester` untuk memilih cakupan semester, dokumen sumber, kolom TP, dan kolom JP tanpa mengatur kolom teknis bulan-minggu satu per satu. Sisi guru tetap memakai engine Promes yang sama, dengan guard tambahan agar kode/label `Promes/Prosem/Program Semester` tetap terbaca sebagai dokumen bulan-minggu.
 - Objective/task aktif:
   - Melanjutkan pengembangan perangkat ajar dinamis setelah polish tab remedial dan editor tabel guru.
 - Batch terakhir selesai:
-  - `Perangkat ajar follow-up - Promes source and print merge alignment`
+  - `Perangkat ajar follow-up - simplified Wakakur Promes setup`
 - Progress fitur remedial keseluruhan:
   - `100%`
 - Progress presensi terpadu saat ini:
@@ -26,16 +26,16 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
-  - Commit: `321e96e`
-  - Title: `fix(teaching-resources): align promes source merge behavior`
+  - Commit: `1dcb5b0`
+  - Title: `feat(teaching-resources): simplify promes setup`
   - Summary:
-    - sumber referensi dari dokumen lain kini memasukkan nilai `referenceSelections`, bukan hanya nilai mentah di row, sehingga Prota yang memakai pilihan ATP tetap terbaca sebagai sumber Promes
-    - Promes memfilter sumber berdasarkan semester section dan memaksa sinkronisasi kolom `Tujuan Pembelajaran`/`Alokasi JP` dari sumber yang sesuai
-    - quick table Promes menampilkan TP sebagai nilai referensi read-only agar tidak terlihat seperti input manual
-    - print Promes tidak lagi memberi `rowspan` ke semua kotak minggu kosong; hanya kotak minggu yang benar-benar punya catatan merge yang digabung
-    - teks catatan minggu pada table view dan print dibuat tidak terpotong agar keterangan merge terbaca utuh
+    - modal tambah/edit program Wakakur menampilkan panel sederhana `Setup Program Semester` untuk dokumen Promes/Prosem/Program Semester
+    - Wakakur cukup memilih semester yang dibuat, dokumen sumber, kolom Tujuan Pembelajaran, dan kolom Alokasi JP; schema teknis bulan-minggu digenerate otomatis
+    - tabel teknis `Kolom & Integrasi Dokumen` disembunyikan khusus Promes agar setup tidak membingungkan user non-teknis
+    - generator guru tetap memakai hasil layout bulan-minggu existing, dengan deteksi Promes yang lebih dinamis dari kode/label/sourceSheet
 - Area/file disentuh:
   - `frontend/src/pages/teacher/learning-resources/LearningResourceGenerator.tsx`
+  - `frontend/src/pages/teacher/wakasek/curriculum/TeachingResourceProgramManagementPage.tsx`
   - `docs/CODEX_CONTINUITY.md`
 - Verifikasi batch ini:
   - `git diff --check`
@@ -49,7 +49,7 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 - Remaining work:
   - Lanjut audit/pengembangan perangkat ajar dinamis sesuai arahan user berikutnya.
 - Residual risk:
-  - Perubahan bersifat frontend-only dan scoped ke perangkat ajar guru/print. Tidak ada endpoint baru, polling baru, websocket baru, atau perubahan backend runtime. Jika Wakakur membuat Promes dengan penamaan kolom bulan di luar pola `namaBulan_nomorMinggu`, schema tersebut tetap tampil sebagai tabel biasa.
+  - Perubahan bersifat frontend-only dan scoped ke perangkat ajar Wakakur/guru. Tidak ada endpoint baru, polling baru, websocket baru, atau perubahan backend runtime. Setup sederhana Promes bergantung pada dokumen sumber yang sudah punya field referensi TP/JP; jika field sumber belum tersedia, Wakakur tetap perlu memilih sumber/kolom yang benar sebelum menyimpan.
 
 ## Status Saat Ini
 
