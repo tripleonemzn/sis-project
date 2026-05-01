@@ -3131,10 +3131,25 @@ export default function TeachingResourceProgramManagementPage() {
 	                {isMonthWeekSimpleSetupVisible ? (
 	                  <div className="mb-4 rounded-xl border border-blue-200 bg-blue-50/60 p-4">
 	                    <div className="mb-4">
-	                      <h3 className="text-sm font-semibold text-gray-900">Setup Program Semester</h3>
+	                      <h3 className="text-sm font-semibold text-gray-900">Setup Distribusi Waktu Program Semester</h3>
 	                      <p className="mt-1 text-xs leading-5 text-gray-600">
-	                        Wakakur cukup memilih sumber baris. Sistem otomatis membuat tabel bulan-minggu yang dipakai guru.
+	                        Untuk Promes, Wakakur tidak perlu menyusun kolom bulan satu per satu. Tentukan sumber TP dan JP, lalu sistem
+	                        membuat tabel No, TP, Alokasi JP, serta bulan-minggu otomatis.
 	                      </p>
+	                    </div>
+	                    <div className="mb-4 grid grid-cols-1 gap-2 md:grid-cols-3">
+	                      <div className="rounded-lg border border-blue-100 bg-white px-3 py-2">
+	                        <p className="text-[11px] font-semibold uppercase tracking-wide text-blue-700">No</p>
+	                        <p className="mt-1 text-xs leading-5 text-gray-600">Diurutkan otomatis dari baris TP, jadi tidak perlu dipilih.</p>
+	                      </div>
+	                      <div className="rounded-lg border border-blue-100 bg-white px-3 py-2">
+	                        <p className="text-[11px] font-semibold uppercase tracking-wide text-blue-700">Tujuan Pembelajaran</p>
+	                        <p className="mt-1 text-xs leading-5 text-gray-600">Pilih kolom TP dari dokumen sumber, biasanya Prota/ATP.</p>
+	                      </div>
+	                      <div className="rounded-lg border border-blue-100 bg-white px-3 py-2">
+	                        <p className="text-[11px] font-semibold uppercase tracking-wide text-blue-700">Alokasi JP</p>
+	                        <p className="mt-1 text-xs leading-5 text-gray-600">Pilih kolom JP dari dokumen sumber agar ikut terbaca.</p>
+	                      </div>
 	                    </div>
 	                    <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
 	                      <div>
@@ -3159,7 +3174,7 @@ export default function TeachingResourceProgramManagementPage() {
 	                      </div>
 	                      <div>
 	                        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
-	                          Ambil TP & JP dari dokumen
+	                          Dokumen sumber TP & JP
 	                        </label>
 	                        <select
 	                          value={monthWeekSimpleSetup.sourceProgramCode}
@@ -3180,7 +3195,7 @@ export default function TeachingResourceProgramManagementPage() {
 	                      </div>
 	                      <div>
 	                        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
-	                          Kolom Tujuan Pembelajaran
+	                          Kolom TP yang menjadi baris
 	                        </label>
 	                        <select
 	                          value={monthWeekSimpleSetup.objectiveField}
@@ -3202,7 +3217,7 @@ export default function TeachingResourceProgramManagementPage() {
 	                      </div>
 	                      <div>
 	                        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
-	                          Kolom Alokasi JP
+	                          Kolom JP / Alokasi waktu
 	                        </label>
 	                        <select
 	                          value={monthWeekSimpleSetup.allocationField}
@@ -3224,8 +3239,8 @@ export default function TeachingResourceProgramManagementPage() {
 	                      </div>
 	                    </div>
 	                    <div className="mt-4 rounded-lg border border-blue-100 bg-white px-3 py-2 text-xs leading-5 text-blue-800">
-	                      Bulan dan jumlah minggu mengikuti tahun ajaran aktif saat guru membuat dokumen. Kotak minggu tetap bisa diberi
-	                      keterangan/merge dari sisi guru seperti tampilan yang sekarang sudah sesuai.
+	                      Bulan dan jumlah minggu mengikuti tahun ajaran aktif saat guru membuat dokumen. Guru kemudian cukup memilih minggu
+	                      pelaksanaan atau memberi keterangan libur/kegiatan pada kotak minggu.
 	                    </div>
 	                  </div>
 	                ) : null}

@@ -1736,6 +1736,15 @@ const isCenterAlignedTableColumn = (column?: Partial<EntrySectionColumnForm> | n
   return identityCandidates.some((candidate) => CENTER_ALIGNED_REFERENCE_IDENTITIES.has(candidate));
 };
 
+const isMiddleAlignedTableColumn = (column?: Partial<EntrySectionColumnForm> | null): boolean => {
+  const key = String(column?.key || '').trim().toLowerCase();
+  const identityCandidates = getColumnIdentityCandidates(column);
+  if (['no', 'nomor'].includes(key)) return true;
+  if (key.includes('alokasi') || key.includes('jp')) return true;
+  if (identityCandidates.includes('tujuan_pembelajaran')) return true;
+  return isCenterAlignedTableColumn(column);
+};
+
 const parseWeekGridValue = (value: unknown): string[] => {
   const seen = new Set<string>();
   String(value || '')
@@ -1785,6 +1794,7 @@ const getPrintColumnClassName = (column?: EntrySectionColumnForm): string => {
     classes.push('print-compact-column');
   }
   if (isCenterAlignedTableColumn(column)) classes.push('print-center-column');
+  if (isMiddleAlignedTableColumn(column)) classes.push('print-middle-column');
   if (classes.length > 0) return Array.from(new Set(classes)).join(' ');
   return '';
 };
@@ -5147,6 +5157,32 @@ export const LearningResourceGenerator = ({
       ...layout.weekGroups.flatMap((group) => group.columns.map((item) => item.column)),
       ...layout.trailingColumns,
     ];
+    const rowLayouts = rows.map((row) => {
+      const lineCounts = orderedColumns.map((column) =>
+        splitEditableCellLines(row.values[String(column.key || '').trim()]).length,
+      );
+      return {
+        row,
+        maxLineCount: Math.max(1, ...lineCounts),
+      };
+    });
+    const totalVisualRowCount = Math.max(
+      1,
+      rowLayouts.reduce((total, item) => total + item.maxLineCount, 0),
+    );
+    const globalMonthWeekNotes = orderedColumns.reduce<
+      Map<string, { note: string; sourceRow: EntrySectionRowForm; lineIndex: number }>
+    >((acc, column) => {
+      const columnKey = String(column.key || '').trim();
+      if (!parseMonthWeekColumnKey(columnKey)) return acc;
+      for (const row of rows) {
+        const note = getMergedMonthWeekNote(row.values[columnKey]);
+        if (!note) continue;
+        acc.set(columnKey, { note: note.note, sourceRow: row, lineIndex: note.lineIndex });
+        break;
+      }
+      return acc;
+    }, new Map());
 
     return (
       <div className="mt-3 overflow-x-auto rounded-lg border border-slate-300">
@@ -5203,17 +5239,36 @@ export const LearningResourceGenerator = ({
             </tr>
           </thead>
           <tbody>
-            {rows.map((row) => {
-              const lineCounts = orderedColumns.map((column) =>
-                splitEditableCellLines(row.values[String(column.key || '').trim()]).length,
-              );
-              const maxLineCount = Math.max(1, ...lineCounts);
+            {rowLayouts.map(({ row, maxLineCount }, rowIndex) => {
               return Array.from({ length: maxLineCount }).map((_, lineIndex) => (
                 <tr key={`quick-month-row-${row.id}-${lineIndex}`} className="border-b border-slate-100 last:border-b-0">
                   {orderedColumns.map((column) => {
                     const columnKey = String(column.key || '').trim();
                     const cellLines = splitEditableCellLines(row.values[columnKey]);
                     const isMonthWeekColumn = Boolean(parseMonthWeekColumnKey(columnKey));
+                    const globalMonthWeekNote = isMonthWeekColumn ? globalMonthWeekNotes.get(columnKey) : undefined;
+                    if (globalMonthWeekNote) {
+                      if (rowIndex > 0 || lineIndex > 0) return null;
+                      return (
+                        <td
+                          key={`quick-month-cell-global-note-${columnKey}`}
+                          rowSpan={totalVisualRowCount}
+                          className={`border border-slate-200 px-1 py-1 align-middle ${
+                            isMonthWeekColumn ? 'w-8' : ''
+                          } ${getColumnWidthClass(column.key, Boolean(column.multiline), column.dataType)}`}
+                        >
+                          {renderQuickMonthWeekCellControl(
+                            section,
+                            globalMonthWeekNote.sourceRow,
+                            columnKey,
+                            globalMonthWeekNote.note,
+                            false,
+                            globalMonthWeekNote.lineIndex,
+                            totalVisualRowCount,
+                          )}
+                        </td>
+                      );
+                    }
                     const mergedMonthWeekNote = isMonthWeekColumn ? getMergedMonthWeekNote(row.values[columnKey]) : null;
                     if (isMonthWeekColumn && mergedMonthWeekNote && lineIndex > 0) return null;
                     if (!isMonthWeekColumn && cellLines.length <= 1 && lineIndex > 0) return null;
@@ -5239,7 +5294,7 @@ export const LearningResourceGenerator = ({
                         key={`quick-month-cell-${row.id}-${columnKey}-${lineIndex}`}
                         rowSpan={rowSpan}
                         className={`border border-slate-200 px-1 py-1 ${
-                          isMonthWeekColumn ? 'w-8 align-middle' : 'align-top'
+                          isMonthWeekColumn || isMiddleAlignedTableColumn(column) ? 'align-middle' : 'align-top'
                         } ${isCenterAlignedTableColumn(column) ? 'text-center' : ''} ${getColumnWidthClass(
                           column.key,
                           Boolean(column.multiline),
@@ -5352,7 +5407,7 @@ export const LearningResourceGenerator = ({
                     <td
                       key={`${row.id}-${column.key}`}
                       className={`border border-gray-200 px-1.5 py-1.5 ${
-                        isMonthWeekColumn ? 'w-8 align-middle' : 'align-top'
+                        isMonthWeekColumn || isMiddleAlignedTableColumn(column) ? 'align-middle' : 'align-top'
                       } ${isCenterAlignedTableColumn(column) ? 'text-center' : ''} ${getColumnWidthClass(
                         column.key,
                         Boolean(column.multiline),
@@ -5572,20 +5627,58 @@ export const LearningResourceGenerator = ({
           ),
         )
         .join('')}</tr>`;
+      const rowLayouts = rows.map((row) => {
+        const lineGroups = orderedHeaders.map((header) =>
+          parseMonthWeekColumnKey(header.key)
+            ? splitEditableCellLines(row.values?.[header.key])
+            : splitCellLines(row.values?.[header.key]),
+        );
+        return {
+          row,
+          lineGroups,
+          maxLineCount: Math.max(1, ...lineGroups.map((lines) => lines.length)),
+        };
+      });
+      const totalVisualRowCount = Math.max(
+        1,
+        rowLayouts.reduce((total, item) => total + item.maxLineCount, 0),
+      );
+      const globalMonthWeekNotes = orderedHeaders.reduce<
+        Map<string, { note: string; lineIndex: number }>
+      >((acc, header) => {
+        if (!parseMonthWeekColumnKey(header.key)) return acc;
+        for (const row of rows) {
+          const note = getMergedMonthWeekNote(row.values?.[header.key]);
+          if (!note) continue;
+          acc.set(header.key, note);
+          break;
+        }
+        return acc;
+      }, new Map());
       const tbody = rows
-        .map((row) => {
-          const lineGroups = orderedHeaders.map((header) =>
-            parseMonthWeekColumnKey(header.key)
-              ? splitEditableCellLines(row.values?.[header.key])
-              : splitCellLines(row.values?.[header.key]),
-          );
-          const maxLineCount = Math.max(1, ...lineGroups.map((lines) => lines.length));
+        .map((row, rowIndex) => {
+          const rowLayout = rowLayouts[rowIndex];
+          const lineGroups = rowLayout?.lineGroups || orderedHeaders.map(() => ['']);
+          const maxLineCount = rowLayout?.maxLineCount || 1;
           return Array.from({ length: maxLineCount })
             .map((_, lineIndex) => {
               const cells = orderedHeaders
                 .map((header, headerIndex) => {
                   const lines = lineGroups[headerIndex] || [''];
                   const isMonthWeekColumn = Boolean(parseMonthWeekColumnKey(header.key));
+                  const globalMonthWeekNote = isMonthWeekColumn ? globalMonthWeekNotes.get(header.key) : undefined;
+                  if (globalMonthWeekNote) {
+                    if (rowIndex > 0 || lineIndex > 0) return '';
+                    const className = [
+                      getPrintColumnClassName(header.column),
+                      'print-month-week-cell',
+                      'is-active',
+                      'has-text',
+                    ]
+                      .filter(Boolean)
+                      .join(' ');
+                    return `<td${renderPrintClassAttribute(className)} rowspan="${totalVisualRowCount}" style="vertical-align: middle;">${formatMonthWeekPrintCellHtml(globalMonthWeekNote.note)}</td>`;
+                  }
                   const mergedMonthWeekNote = isMonthWeekColumn ? getMergedMonthWeekNote(row.values?.[header.key]) : null;
                   if (mergedMonthWeekNote && lineIndex > 0) return '';
                   if (!isMonthWeekColumn && lines.length <= 1 && lineIndex > 0) return '';
@@ -5829,6 +5922,9 @@ export const LearningResourceGenerator = ({
           }
           .print-center-column {
             text-align: center;
+            vertical-align: middle;
+          }
+          .print-middle-column {
             vertical-align: middle;
           }
           .print-week-grid-column {
