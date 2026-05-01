@@ -5,8 +5,8 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-05-01 14:20 WIB
-- Current status: follow-up perangkat ajar selesai. Engine referensi tabel sekarang menyembuhkan data lama yang masih menyimpan pilihan referensi lama: jika satu baris dokumen memakai grouping dari sumber sebelumnya tetapi kolom lain dikonfigurasi mengambil sumber lanjutan seperti ATP, frontend akan mencari snapshot sumber yang paling cocok dan mengisi nilai multiline yang lebih lengkap, termasuk kasus JP PROTA dari ATP pada akun `KGB2G071`. Judul/keterangan bagian di atas inline table view guru juga dihapus, dan tombol Enter pada cell editor sekarang membuat subbaris baru lalu memindahkan fokus ke kotak isian baru.
+- Last updated: 2026-05-01 14:32 WIB
+- Current status: follow-up perangkat ajar selesai. Perbaikan tambahan diterapkan untuk table renderer guru: kolom referensi utama yang sudah berisi aggregate/multiline sekarang ditampilkan sebagai nilai cell per baris, bukan label dropdown seperti `Tujuan Pembelajaran lengkap...`. Ini menutup regresi tampilan PROTA setelah JP multiline dari ATP berhasil ikut terbaca.
 - Objective/task aktif:
   - Melanjutkan pengembangan perangkat ajar dinamis setelah polish tab remedial dan editor tabel guru.
 - Batch terakhir selesai:
@@ -26,13 +26,12 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
-  - Commit: `b051ced`
-  - Title: `fix(teaching-resources): reconcile grouped table references`
+  - Commit: `pending`
+  - Title: `fix(teaching-resources): render aggregate references as cells`
   - Summary:
-    - source dokumen untuk kolom snapshot sekarang ikut dimuat, bukan hanya kolom picker utama, sehingga dokumen lanjutan bisa membaca ATP/PROTA sebagai sumber lintas menu
-    - resolver related reference dapat mencocokkan snapshot pilihan lama dengan baris sumber yang lebih lengkap lalu mengganti nilai satu baris menjadi multiline jika sumber terkait punya detail lebih utuh
-    - inline table view guru tidak lagi menampilkan judul/keterangan bagian yang memenuhi area tabel
-    - Enter pada cell quick edit mempertahankan subbaris kosong sementara dan memindahkan fokus ke cell baru
+    - renderer quick table membedakan state `belum pilih referensi` vs `referensi aggregate sudah terisi`
+    - saat nilai referensi aggregate/multiline sudah tersedia, cell tampil sebagai textarea per baris agar isi TP seperti `1.1`, `1.2`, dan seterusnya terlihat, bukan label opsi dropdown
+    - perubahan frontend-only dan tetap memakai mekanisme data/referensi dinamis yang sudah ada
 - Area/file disentuh:
   - `frontend/src/pages/teacher/learning-resources/LearningResourceGenerator.tsx`
   - `docs/CODEX_CONTINUITY.md`

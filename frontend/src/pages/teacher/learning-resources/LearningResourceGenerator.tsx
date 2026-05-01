@@ -3549,7 +3549,8 @@ export const LearningResourceGenerator = ({
     lineIndex = 0,
   ) => {
     const columnKey = String(column.key || '').trim();
-    const value = splitEditableCellLines(row?.values?.[columnKey])[lineIndex] ?? '';
+    const rawCellValue = String(row?.values?.[columnKey] ?? '');
+    const value = splitEditableCellLines(rawCellValue)[lineIndex] ?? '';
     const dataType = getColumnDataType(column);
     const readOnly = isSystemManagedColumn(column);
     const centerAligned = isCenterAlignedTableColumn(column);
@@ -3572,6 +3573,40 @@ export const LearningResourceGenerator = ({
         String(referenceSelection?.selectionToken || '').trim() ||
         referenceOptions.find((option) => option.value === value)?.selectValue ||
         '';
+      const referenceSelectionValue = String(referenceSelection?.value || '').trim();
+      const effectiveReferenceValue =
+        value || splitEditableCellLines(referenceSelectionValue)[lineIndex] || '';
+      const shouldRenderReferenceAsCellValue =
+        isMeaningfulReferenceValue(effectiveReferenceValue) &&
+        (splitCellLines(rawCellValue).length > 1 ||
+          splitCellLines(referenceSelectionValue).length > 1 ||
+          String(referenceSelection?.selectionToken || '').includes('::GROUP'));
+      if (shouldRenderReferenceAsCellValue) {
+        return (
+          <textarea
+            ref={(element) => {
+              if (focusKey) quickEditCellRefs.current[focusKey] = element;
+            }}
+            rows={2}
+            value={effectiveReferenceValue}
+            disabled={readOnly}
+            onChange={(event) =>
+              updateQuickEditRowCellLine(section.id, row?.id || '', columnKey, lineIndex, event.target.value)
+            }
+            onKeyDown={(event) => {
+              if (event.key !== 'Enter' || event.shiftKey || readOnly || !row?.id) return;
+              event.preventDefault();
+              handleQuickEditCellEnter(section.id, row.id, columnKey, lineIndex, effectiveReferenceValue);
+            }}
+            onInput={(event) => {
+              event.currentTarget.style.height = 'auto';
+              event.currentTarget.style.height = `${event.currentTarget.scrollHeight}px`;
+            }}
+            placeholder={column.placeholder || ''}
+            className={`${tableCellControlClassName} min-h-[42px] resize-y overflow-hidden`}
+          />
+        );
+      }
       const sourceProgramCode = normalizeTeachingResourceProgramCode(column.binding?.sourceProgramCode);
       const sourceFieldIdentity =
         String(column.binding?.sourceFieldIdentity || column.binding?.sourceDocumentFieldIdentity || '').trim();
