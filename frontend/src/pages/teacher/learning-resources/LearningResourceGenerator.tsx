@@ -118,6 +118,14 @@ type MonthWeekColumnLayout<TColumn> = {
   trailingColumns: TColumn[];
 };
 
+type AcademicYearDateLike = {
+  semester?: string;
+  semester1Start?: string | Date | null;
+  semester1End?: string | Date | null;
+  semester2Start?: string | Date | null;
+  semester2End?: string | Date | null;
+};
+
 type OutletUser = {
   id?: number;
   role?: string;
@@ -761,6 +769,10 @@ const REFERENCE_IDENTITY_ALIASES: Record<string, string> = {
   materi_pokok: 'konten_materi',
   konten_materi: 'konten_materi',
   konten_materi_pokok: 'konten_materi',
+  alokasi_waktu: 'alokasi_jp',
+  alokasi_waktu_jp: 'alokasi_jp',
+  jumlah_jam: 'alokasi_jp',
+  jp: 'alokasi_jp',
 };
 
 const CONTEXT_REFERENCE_IDENTITIES = new Set(['mata_pelajaran', 'tingkat', 'program_keahlian', 'semester', 'tahun_ajaran']);
@@ -911,8 +923,8 @@ const normalizeTeacherReferenceSections = (
               ...column,
               sourceType: 'DOCUMENT_SNAPSHOT' as const,
               valueSource: 'BOUND' as const,
-              readOnly: false,
-              teacherEditMode: 'TEACHER_EDITABLE' as const,
+              readOnly: true,
+              teacherEditMode: 'SYSTEM_LOCKED' as const,
               binding: {
                 ...(column.binding || {}),
                 sourceProgramCode: preferredSourceProgramCode,
@@ -925,7 +937,7 @@ const normalizeTeacherReferenceSections = (
                 matchByActiveSemester: false,
                 selectionMode: 'PICK_SINGLE',
                 syncMode: 'SNAPSHOT_ON_SELECT',
-                allowManualOverride: true,
+                allowManualOverride: false,
               },
             };
           }
@@ -1090,6 +1102,46 @@ const formatReferenceOptionLabel = (value: unknown, fallback = 'Referensi tersim
     .map((line) => line.trim())
     .find(isMeaningfulReferenceValue);
   return firstLine || fallback;
+};
+
+const buildReferenceSnapshotForLine = (snapshot: Record<string, string>, lineIndex: number): Record<string, string> =>
+  Object.entries(snapshot || {}).reduce<Record<string, string>>((acc, [key, rawValue]) => {
+    const lines = splitCellLines(rawValue).filter((line) => line.trim().length > 0);
+    acc[key] = lines.length > 1 ? String(lines[Math.min(lineIndex, lines.length - 1)] || '').trim() : String(rawValue || '').trim();
+    return acc;
+  }, {});
+
+const splitReferenceOptionsIntoLineOptions = (options: ReferenceOption[]): ReferenceOption[] => {
+  const nextOptions: ReferenceOption[] = [];
+  const seen = new Set<string>();
+  options.forEach((option) => {
+    const valueLines = splitCellLines(option.value)
+      .map((line) => line.trim())
+      .filter(isMeaningfulReferenceValue);
+    if (valueLines.length <= 1) {
+      const token = String(option.selectValue || '').trim();
+      if (token && !seen.has(token)) {
+        seen.add(token);
+        nextOptions.push(option);
+      }
+      return;
+    }
+    valueLines.forEach((line, lineIndex) => {
+      const selectValue = `${option.selectValue}::LINE::${lineIndex + 1}`;
+      if (seen.has(selectValue)) return;
+      seen.add(selectValue);
+      nextOptions.push({
+        ...option,
+        selectValue,
+        value: line,
+        label: formatReferenceOptionLabel(line),
+        isAggregate: false,
+        lineCount: undefined,
+        snapshot: buildReferenceSnapshotForLine(option.snapshot || {}, lineIndex),
+      });
+    });
+  });
+  return nextOptions;
 };
 
 const getSnapshotValueForColumn = (snapshot: Record<string, string> | undefined, column: EntrySectionColumnForm): string => {
@@ -1328,12 +1380,120 @@ const MONTH_WEEK_COLUMN_LABELS: Record<string, string> = {
   desember: 'Desember',
 };
 
+const MONTH_WEEK_ORDER = [
+  'januari',
+  'februari',
+  'maret',
+  'april',
+  'mei',
+  'juni',
+  'juli',
+  'agustus',
+  'september',
+  'oktober',
+  'november',
+  'desember',
+];
+
+const MONTH_WEEK_INDEX_BY_KEY = new Map(MONTH_WEEK_ORDER.map((monthKey, index) => [monthKey, index]));
+
+const normalizeMonthWeekKey = (value: unknown): string => {
+  const key = String(value || '').trim().toLowerCase();
+  if (key === 'nopember') return 'november';
+  return key;
+};
+
+const toUtcDateOnly = (value: unknown): Date | null => {
+  if (!value) return null;
+  const rawDate = value instanceof Date ? value : new Date(String(value));
+  if (Number.isNaN(rawDate.getTime())) return null;
+  return new Date(Date.UTC(rawDate.getUTCFullYear(), rawDate.getUTCMonth(), rawDate.getUTCDate()));
+};
+
+const addUtcDays = (date: Date, days: number): Date =>
+  new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() + days));
+
+const startOfUtcWeekMonday = (date: Date): Date => {
+  const day = date.getUTCDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  return addUtcDays(date, diff);
+};
+
+const getSemesterDateWindow = (
+  academicYear: AcademicYearDateLike | null | undefined,
+  semester: 'ODD' | 'EVEN',
+): { start: Date; end: Date } | null => {
+  const start = toUtcDateOnly(semester === 'EVEN' ? academicYear?.semester2Start : academicYear?.semester1Start);
+  const end = toUtcDateOnly(semester === 'EVEN' ? academicYear?.semester2End : academicYear?.semester1End);
+  if (!start || !end || start.getTime() > end.getTime()) return null;
+  return { start, end };
+};
+
+const resolveMonthWeekSemesterFromSection = (
+  section: Pick<EntrySectionForm, 'schemaKey' | 'title'> | Pick<TeachingResourceProgramSectionSchema, 'key' | 'label'>,
+  fallbackSemester: unknown,
+): 'ODD' | 'EVEN' => {
+  const normalizedSection = section as {
+    schemaKey?: unknown;
+    title?: unknown;
+    key?: unknown;
+    label?: unknown;
+  };
+  const sectionToken = `${normalizedSection.schemaKey || normalizedSection.key || ''} ${
+    normalizedSection.title || normalizedSection.label || ''
+  }`.toLowerCase();
+  if (sectionToken.includes('genap') || sectionToken.includes('semester_2') || sectionToken.includes('semester 2')) {
+    return 'EVEN';
+  }
+  if (sectionToken.includes('ganjil') || sectionToken.includes('semester_1') || sectionToken.includes('semester 1')) {
+    return 'ODD';
+  }
+  const normalized = String(fallbackSemester || '').trim().toUpperCase();
+  return normalized === 'EVEN' || normalized === 'GENAP' ? 'EVEN' : 'ODD';
+};
+
+const buildAutoMonthWeekCounts = (
+  academicYear: AcademicYearDateLike | null | undefined,
+  semester: 'ODD' | 'EVEN',
+): Map<string, number> => {
+  const window = getSemesterDateWindow(academicYear, semester);
+  const counts = new Map<string, number>();
+  if (!window) return counts;
+
+  for (
+    let weekStart = startOfUtcWeekMonday(window.start);
+    weekStart.getTime() <= window.end.getTime();
+    weekStart = addUtcDays(weekStart, 7)
+  ) {
+    const weekEnd = addUtcDays(weekStart, 6);
+    const overlapStart = weekStart.getTime() < window.start.getTime() ? window.start : weekStart;
+    const overlapEnd = weekEnd.getTime() > window.end.getTime() ? window.end : weekEnd;
+    if (overlapStart.getTime() > overlapEnd.getTime()) continue;
+
+    const dayCounts = new Map<string, number>();
+    for (let cursor = overlapStart; cursor.getTime() <= overlapEnd.getTime(); cursor = addUtcDays(cursor, 1)) {
+      const monthKey = MONTH_WEEK_ORDER[cursor.getUTCMonth()];
+      dayCounts.set(monthKey, (dayCounts.get(monthKey) || 0) + 1);
+    }
+
+    const assignedMonth =
+      Array.from(dayCounts.entries()).sort((left, right) => {
+        if (right[1] !== left[1]) return right[1] - left[1];
+        return (MONTH_WEEK_INDEX_BY_KEY.get(left[0]) || 0) - (MONTH_WEEK_INDEX_BY_KEY.get(right[0]) || 0);
+      })[0]?.[0] || MONTH_WEEK_ORDER[overlapStart.getUTCMonth()];
+    counts.set(assignedMonth, (counts.get(assignedMonth) || 0) + 1);
+  }
+
+  return counts;
+};
+
 const parseMonthWeekColumnKey = (columnKey: unknown): MonthWeekColumnMeta | null => {
   const key = String(columnKey || '').trim().toLowerCase();
   const match = key.match(/^([a-z]+)_(\d{1,2})$/);
   if (!match) return null;
   const monthKey = match[1];
-  const monthLabel = MONTH_WEEK_COLUMN_LABELS[monthKey];
+  const normalizedMonthKey = normalizeMonthWeekKey(monthKey);
+  const monthLabel = MONTH_WEEK_COLUMN_LABELS[monthKey] || MONTH_WEEK_COLUMN_LABELS[normalizedMonthKey];
   const weekNumber = Number(match[2]);
   if (!monthLabel || !Number.isInteger(weekNumber) || weekNumber < 1 || weekNumber > 6) return null;
   return { monthKey, monthLabel, weekNumber };
@@ -1359,14 +1519,15 @@ const buildMonthWeekColumnLayout = <TColumn extends { key?: unknown }>(
     }
 
     hasSeenWeekColumn = true;
-    const existingGroup = weekGroups.find((group) => group.monthKey === parsed.monthKey);
+    const canonicalMonthKey = normalizeMonthWeekKey(parsed.monthKey);
+    const existingGroup = weekGroups.find((group) => normalizeMonthWeekKey(group.monthKey) === canonicalMonthKey);
     if (existingGroup) {
       existingGroup.columns.push({ column, weekNumber: parsed.weekNumber });
       return;
     }
 
     weekGroups.push({
-      monthKey: parsed.monthKey,
+      monthKey: canonicalMonthKey,
       monthLabel: parsed.monthLabel,
       columns: [{ column, weekNumber: parsed.weekNumber }],
     });
@@ -1375,6 +1536,59 @@ const buildMonthWeekColumnLayout = <TColumn extends { key?: unknown }>(
   const weekColumnCount = weekGroups.reduce((total, group) => total + group.columns.length, 0);
   if (weekGroups.length === 0 || weekColumnCount < 2) return null;
   return { leadingColumns, weekGroups, trailingColumns };
+};
+
+const expandMonthWeekColumnsByCalendar = <TColumn extends { key?: unknown; label?: unknown }>(
+  columns: TColumn[],
+  academicYear: AcademicYearDateLike | null | undefined,
+  semester: 'ODD' | 'EVEN',
+): TColumn[] => {
+  const layout = buildMonthWeekColumnLayout(columns);
+  if (!layout) return columns;
+  const autoCounts = buildAutoMonthWeekCounts(academicYear, semester);
+  if (autoCounts.size === 0) return columns;
+
+  const existingWeekColumns = new Map<string, TColumn>();
+  const monthKeyPreference = new Map<string, string>();
+  const templateByMonth = new Map<string, TColumn>();
+
+  layout.weekGroups.forEach((group) => {
+    const canonicalMonthKey = normalizeMonthWeekKey(group.monthKey);
+    group.columns.forEach(({ column, weekNumber }) => {
+      const parsed = parseMonthWeekColumnKey(column.key);
+      const sourceMonthKey = parsed?.monthKey || group.monthKey;
+      const canonicalSourceMonthKey = normalizeMonthWeekKey(sourceMonthKey);
+      const storageMonthKey = monthKeyPreference.get(canonicalSourceMonthKey) || sourceMonthKey;
+      monthKeyPreference.set(canonicalSourceMonthKey, storageMonthKey);
+      if (!templateByMonth.has(canonicalSourceMonthKey)) templateByMonth.set(canonicalSourceMonthKey, column);
+      existingWeekColumns.set(`${canonicalMonthKey}_${weekNumber}`, column);
+    });
+  });
+
+  const generatedWeekColumns: TColumn[] = [];
+  Array.from(autoCounts.entries())
+    .sort(
+      ([leftMonth], [rightMonth]) =>
+        (MONTH_WEEK_INDEX_BY_KEY.get(leftMonth) || 0) - (MONTH_WEEK_INDEX_BY_KEY.get(rightMonth) || 0),
+    )
+    .forEach(([canonicalMonthKey, weekCount]) => {
+      const storageMonthKey = monthKeyPreference.get(canonicalMonthKey) || canonicalMonthKey;
+      const template = templateByMonth.get(canonicalMonthKey) || layout.weekGroups[0]?.columns[0]?.column;
+      for (let weekNumber = 1; weekNumber <= weekCount; weekNumber += 1) {
+        const existingColumn = existingWeekColumns.get(`${canonicalMonthKey}_${weekNumber}`);
+        if (existingColumn) {
+          generatedWeekColumns.push(existingColumn);
+          continue;
+        }
+        generatedWeekColumns.push({
+          ...(template || ({} as TColumn)),
+          key: `${storageMonthKey}_${weekNumber}`,
+          label: `${MONTH_WEEK_COLUMN_LABELS[canonicalMonthKey] || storageMonthKey}-${weekNumber}`,
+        });
+      }
+    });
+
+  return [...layout.leadingColumns, ...generatedWeekColumns, ...layout.trailingColumns];
 };
 
 const isWeekColumnKey = (columnKey: string): boolean => {
@@ -1895,6 +2109,14 @@ export const LearningResourceGenerator = ({
   const quickEditSectionsRef = useRef<EntrySectionForm[]>([]);
   const quickEditCellRefs = useRef<Record<string, HTMLTextAreaElement | HTMLInputElement | null>>({});
   const [quickEditActiveSectionId, setQuickEditActiveSectionId] = useState('');
+  const [monthWeekNoteModal, setMonthWeekNoteModal] = useState<{
+    mode: 'quick' | 'editor';
+    sectionId: string;
+    rowId: string;
+    columnKey: string;
+    lineIndex: number;
+    value: string;
+  } | null>(null);
   const [referenceSearchTerms, setReferenceSearchTerms] = useState<Record<string, string>>({});
   const [referenceServerSearchInput, setReferenceServerSearchInput] = useState('');
   const [debouncedReferenceServerSearch, setDebouncedReferenceServerSearch] = useState('');
@@ -2015,7 +2237,7 @@ export const LearningResourceGenerator = ({
     const derivedSections = ensureDerivedSections(sourceSections);
     return derivedSections
       .map((section) => {
-        const normalizedColumns = sanitizeSectionColumns(section.columns);
+        const normalizedColumns = sanitizeSectionColumns(resolveSectionColumns(section));
         const normalizedRows = section.rows
           .map((row) => {
             const values = Object.entries(row.values || {}).reduce<Record<string, string>>((acc, [key, value]) => {
@@ -2221,6 +2443,14 @@ export const LearningResourceGenerator = ({
     () => resolveSemesterLabel(activeAcademicYear?.semester),
     [activeAcademicYear?.semester],
   );
+  const applyMonthWeekCalendarColumns = (
+    section: Pick<EntrySectionForm, 'schemaKey' | 'title'>,
+    columns: EntrySectionColumnForm[],
+  ): EntrySectionColumnForm[] => {
+    if (programCode !== 'PROMES' || !buildMonthWeekColumnLayout(columns)) return columns;
+    const semester = resolveMonthWeekSemesterFromSection(section, activeAcademicYear?.semester);
+    return expandMonthWeekColumnsByCalendar(columns, activeAcademicYear, semester);
+  };
   const referenceProjectionRequests = useMemo<TeachingResourceReferenceProjectionRequest[]>(() => {
     const requests: TeachingResourceReferenceProjectionRequest[] = [];
     activeProgramSchemaSections.forEach((section) => {
@@ -2490,9 +2720,13 @@ export const LearningResourceGenerator = ({
       ensureArray<EntrySectionColumnForm>(section.columns).forEach((column) => {
         if (!isDocumentReferencePickerColumn(column)) return;
         const requestKey = `${String(section.key || '').trim()}::${String(column.key || '').trim()}`;
+        const shouldSplitLineOptions =
+          programCode === 'PROMES' &&
+          Boolean(buildMonthWeekColumnLayout(ensureArray<EntrySectionColumnForm>(section.columns))) &&
+          getColumnIdentityCandidates(column).includes('tujuan_pembelajaran');
         const projectedOptions = projectedOptionsByRequestKey.get(requestKey);
         if (projectedOptions) {
-          map.set(requestKey, projectedOptions);
+          map.set(requestKey, shouldSplitLineOptions ? splitReferenceOptionsIntoLineOptions(projectedOptions) : projectedOptions);
           return;
         }
         const sourceProgramCode = normalizeTeachingResourceProgramCode(column.binding?.sourceProgramCode);
@@ -2511,7 +2745,10 @@ export const LearningResourceGenerator = ({
             dedupe.add(token);
             return true;
           });
-        map.set(`${String(section.key || '').trim()}::${String(column.key || '').trim()}`, options);
+        map.set(
+          `${String(section.key || '').trim()}::${String(column.key || '').trim()}`,
+          shouldSplitLineOptions ? splitReferenceOptionsIntoLineOptions(options) : options,
+        );
       });
     });
 
@@ -2520,6 +2757,7 @@ export const LearningResourceGenerator = ({
     activeProgramSchemaSections,
     activeSemesterLabel,
     programMetaByCode,
+    programCode,
     referenceEntriesQuery.data,
     selectedContext,
   ]);
@@ -2637,8 +2875,11 @@ export const LearningResourceGenerator = ({
 
   const resolveSectionColumnsForSnapshot = (section: EntrySectionForm): EntrySectionColumnForm[] => {
     const customColumns = sanitizeSectionColumns(section.columns);
-    if (customColumns.length > 0) return customColumns;
-    return sanitizeSectionColumns(activeProgramSchemaMap.get(String(section.schemaKey || '').trim())?.columns);
+    if (customColumns.length > 0) return applyMonthWeekCalendarColumns(section, customColumns);
+    return applyMonthWeekCalendarColumns(
+      section,
+      sanitizeSectionColumns(activeProgramSchemaMap.get(String(section.schemaKey || '').trim())?.columns),
+    );
   };
 
   const reconcileRelatedReferenceSnapshots = (sourceSections: EntrySectionForm[]): EntrySectionForm[] => {
@@ -3170,9 +3411,9 @@ export const LearningResourceGenerator = ({
 
   const resolveSectionColumns = (section: EntrySectionForm): EntrySectionColumnForm[] => {
     const customColumns = sanitizeSectionColumns(section.columns);
-    if (customColumns.length > 0) return customColumns;
+    if (customColumns.length > 0) return applyMonthWeekCalendarColumns(section, customColumns);
     const schema = resolveSectionSchema(section);
-    return sanitizeSectionColumns(schema?.columns);
+    return applyMonthWeekCalendarColumns(section, sanitizeSectionColumns(schema?.columns));
   };
 
   const getVisibleSectionColumns = (section: EntrySectionForm): EntrySectionColumnForm[] =>
@@ -3517,25 +3758,74 @@ export const LearningResourceGenerator = ({
     focusQuickEditCellLine(sectionId, rowId, columnKey, lineIndex + 1);
   };
 
-  const toggleQuickEditRowMark = (sectionId: string, rowId: string, columnKey: string) => {
-    setQuickEditSectionsWithDerived((prev) =>
-      prev.map((item) => {
-        if (item.id !== sectionId) return item;
-        return {
-          ...item,
-          rows: item.rows.map((row) => {
-            if (row.id !== rowId) return row;
-            const current = String(row.values[columnKey] || '');
-            return {
-              ...row,
-              values: {
-                ...row.values,
-                [columnKey]: isTruthyMark(current) ? '' : MARK_VALUE,
-              },
-            };
-          }),
-        };
-      }),
+  const toggleQuickEditRowLineMark = (
+    sectionId: string,
+    rowId: string,
+    columnKey: string,
+    lineIndex: number,
+    currentValue: string,
+  ) => {
+    updateQuickEditRowCellLine(sectionId, rowId, columnKey, lineIndex, isTruthyMark(currentValue) ? '' : MARK_VALUE);
+  };
+
+  const promptQuickEditMonthWeekText = (
+    sectionId: string,
+    rowId: string,
+    columnKey: string,
+    lineIndex: number,
+    currentValue: string,
+  ) => {
+    setMonthWeekNoteModal({
+      mode: 'quick',
+      sectionId,
+      rowId,
+      columnKey,
+      lineIndex,
+      value: isTruthyMark(currentValue) ? '' : String(currentValue || '').trim(),
+    });
+  };
+
+  const renderQuickMonthWeekCellControl = (
+    section: EntrySectionForm,
+    row: EntrySectionForm['rows'][number] | undefined,
+    columnKey: string,
+    value: string,
+    readOnly: boolean,
+    lineIndex: number,
+  ) => {
+    const checked = isTruthyMark(value);
+    const note = checked ? '' : String(value || '').trim();
+    return (
+      <button
+        type="button"
+        disabled={readOnly || !row?.id}
+        title="Klik untuk ceklis/kosong. Klik dua kali atau klik kanan untuk isi keterangan libur/kegiatan."
+        onClick={() => (row?.id ? toggleQuickEditRowLineMark(section.id, row.id, columnKey, lineIndex, value) : null)}
+        onDoubleClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          if (row?.id) promptQuickEditMonthWeekText(section.id, row.id, columnKey, lineIndex, value);
+        }}
+        onContextMenu={(event) => {
+          event.preventDefault();
+          if (row?.id) promptQuickEditMonthWeekText(section.id, row.id, columnKey, lineIndex, value);
+        }}
+        className={`inline-flex min-h-[54px] w-8 items-center justify-center rounded-md border px-0.5 py-1 text-[10px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
+          checked
+            ? 'border-emerald-400 bg-emerald-50 text-emerald-700'
+            : note
+              ? 'border-amber-300 bg-amber-50 text-amber-800'
+              : 'border-gray-300 bg-white text-gray-500 hover:bg-gray-50'
+        }`}
+      >
+        {checked ? (
+          MARK_VALUE
+        ) : note ? (
+          <span className="block max-h-24 overflow-hidden [writing-mode:vertical-rl] [transform:rotate(180deg)]">{note}</span>
+        ) : (
+          '-'
+        )}
+      </button>
     );
   };
 
@@ -3712,6 +4002,10 @@ export const LearningResourceGenerator = ({
     const dataType = getColumnDataType(column);
     const readOnly = isSystemManagedColumn(column);
     const centerAligned = isCenterAlignedTableColumn(column);
+    const isMonthWeekReferenceCell =
+      programCode === 'PROMES' &&
+      Boolean(buildMonthWeekColumnLayout(section.columns)) &&
+      getColumnIdentityCandidates(column).includes('tujuan_pembelajaran');
     const focusKey =
       row?.id && columnKey ? buildQuickCellFocusKey(section.id, row.id, columnKey, lineIndex) : '';
     const tableCellControlClassName = `block w-full border-0 bg-transparent px-1 py-1 text-xs leading-relaxed text-slate-800 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-400 ${
@@ -3728,13 +4022,15 @@ export const LearningResourceGenerator = ({
       const referenceOptions =
         referenceOptionsByColumnKey.get(`${String(section.schemaKey || '').trim()}::${columnKey}`) || [];
       const referenceSelectValue =
-        String(referenceSelection?.selectionToken || '').trim() ||
+        (isMonthWeekReferenceCell ? '' : String(referenceSelection?.selectionToken || '').trim()) ||
         referenceOptions.find((option) => option.value === value)?.selectValue ||
+        String(referenceSelection?.selectionToken || '').trim() ||
         '';
       const referenceSelectionValue = String(referenceSelection?.value || '').trim();
       const effectiveReferenceValue =
         value || splitEditableCellLines(referenceSelectionValue)[lineIndex] || '';
       const shouldRenderReferenceAsCellValue =
+        !isMonthWeekReferenceCell &&
         isMeaningfulReferenceValue(effectiveReferenceValue) &&
         (splitCellLines(rawCellValue).length > 1 ||
           splitCellLines(referenceSelectionValue).length > 1);
@@ -3850,22 +4146,24 @@ export const LearningResourceGenerator = ({
       );
     }
 
-    if (isWeekColumnKey(columnKey)) {
-      const isChecked = isTruthyMark(value);
+    if (readOnly && !isWeekColumnKey(columnKey) && dataType !== 'BOOLEAN' && dataType !== 'WEEK_GRID') {
       return (
-        <button
-          type="button"
-          disabled={readOnly || !row?.id}
-          onClick={() => (row?.id ? toggleQuickEditRowMark(section.id, row.id, columnKey) : null)}
-          className={`inline-flex h-8 w-full items-center justify-center rounded-md border text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
-            isChecked
-              ? 'border-emerald-400 bg-emerald-50 text-emerald-700'
-              : 'border-gray-300 bg-white text-gray-500 hover:bg-gray-50'
+        <div
+          className={`min-h-[34px] whitespace-pre-wrap rounded-md border border-slate-200 bg-slate-50 px-2 py-2 text-xs leading-relaxed text-slate-700 ${
+            centerAligned ? 'text-center' : ''
           }`}
         >
-          {isChecked ? MARK_VALUE : '-'}
-        </button>
+          {value
+            ? dataType === 'NUMBER' && splitCellLines(value).length <= 1
+              ? formatNumericValue(parseNumber(value))
+              : splitCellLines(value).join('\n')
+            : '-'}
+        </div>
       );
+    }
+
+    if (isWeekColumnKey(columnKey)) {
+      return renderQuickMonthWeekCellControl(section, row, columnKey, value, readOnly, lineIndex);
     }
 
     if (isKktpCriteriaColumnKey(columnKey)) {
@@ -4214,6 +4512,82 @@ export const LearningResourceGenerator = ({
     );
   };
 
+  const promptSectionMonthWeekText = (sectionId: string, rowId: string, columnKey: string, currentValue: string) => {
+    setMonthWeekNoteModal({
+      mode: 'editor',
+      sectionId,
+      rowId,
+      columnKey,
+      lineIndex: 0,
+      value: isTruthyMark(currentValue) ? '' : String(currentValue || '').trim(),
+    });
+  };
+
+  const saveMonthWeekNoteModal = () => {
+    if (!monthWeekNoteModal) return;
+    const nextValue = monthWeekNoteModal.value.trim();
+    if (monthWeekNoteModal.mode === 'quick') {
+      updateQuickEditRowCellLine(
+        monthWeekNoteModal.sectionId,
+        monthWeekNoteModal.rowId,
+        monthWeekNoteModal.columnKey,
+        monthWeekNoteModal.lineIndex,
+        nextValue,
+      );
+    } else {
+      updateSectionRowCell(
+        monthWeekNoteModal.sectionId,
+        monthWeekNoteModal.rowId,
+        monthWeekNoteModal.columnKey,
+        nextValue,
+      );
+    }
+    setMonthWeekNoteModal(null);
+  };
+
+  const renderMonthWeekCellControl = (
+    section: EntrySectionForm,
+    row: EntrySectionForm['rows'][number] | undefined,
+    columnKey: string,
+    value: string,
+    readOnly: boolean,
+  ) => {
+    const checked = isTruthyMark(value);
+    const note = checked ? '' : String(value || '').trim();
+    return (
+      <button
+        type="button"
+        disabled={readOnly || !row?.id}
+        title="Klik untuk ceklis/kosong. Klik dua kali atau klik kanan untuk isi keterangan libur/kegiatan."
+        onClick={() => (row?.id ? toggleSectionRowMark(section.id, row.id, columnKey) : null)}
+        onDoubleClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          if (row?.id) promptSectionMonthWeekText(section.id, row.id, columnKey, value);
+        }}
+        onContextMenu={(event) => {
+          event.preventDefault();
+          if (row?.id) promptSectionMonthWeekText(section.id, row.id, columnKey, value);
+        }}
+        className={`inline-flex min-h-[54px] w-8 items-center justify-center rounded-md border px-0.5 py-1 text-[10px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
+          checked
+            ? 'border-emerald-400 bg-emerald-50 text-emerald-700'
+            : note
+              ? 'border-amber-300 bg-amber-50 text-amber-800'
+              : 'border-gray-300 bg-white text-gray-500 hover:bg-gray-50'
+        }`}
+      >
+        {checked ? (
+          MARK_VALUE
+        ) : note ? (
+          <span className="block max-h-24 overflow-hidden [writing-mode:vertical-rl] [transform:rotate(180deg)]">{note}</span>
+        ) : (
+          '-'
+        )}
+      </button>
+    );
+  };
+
   const toggleKktpCriteria = (sectionId: string, rowId: string, columnKey: 'kurang_memadai' | 'memadai') => {
     const oppositeKey = columnKey === 'kurang_memadai' ? 'memadai' : 'kurang_memadai';
     setSectionsWithDerived((prev) =>
@@ -4388,22 +4762,24 @@ export const LearningResourceGenerator = ({
       );
     }
 
-    if (isWeekColumnKey(columnKey)) {
-      const isChecked = isTruthyMark(value);
+    if (readOnly && !isWeekColumnKey(columnKey) && dataType !== 'BOOLEAN' && dataType !== 'WEEK_GRID') {
       return (
-        <button
-          type="button"
-          disabled={readOnly || !row?.id}
-          onClick={() => (row?.id ? toggleSectionRowMark(section.id, row.id, columnKey) : null)}
-          className={`inline-flex h-8 w-full items-center justify-center rounded-md border text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
-            isChecked
-              ? 'border-emerald-400 bg-emerald-50 text-emerald-700'
-              : 'border-gray-300 bg-white text-gray-500 hover:bg-gray-50'
+        <div
+          className={`min-h-[34px] whitespace-pre-wrap rounded-md border border-gray-200 bg-gray-50 px-2 py-2 text-xs leading-relaxed text-gray-700 ${
+            isCenterAlignedTableColumn(column) ? 'text-center' : ''
           }`}
         >
-          {isChecked ? MARK_VALUE : '-'}
-        </button>
+          {value
+            ? dataType === 'NUMBER' && splitCellLines(value).length <= 1
+              ? formatNumericValue(parseNumber(value))
+              : splitCellLines(value).join('\n')
+            : '-'}
+        </div>
       );
+    }
+
+    if (isWeekColumnKey(columnKey)) {
+      return renderMonthWeekCellControl(section, row, columnKey, value, readOnly);
     }
 
     if (isKktpCriteriaColumnKey(columnKey)) {
@@ -4628,8 +5004,9 @@ export const LearningResourceGenerator = ({
                   {orderedColumns.map((column) => {
                     const columnKey = String(column.key || '').trim();
                     const cellLines = splitEditableCellLines(row.values[columnKey]);
-                    if (cellLines.length <= 1 && lineIndex > 0) return null;
-                    if (cellLines.length > 1 && lineIndex >= cellLines.length) {
+                    const isMonthWeekColumn = Boolean(parseMonthWeekColumnKey(columnKey));
+                    if (!isMonthWeekColumn && cellLines.length <= 1 && lineIndex > 0) return null;
+                    if (!isMonthWeekColumn && cellLines.length > 1 && lineIndex >= cellLines.length) {
                       return (
                         <td
                           key={`quick-month-cell-empty-${row.id}-${columnKey}-${lineIndex}`}
@@ -4641,8 +5018,7 @@ export const LearningResourceGenerator = ({
                         />
                       );
                     }
-                    const rowSpan = cellLines.length <= 1 && maxLineCount > 1 ? maxLineCount : undefined;
-                    const isMonthWeekColumn = Boolean(parseMonthWeekColumnKey(columnKey));
+                    const rowSpan = !isMonthWeekColumn && cellLines.length <= 1 && maxLineCount > 1 ? maxLineCount : undefined;
                     return (
                       <td
                         key={`quick-month-cell-${row.id}-${columnKey}-${lineIndex}`}
@@ -6141,6 +6517,76 @@ export const LearningResourceGenerator = ({
               >
                 <Save size={14} />
                 {isSaving ? 'Menyimpan...' : editingEntry ? 'Simpan Perubahan' : 'Simpan & Buat Dokumen'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {monthWeekNoteModal ? (
+        <div className="fixed inset-0 z-[1600] flex items-center justify-center bg-slate-950/20 px-4 py-24 backdrop-blur-[1px]">
+          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white shadow-2xl">
+            <div className="flex items-start justify-between border-b border-slate-100 px-5 py-4">
+              <div>
+                <h3 className="text-base font-semibold text-slate-900">Keterangan Minggu</h3>
+                <p className="mt-1 text-xs leading-relaxed text-slate-500">
+                  Isi jika minggu ini libur atau ada kegiatan khusus. Kosongkan untuk menghapus keterangan.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setMonthWeekNoteModal(null)}
+                className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100"
+                aria-label="Tutup keterangan minggu"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="px-5 py-4">
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Teks Keterangan
+              </label>
+              <textarea
+                autoFocus
+                rows={4}
+                value={monthWeekNoteModal.value}
+                onChange={(event) =>
+                  setMonthWeekNoteModal((current) =>
+                    current
+                      ? {
+                          ...current,
+                          value: event.target.value,
+                        }
+                      : current,
+                  )
+                }
+                onKeyDown={(event) => {
+                  if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+                    event.preventDefault();
+                    saveMonthWeekNoteModal();
+                  }
+                }}
+                placeholder="Contoh: Libur nasional, Masa Pengenalan Lingkungan Sekolah..."
+                className="w-full resize-y rounded-xl border border-slate-300 px-3 py-2 text-sm leading-relaxed text-slate-800 focus:border-blue-500 focus:outline-none"
+              />
+              <p className="mt-2 text-[11px] text-slate-500">
+                Saat dicetak, teks ini akan otomatis dibuat vertikal seperti contoh Promes.
+              </p>
+            </div>
+            <div className="flex items-center justify-end gap-2 border-t border-slate-100 px-5 py-3">
+              <button
+                type="button"
+                onClick={() => setMonthWeekNoteModal(null)}
+                className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={saveMonthWeekNoteModal}
+                className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+              >
+                <Save size={14} />
+                Simpan Keterangan
               </button>
             </div>
           </div>
