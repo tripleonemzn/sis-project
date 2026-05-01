@@ -627,8 +627,9 @@ const toEntryReferenceSections = (entry: TeachingResourceEntry) => {
     : entry.content?.sections && typeof entry.content.sections === 'object'
       ? Object.values(entry.content.sections as Record<string, unknown>)
       : [];
+  const referenceSelections = parseEntryReferenceSelections(entry);
   return rawSections
-    .map((section) => {
+    .map((section, sectionIndex) => {
       if (!section || typeof section !== 'object') return null;
       const item = section as {
         schemaKey?: unknown;
@@ -636,23 +637,35 @@ const toEntryReferenceSections = (entry: TeachingResourceEntry) => {
         columns?: unknown;
         rows?: unknown;
       };
+      const columns = sanitizeSectionColumns(item.columns);
       const rows = Array.isArray(item.rows)
         ? item.rows
-            .map((row) => {
+            .map((row, rowIndex) => {
               if (!row || typeof row !== 'object') return null;
-              return Object.entries(row as Record<string, unknown>).reduce<Record<string, string>>((acc, [key, value]) => {
+              const values = Object.entries(row as Record<string, unknown>).reduce<Record<string, string>>((acc, [key, value]) => {
                 const normalizedKey = String(key || '').trim();
                 if (!normalizedKey) return acc;
                 acc[normalizedKey] = String(value ?? '').trim();
                 return acc;
               }, {});
+              columns.forEach((column) => {
+                const columnKey = String(column.key || '').trim();
+                if (!columnKey || isMeaningfulReferenceValue(values[columnKey])) return;
+                const selection = referenceSelections.get(
+                  buildReferenceSelectionStorageKey(sectionIndex, rowIndex, columnKey),
+                );
+                if (selection?.value && isMeaningfulReferenceValue(selection.value)) {
+                  values[columnKey] = String(selection.value || '').trim();
+                }
+              });
+              return values;
             })
             .filter((row): row is Record<string, string> => Boolean(row))
         : [];
       return {
         schemaKey: String(item.schemaKey || '').trim(),
         title: String(item.title || '').trim(),
-        columns: sanitizeSectionColumns(item.columns),
+        columns,
         rows,
       };
     })
@@ -2911,12 +2924,18 @@ export const LearningResourceGenerator = ({
     section: EntrySectionForm,
     row: EntrySectionRowForm,
     targetColumn: EntrySectionColumnForm,
+    rowIndex = 0,
   ): string => {
     const sourceProgramCode = normalizeTeachingResourceProgramCode(targetColumn.binding?.sourceProgramCode);
     if (!sourceProgramCode || !referenceEntriesQuery.data) return '';
     const sourceEntries = referenceEntriesQuery.data.entriesByProgram.get(sourceProgramCode) || [];
     if (sourceEntries.length === 0) return '';
-    const currentSnapshot = buildComparableRowSnapshot(resolveSectionColumnsForSnapshot(section), row);
+    const sectionColumns = resolveSectionColumnsForSnapshot(section);
+    const currentSnapshot = buildComparableRowSnapshot(sectionColumns, row);
+    const isPromesMonthWeekSection = programCode === 'PROMES' && Boolean(buildMonthWeekColumnLayout(sectionColumns));
+    const targetSemesterLabel = isPromesMonthWeekSection
+      ? resolveSemesterLabel(resolveMonthWeekSemesterFromSection(section, activeAcademicYear?.semester)).toLowerCase()
+      : '';
     const sourceProgram = programMetaByCode.get(sourceProgramCode);
     const schemaMap = new Map<string, TeachingResourceProgramSectionSchema>();
     ensureArray<TeachingResourceProgramSectionSchema>(sourceProgram?.schema?.sections).forEach((sourceSection) => {
@@ -2925,6 +2944,7 @@ export const LearningResourceGenerator = ({
 
     let bestScore = 0;
     let bestValue = '';
+    const orderedFallbackValues: string[] = [];
     sourceEntries.forEach((entry) => {
       const entryContextSnapshot = buildEntryContextSnapshot(entry, {
         tingkat: String(entry.classLevel || '').trim(),
@@ -2936,6 +2956,11 @@ export const LearningResourceGenerator = ({
           const candidateSnapshot = buildReferenceSnapshot(sourceColumns, sourceRow, entryContextSnapshot);
           const candidateValue = getSnapshotValueForColumn(candidateSnapshot, targetColumn);
           if (!isMeaningfulReferenceValue(candidateValue)) return;
+          if (targetSemesterLabel) {
+            const sourceSemesterLabel = resolveSemesterLabel(candidateSnapshot.semester).toLowerCase();
+            if (sourceSemesterLabel && sourceSemesterLabel !== targetSemesterLabel) return;
+          }
+          orderedFallbackValues.push(candidateValue);
           const score = scoreRelatedReferenceSnapshot(currentSnapshot, candidateSnapshot, targetColumn);
           if (score <= 0) return;
           if (score > bestScore) {
@@ -2946,7 +2971,7 @@ export const LearningResourceGenerator = ({
       });
     });
 
-    return bestValue;
+    return bestValue || orderedFallbackValues[rowIndex] || '';
   };
 
   const shouldUseResolvedReferenceValue = (currentValue: string, resolvedValue: string): boolean => {
@@ -2972,7 +2997,8 @@ export const LearningResourceGenerator = ({
     const nextSections = sourceSections.map((section) => {
       const columns = resolveSectionColumnsForSnapshot(section);
       if (columns.length === 0 || section.rows.length === 0) return section;
-      const nextRows = section.rows.map((row) => {
+      const isPromesMonthWeekSection = programCode === 'PROMES' && Boolean(buildMonthWeekColumnLayout(columns));
+      const nextRows = section.rows.map((row, rowIndex) => {
         let nextValues = row.values;
         Object.entries(row.referenceSelections || {}).forEach(([selectionKey, selection]) => {
           const columnKey = String(selectionKey || '').split('__line_')[0] || '';
@@ -2988,7 +3014,21 @@ export const LearningResourceGenerator = ({
           if (!key) return;
           const sourceProgramCode = normalizeTeachingResourceProgramCode(column.binding?.sourceProgramCode);
           if (!sourceProgramCode) return;
-          const resolvedValue = resolveRelatedReferenceValue(section, { ...row, values: nextValues }, column);
+          const resolvedValue = resolveRelatedReferenceValue(section, { ...row, values: nextValues }, column, rowIndex);
+          const shouldForceReferenceSync =
+            isPromesMonthWeekSection &&
+            getColumnIdentityCandidates(column).some((candidate) =>
+              ['tujuan_pembelajaran', 'alokasi_jp'].includes(candidate),
+            );
+          if (
+            shouldForceReferenceSync &&
+            isMeaningfulReferenceValue(resolvedValue) &&
+            String(nextValues[key] || '').trim() !== resolvedValue
+          ) {
+            nextValues = { ...nextValues, [key]: resolvedValue };
+            changed = true;
+            return;
+          }
           if (!shouldUseResolvedReferenceValue(String(nextValues[key] || ''), resolvedValue)) return;
           nextValues = { ...nextValues, [key]: resolvedValue };
           changed = true;
@@ -3942,7 +3982,9 @@ export const LearningResourceGenerator = ({
         {checked ? (
           MARK_VALUE
         ) : note ? (
-          <span className="block max-h-24 overflow-hidden [writing-mode:vertical-rl] [transform:rotate(180deg)]">{note}</span>
+          <span className="block whitespace-nowrap overflow-visible text-[9px] leading-none [writing-mode:vertical-rl] [transform:rotate(180deg)]">
+            {note}
+          </span>
         ) : (
           '-'
         )}
@@ -4138,28 +4180,15 @@ export const LearningResourceGenerator = ({
 
     if (isMonthWeekReferenceCell) {
       return (
-        <textarea
-          ref={(element) => {
-            if (focusKey) quickEditCellRefs.current[focusKey] = element;
-            resizeTextareaToContent(element);
-          }}
-          rows={2}
-          value={value}
-          disabled={readOnly}
-          onChange={(event) =>
-            updateQuickEditRowCellLine(section.id, row?.id || '', columnKey, lineIndex, event.target.value)
-          }
-          onKeyDown={(event) => {
-            if (event.key !== 'Enter' || event.shiftKey || readOnly || !row?.id) return;
-            event.preventDefault();
-            handleQuickEditCellEnter(section.id, row.id, columnKey, lineIndex, value);
-          }}
-          onInput={(event) => {
-            resizeTextareaToContent(event.currentTarget);
-          }}
-          placeholder={column.placeholder || ''}
-          className={`${tableCellControlClassName} min-h-[42px] resize-y overflow-hidden text-left`}
-        />
+        <div
+          className={`min-h-[42px] whitespace-pre-wrap rounded-md border px-2 py-2 text-left text-xs leading-relaxed ${
+            value
+              ? 'border-slate-200 bg-slate-50 text-slate-800'
+              : 'border-slate-100 bg-slate-50/60 text-slate-400'
+          }`}
+        >
+          {value || '-'}
+        </div>
       );
     }
 
@@ -5534,10 +5563,10 @@ export const LearningResourceGenerator = ({
               const cells = orderedHeaders
                 .map((header, headerIndex) => {
                   const lines = lineGroups[headerIndex] || [''];
-                  if (lines.length <= 1 && lineIndex > 0) return '';
                   const isMonthWeekColumn = Boolean(parseMonthWeekColumnKey(header.key));
                   const mergedMonthWeekNote = isMonthWeekColumn ? getMergedMonthWeekNote(row.values?.[header.key]) : null;
                   if (mergedMonthWeekNote && lineIndex > 0) return '';
+                  if (!isMonthWeekColumn && lines.length <= 1 && lineIndex > 0) return '';
                   const lineValue = lines[Math.min(lineIndex, lines.length - 1)];
                   const printableValue = mergedMonthWeekNote ? mergedMonthWeekNote.note : lineValue;
                   const className = [
@@ -5550,7 +5579,9 @@ export const LearningResourceGenerator = ({
                     .join(' ');
                   const classAttribute = renderPrintClassAttribute(className);
                   const rowSpanAttribute =
-                    mergedMonthWeekNote || (lines.length <= 1 && maxLineCount > 1) ? ` rowspan="${maxLineCount}"` : '';
+                    mergedMonthWeekNote || (!isMonthWeekColumn && lines.length <= 1 && maxLineCount > 1)
+                      ? ` rowspan="${maxLineCount}"`
+                      : '';
                   const valignAttribute = rowSpanAttribute ? ' style="vertical-align: middle;"' : '';
                   const content =
                     lines.length > 1 && lineIndex >= lines.length
@@ -5684,7 +5715,8 @@ export const LearningResourceGenerator = ({
     printableSectionId?: string,
   ): string => {
     const defaultSections = buildDefaultSections(activeProgramMeta);
-    const printableSections = parseEntrySections(entry, defaultSections).filter((section) => {
+    const displaySections = hydrateEntrySectionsForDisplay(entry, parseEntrySections(entry, defaultSections));
+    const printableSections = displaySections.filter((section) => {
       if (printableSectionId && section.id !== printableSectionId) return false;
       const sectionSchema = resolveSectionSchema(section);
       const blockType = String(sectionSchema?.blockType || '').trim().toUpperCase();
@@ -5821,15 +5853,11 @@ export const LearningResourceGenerator = ({
             vertical-align: middle;
           }
           .month-week-cell-text {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            width: 100%;
-            height: 100%;
+            display: inline-block;
             max-height: none;
             writing-mode: vertical-rl;
             transform: rotate(180deg);
-            overflow: hidden;
+            overflow: visible;
             white-space: nowrap;
             text-align: center;
             text-orientation: mixed;
