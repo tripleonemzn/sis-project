@@ -26,7 +26,7 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
-  - Commit: `pending`
+  - Commit: `6412617`
   - Title: `fix(teaching-resources): repair prota references`
   - Summary:
     - schema program yang telanjur punya snapshot dokumen tanpa picker dipulihkan saat dibaca API sehingga guru tetap mendapat dropdown referensi
