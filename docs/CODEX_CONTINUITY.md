@@ -5,12 +5,12 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-05-01 23:31 WIB
-- Current status: bug sinkronisasi kotak minggu Promes/Program Semester sudah diperbaiki dan live. Backend sekarang mempertahankan newline khusus kolom bulan-minggu Promes saat menyimpan entry, sehingga ceklis/keterangan pada subbaris tidak naik ke baris pertama setelah save/reload. Print preview juga memakai baris yang sama dengan tabel view dan kembali menampilkan tanda ceklis.
+- Last updated: 2026-05-02 06:55 WIB
+- Current status: polish Promes/Program Semester lanjutan sudah deploy web. Tabel guru dan print sekarang memusatkan vertikal kolom No/JP serta TP, konten No/JP tetap rata tengah dan isi TP tetap rata kiri. Catatan/keterangan pada satu kolom minggu Promes sekarang dirender sebagai merge satu kolom penuh lintas semua TP. Panel setup Wakakur juga dibuat lebih eksplisit: No otomatis, TP dan JP dipilih dari dokumen sumber, bulan-minggu dibuat sistem.
 - Objective/task aktif:
   - Melanjutkan pengembangan perangkat ajar dinamis setelah polish tab remedial dan editor tabel guru.
 - Batch terakhir selesai:
-  - `Perangkat ajar follow-up - fix Promes week cell persistence`
+  - `Perangkat ajar follow-up - Promes alignment, global week note merge, and clearer setup copy`
 - Progress fitur remedial keseluruhan:
   - `100%`
 - Progress presensi terpadu saat ini:
@@ -26,32 +26,29 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
-  - Commit: `d0f77e0`
-  - Title: `fix(teaching-resources): preserve promes week cells`
+  - Commit: `df7704b`
+  - Title: `fix(teaching-resources): refine promes table layout`
   - Summary:
-    - backend `teachingResourceProgram.controller` tidak lagi `trim()` isi cell bulan-minggu Promes agar posisi subbaris `\n✓`/keterangan tetap utuh setelah simpan
-    - frontend reference helper ikut mempertahankan raw value kolom bulan-minggu agar snapshot/reload tidak menggeser line index
-    - print Promes memakai `splitEditableCellLines` untuk kolom minggu dan menampilkan tanda ceklis, bukan mengosongkannya
+    - No/JP Promes rata tengah dan vertikal tengah di table view serta print; TP vertikal tengah dengan teks tetap rata kiri
+    - catatan minggu Promes dirender sebagai merge satu kolom penuh lintas semua baris TP pada table view dan print
+    - setup Wakakur untuk Promes menjelaskan No otomatis, sumber TP, sumber JP, dan bulan-minggu otomatis agar tidak ambigu
 - Area/file disentuh:
   - `frontend/src/pages/teacher/learning-resources/LearningResourceGenerator.tsx`
-  - `backend/src/controllers/teachingResourceProgram.controller.ts`
+  - `frontend/src/pages/teacher/wakasek/curriculum/TeachingResourceProgramManagementPage.tsx`
   - `docs/CODEX_CONTINUITY.md`
 - Verifikasi batch ini:
   - `git diff --check`
-  - `cd backend && npm run build`
   - `cd frontend && npm run build`
-  - `cd backend && npm run service:restart`
-  - `cd backend && npm run service:health`
   - `cd frontend && npm run deploy`
   - `curl -I https://siskgb2.id/`
 - Publish/live status:
   - Web sudah deploy live
-  - Backend sudah reload via PM2 dan health check `200/200`
+  - Backend tidak diubah pada batch ini
   - Tidak ada perubahan mobile pada batch ini
 - Remaining work:
   - Lanjut audit/pengembangan perangkat ajar dinamis sesuai arahan user berikutnya.
 - Residual risk:
-  - Data Promes yang sudah telanjur tersimpan dalam kondisi salah sebelum fix tidak bisa ditebak ulang posisinya secara otomatis. Setelah fix live, klik/simpan berikutnya akan mempertahankan posisi subbaris yang benar.
+  - Perubahan merge catatan minggu bersifat frontend render-only dan memakai data cell catatan yang sudah ada. Jika ada lebih dari satu catatan berbeda pada kolom minggu yang sama, tampilan memakai catatan pertama sebagai catatan kolom penuh.
 
 ## Status Saat Ini
 
