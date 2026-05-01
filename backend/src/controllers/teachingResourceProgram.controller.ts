@@ -1040,6 +1040,11 @@ function normalizeReferenceToken(raw: unknown): string {
     .replace(/^_+|_+$/g, '');
 }
 
+function isMeaningfulReferenceValue(raw: unknown): boolean {
+  const normalized = String(raw ?? '').trim();
+  return Boolean(normalized && !['-', '—', '–'].includes(normalized));
+}
+
 function extractReferenceCandidatesFromColumn(column: Partial<TeachingResourceColumnSchema> | null | undefined): string[] {
   const candidates = new Set<string>();
   [
@@ -1068,7 +1073,7 @@ function buildReferenceSnapshotFromRow(
   columns.forEach((column) => {
     const key = String(column.key || '').trim();
     const value = String(row[key] || '').trim();
-    if (!key || !value) return;
+    if (!key || !isMeaningfulReferenceValue(value)) return;
     const tokens = new Set<string>([
       normalizeReferenceToken(key),
       ...extractReferenceCandidatesFromColumn(column),
@@ -1081,7 +1086,7 @@ function buildReferenceSnapshotFromRow(
   Object.entries(row).forEach(([key, rawValue]) => {
     const normalizedKey = normalizeReferenceToken(key);
     const value = String(rawValue || '').trim();
-    if (!normalizedKey || !value || snapshot[normalizedKey]) return;
+    if (!normalizedKey || !isMeaningfulReferenceValue(value) || snapshot[normalizedKey]) return;
     snapshot[normalizedKey] = value;
   });
   return snapshot;
@@ -1878,10 +1883,10 @@ function buildProjectedReferenceOptions(
         const columnCandidates = extractReferenceCandidatesFromColumn(column);
         if (columnCandidates.length === 0) return;
         const rawValue = String(row[columnKey] || '').trim();
-        if (!rawValue) return;
+        if (!isMeaningfulReferenceValue(rawValue)) return;
         const valueLines = splitReferenceCellLines(rawValue)
           .map((line) => line.trim())
-          .filter(Boolean);
+          .filter(isMeaningfulReferenceValue);
         const lineOptions =
           valueLines.length > 1
             ? valueLines.map((value, lineIndex) => ({

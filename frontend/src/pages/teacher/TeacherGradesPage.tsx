@@ -112,6 +112,7 @@ type ReligionOption = {
 };
 
 const TEACHER_GRADES_FILTER_STORAGE_KEY = 'teacher-grades:filters:v1';
+const TEACHER_GRADES_ACTIVE_TAB_STORAGE_KEY = 'teacher-grades:active-tab:v1';
 
 type BulkGradeSaveResult = {
   success?: number;
@@ -126,6 +127,19 @@ type BulkGradeSaveResult = {
 
 type TeacherGradeTab = 'INPUT' | 'REMEDIAL';
 type RemedialModalMode = 'SCORE' | 'HISTORY';
+
+const normalizeTeacherGradeTab = (value: unknown): TeacherGradeTab =>
+  value === 'REMEDIAL' ? 'REMEDIAL' : 'INPUT';
+
+const readStoredTeacherGradeTab = (): TeacherGradeTab => {
+  try {
+    if (typeof window === 'undefined' || !window.localStorage) return 'INPUT';
+    return normalizeTeacherGradeTab(window.localStorage.getItem(TEACHER_GRADES_ACTIVE_TAB_STORAGE_KEY));
+  } catch (error) {
+    console.warn('Failed to restore teacher grade active tab:', error);
+    return 'INPUT';
+  }
+};
 
 type RemedialSourceOption = {
   code: string;
@@ -738,7 +752,7 @@ export const TeacherGradesPage = () => {
   const { data: activeAcademicYear } = useActiveAcademicYear();
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [activeTab, setActiveTab] = useState<TeacherGradeTab>('INPUT');
+  const [activeTab, setActiveTab] = useState<TeacherGradeTab>(() => readStoredTeacherGradeTab());
   
   // Filter states
   const [assignments, setAssignments] = useState<TeacherAssignment[]>([]);
@@ -999,6 +1013,15 @@ export const TeacherGradesPage = () => {
       console.warn('Failed to persist teacher grade filters:', error);
     }
   }, [isFilterRestoreDone, selectedAcademicYear, selectedSemester, selectedAssignment, selectedComponent]);
+
+  useEffect(() => {
+    try {
+      if (typeof window === 'undefined' || !window.localStorage) return;
+      window.localStorage.setItem(TEACHER_GRADES_ACTIVE_TAB_STORAGE_KEY, activeTab);
+    } catch (error) {
+      console.warn('Failed to persist teacher grade active tab:', error);
+    }
+  }, [activeTab]);
 
   useEffect(() => {
     if (selectedAssignment) {
@@ -2035,7 +2058,7 @@ export const TeacherGradesPage = () => {
           <UnderlineTabBar
             items={gradePageTabItems}
             activeId={activeTab}
-            onChange={(tabId) => setActiveTab(tabId as 'INPUT' | 'REMEDIAL')}
+            onChange={(tabId) => setActiveTab(normalizeTeacherGradeTab(tabId))}
             className="border-b-0"
             innerClassName="gap-4"
             ariaLabel="Tab input nilai"

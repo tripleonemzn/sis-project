@@ -260,12 +260,17 @@ const normalizeReferenceToken = (value: unknown): string =>
     .replace(/_+/g, '_')
     .replace(/^_+|_+$/g, '');
 
+const isMeaningfulReferenceValue = (value: unknown): boolean => {
+  const normalized = String(value ?? '').trim();
+  return Boolean(normalized && !['-', '—', '–'].includes(normalized));
+};
+
 const sanitizeReferenceSnapshot = (value: unknown): Record<string, string> => {
   if (!value || typeof value !== 'object') return {};
   return Object.entries(value as Record<string, unknown>).reduce<Record<string, string>>((acc, [key, rawValue]) => {
     const normalizedKey = normalizeReferenceToken(key);
     const resolvedValue = String(rawValue ?? '').trim();
-    if (!normalizedKey || !resolvedValue) return acc;
+    if (!normalizedKey || !isMeaningfulReferenceValue(resolvedValue)) return acc;
     acc[normalizedKey] = resolvedValue;
     return acc;
   }, {});
@@ -709,7 +714,7 @@ const buildReferenceSnapshot = (
   columns.forEach((column) => {
     const key = String(column.key || '').trim();
     const value = String(row[key] || '').trim();
-    if (!key || !value) return;
+    if (!key || !isMeaningfulReferenceValue(value)) return;
     const tokens = new Set<string>([
       normalizeReferenceToken(key),
       ...extractBindingCandidates(column as EntrySectionColumnForm),
@@ -723,7 +728,7 @@ const buildReferenceSnapshot = (
   Object.entries(row).forEach(([key, rawValue]) => {
     const normalizedKey = normalizeReferenceToken(key);
     const value = String(rawValue || '').trim();
-    if (!normalizedKey || !value || snapshot[normalizedKey]) return;
+    if (!normalizedKey || !isMeaningfulReferenceValue(value) || snapshot[normalizedKey]) return;
     snapshot[normalizedKey] = value;
   });
   return snapshot;
@@ -871,6 +876,18 @@ const splitCellLines = (value: unknown): string[] => {
     .replace(/\r\n/g, '\n')
     .split('\n');
   return lines.length > 0 ? lines : [''];
+};
+
+const buildReferenceSelectionLineKey = (columnKey: string, lineIndex: number): string =>
+  lineIndex > 0 ? `${columnKey}__line_${lineIndex}` : columnKey;
+
+const setCellLineValue = (value: unknown, lineIndex: number, nextLineValue: unknown): string => {
+  const safeLineIndex = Math.max(0, Number(lineIndex) || 0);
+  const lines = splitCellLines(value);
+  while (lines.length <= safeLineIndex) lines.push('');
+  lines[safeLineIndex] = String(nextLineValue ?? '');
+  while (lines.length > safeLineIndex + 1 && lines[lines.length - 1] === '') lines.pop();
+  return lines.join('\n');
 };
 
 const formatStablePlaceDate = (value?: string | null): string => {
@@ -1531,8 +1548,9 @@ export const LearningResourceGenerator = ({
       section.rows.forEach((row, rowIndex) => {
         Object.entries(row.referenceSelections || {}).forEach(([columnKey, selection]) => {
           if (!selection) return;
-          const value = String(selection.value || row.values[columnKey] || '').trim();
-          if (!value) return;
+          const storedColumnKey = String(selection.columnKey || columnKey).trim();
+          const value = String(selection.value || row.values[storedColumnKey] || '').trim();
+          if (!isMeaningfulReferenceValue(value)) return;
           const sourceProgramCode = normalizeTeachingResourceProgramCode(selection.sourceProgramCode);
           const sourceEntryId = Number(selection.sourceEntryId || 0);
           if (sourceProgramCode && sourceEntryId > 0) {
@@ -1542,7 +1560,7 @@ export const LearningResourceGenerator = ({
             sectionSchemaKey: String(section.schemaKey || '').trim() || undefined,
             sectionIndex,
             rowIndex,
-            columnKey,
+            columnKey: storedColumnKey,
             selectionToken: String(selection.selectionToken || '').trim() || undefined,
             sourceProgramCode: sourceProgramCode || undefined,
             sourceEntryId: sourceEntryId > 0 ? sourceEntryId : undefined,
@@ -1900,10 +1918,10 @@ export const LearningResourceGenerator = ({
             if (!columnCandidates.some((candidate) => candidates.includes(candidate))) return;
             const columnKey = String(column.key || '').trim();
             const rawValue = String(row[columnKey] || '').trim();
-            if (!rawValue) return;
+            if (!isMeaningfulReferenceValue(rawValue)) return;
             const valueLines = splitCellLines(rawValue)
               .map((line) => line.trim())
-              .filter(Boolean);
+              .filter(isMeaningfulReferenceValue);
             const lineOptions =
               valueLines.length > 1
                 ? valueLines.map((lineValue, lineIndex) => ({
@@ -1941,7 +1959,7 @@ export const LearningResourceGenerator = ({
             const normalizedKey = normalizeReferenceToken(key);
             if (!normalizedKey || !candidates.includes(normalizedKey)) return;
             const value = String(rawValue || '').trim();
-            if (!value) return;
+            if (!isMeaningfulReferenceValue(value)) return;
             const label = entry.title && entry.title.trim() && entry.title.trim() !== value ? `${value} - ${entry.title}` : value;
             options.push({
               selectValue: `${entry.id}::${String(key || '').trim()}::${value}`,
@@ -2764,19 +2782,6 @@ export const LearningResourceGenerator = ({
     );
   };
 
-  const updateQuickEditSectionTitle = (sectionId: string, value: string) => {
-    setQuickEditSectionsWithDerived((prev) =>
-      prev.map((item) =>
-        item.id === sectionId
-          ? {
-              ...item,
-              title: value,
-            }
-          : item,
-      ),
-    );
-  };
-
   const toggleQuickEditRowMark = (sectionId: string, rowId: string, columnKey: string) => {
     setQuickEditSectionsWithDerived((prev) =>
       prev.map((item) => {
@@ -2865,6 +2870,7 @@ export const LearningResourceGenerator = ({
     sectionId: string,
     rowId: string,
     sourceColumn: EntrySectionColumnForm,
+    lineIndex: number,
     selectionToken: string,
   ) => {
     setQuickEditSectionsWithDerived((prev) =>
@@ -2875,19 +2881,20 @@ export const LearningResourceGenerator = ({
           rows: item.rows.map((row) => {
             if (row.id !== rowId) return row;
             const columnKey = String(sourceColumn.key || '').trim();
+            const selectionKey = buildReferenceSelectionLineKey(columnKey, lineIndex);
             const referenceOptions =
               referenceOptionsByColumnKey.get(`${String(item.schemaKey || '').trim()}::${columnKey}`) || [];
             const selectedOption = referenceOptions.find((option) => option.selectValue === selectionToken);
             const nextValues = {
               ...row.values,
-              [columnKey]: selectedOption?.value || '',
             };
+            nextValues[columnKey] = setCellLineValue(nextValues[columnKey], lineIndex, selectedOption?.value || '');
             const nextReferenceSelections = {
               ...(row.referenceSelections || {}),
             };
 
             if (selectedOption) {
-              nextReferenceSelections[columnKey] = {
+              nextReferenceSelections[selectionKey] = {
                 sectionSchemaKey: String(item.schemaKey || '').trim() || undefined,
                 columnKey,
                 selectionToken: selectedOption.selectValue,
@@ -2901,7 +2908,7 @@ export const LearningResourceGenerator = ({
                 snapshot: selectedOption.snapshot,
               };
             } else {
-              delete nextReferenceSelections[columnKey];
+              delete nextReferenceSelections[selectionKey];
             }
 
             const selectedSourceProgramCode = normalizeTeachingResourceProgramCode(
@@ -2915,15 +2922,18 @@ export const LearningResourceGenerator = ({
               if (selectedSourceProgramCode && targetProgramCode && targetProgramCode !== selectedSourceProgramCode) return;
               const allowManualOverride = Boolean(targetColumn.binding?.allowManualOverride);
               if (!selectedOption) {
-                if (!allowManualOverride) nextValues[targetKey] = '';
+                if (!allowManualOverride) {
+                  nextValues[targetKey] = setCellLineValue(nextValues[targetKey], lineIndex, '');
+                }
                 return;
               }
-              if (allowManualOverride && String(nextValues[targetKey] || '').trim()) return;
+              const targetLineValue = splitCellLines(nextValues[targetKey])[lineIndex] ?? '';
+              if (allowManualOverride && String(targetLineValue || '').trim()) return;
               const candidates = extractBindingCandidates(targetColumn);
               for (const candidate of candidates) {
                 const resolvedValue = String(selectedOption.snapshot[candidate] || '').trim();
-                if (!resolvedValue) continue;
-                nextValues[targetKey] = resolvedValue;
+                if (!isMeaningfulReferenceValue(resolvedValue)) continue;
+                nextValues[targetKey] = setCellLineValue(nextValues[targetKey], lineIndex, resolvedValue);
                 break;
               }
             });
@@ -2957,7 +2967,9 @@ export const LearningResourceGenerator = ({
     }`;
 
     if (isDocumentReferencePickerColumn(column)) {
-      const referenceSelection = row?.referenceSelections?.[columnKey];
+      const selectionKey = buildReferenceSelectionLineKey(columnKey, lineIndex);
+      const referenceSelection =
+        row?.referenceSelections?.[selectionKey] || (lineIndex === 0 ? row?.referenceSelections?.[columnKey] : undefined);
       const referenceOptions =
         referenceOptionsByColumnKey.get(`${String(section.schemaKey || '').trim()}::${columnKey}`) || [];
       const referenceSelectValue =
@@ -3025,7 +3037,7 @@ export const LearningResourceGenerator = ({
             value={referenceSelectValue}
             disabled={disableReferenceSelect}
             onChange={(event) => {
-              applyQuickDocumentReferenceSelection(section.id, row?.id || '', column, event.target.value);
+              applyQuickDocumentReferenceSelection(section.id, row?.id || '', column, lineIndex, event.target.value);
               updateReferenceSearchTerm(referenceSearchKey, '');
             }}
             className={selectClassName}
@@ -3965,7 +3977,7 @@ export const LearningResourceGenerator = ({
         <title>${escapeHtml(entry.title || effectiveTitle)}</title>
         <style>
           * { box-sizing: border-box; }
-          @page { size: A4 landscape; margin: 2cm; }
+          @page { size: A4 landscape; margin: 1cm; }
           html, body { margin: 0; padding: 0; }
           body { font-family: Arial, sans-serif; color: #0f172a; }
           .header { text-align: center; margin-bottom: 20px; }
@@ -4392,17 +4404,10 @@ export const LearningResourceGenerator = ({
                             <td colSpan={6} className="px-3 py-3">
                               <div className="rounded-lg border border-slate-200 bg-white p-3">
                                 <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                                  <div>
-                                    <label className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-slate-500">
-                                      Judul Bagian
-                                    </label>
-                                    <input
-                                      type="text"
-                                      value={activeQuickSection.title}
-                                      onChange={(event) => updateQuickEditSectionTitle(activeQuickSection.id, event.target.value)}
-                                      placeholder="Isi Dokumen"
-                                      className="w-full min-w-[260px] rounded-md border border-slate-200 px-2.5 py-1.5 text-sm font-semibold text-slate-900 focus:border-blue-500 focus:outline-none"
-                                    />
+                                  <div className="min-w-0">
+                                    <div className="text-sm font-semibold text-slate-900">
+                                      {activeQuickSection.title || 'Tabel Dokumen'}
+                                    </div>
                                   </div>
                                   <div className="flex flex-wrap items-center gap-2">
                                     <button
@@ -4755,7 +4760,11 @@ export const LearningResourceGenerator = ({
                               </div>
                             ) : null}
 
-                            {canEditSectionTitle(section) ? (
+                            {tableMode ? (
+                              <div className="mb-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm font-medium text-gray-700">
+                                {section.title || sectionSchema?.label || `Bagian ${index + 1}`}
+                              </div>
+                            ) : canEditSectionTitle(section) ? (
                               <input
                                 value={section.title}
                                 onChange={(event) => updateSectionField(section.id, 'title', event.target.value)}
