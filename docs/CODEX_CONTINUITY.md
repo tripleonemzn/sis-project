@@ -5,12 +5,12 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-05-01 20:14 WIB
-- Current status: follow-up perangkat ajar Promes selesai. Tabel Promes sekarang lebih mendekati pola Excel: tombol `Simpan Tabel` sejajar dengan tab semester, catatan pada kotak minggu tidak lagi dibersihkan oleh normalisasi ceklis, catatan minggu tampil merge-center vertikal pada baris TP terkait, print hanya mencetak tab semester aktif, referensi TP Promes diprioritaskan dari Prota dan difilter sesuai semester section, serta tabel/print dipadatkan agar tidak saling tumpuk.
+- Last updated: 2026-05-01 22:33 WIB
+- Current status: follow-up regresi quick table Promes selesai. Kolom `Tujuan Pembelajaran` pada tabel cepat Promes tidak lagi menampilkan dropdown/pesan `Isi Program Tahunan dulu` saat referensi belum siap, kolom teks pembelajaran dikunci rata kiri agar tidak ikut center, dan teks catatan minggu pada print dibuat satu blok vertikal tanpa wrap agar hasil merge lebih konsisten dengan tabel view.
 - Objective/task aktif:
   - Melanjutkan pengembangan perangkat ajar dinamis setelah polish tab remedial dan editor tabel guru.
 - Batch terakhir selesai:
-  - `Perangkat ajar follow-up - Promes Excel-like semester grid`
+  - `Perangkat ajar follow-up - Promes quick grid regression cleanup`
 - Progress fitur remedial keseluruhan:
   - `100%`
 - Progress presensi terpadu saat ini:
@@ -26,15 +26,12 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
-  - Commit: `4f86ad2`
-  - Title: `fix(teaching-resources): refine promes semester grid`
+  - Commit: `0055857`
+  - Title: `fix(teaching-resources): clean promes quick grid regressions`
   - Summary:
-    - normalisasi sheet tidak lagi menghapus teks catatan pada kolom bulan-minggu Promes; nilai `✓` tetap dinormalisasi, teks libur/kegiatan tetap dipertahankan
-    - catatan minggu pada quick table Promes dirender sebagai cell merge-center vertikal lintas subbaris TP, mengikuti konsep contoh Excel
-    - tombol `Simpan Tabel` dipindah sejajar dengan tab semester untuk menghemat ruang
-    - print Promes kini memakai section/tab aktif saja, bukan menggabungkan ganjil dan genap sekaligus
-    - prioritas referensi Promes diubah ke Prota terlebih dahulu, lalu ATP sebagai fallback; opsi referensi juga difilter berdasarkan semester section jika snapshot sumber punya kolom semester
-    - lebar kolom view/print Promes dipadatkan dan header alokasi JP diberi wrap agar tidak menabrak kolom minggu
+    - quick table Promes tidak lagi merender kolom `Tujuan Pembelajaran` sebagai dropdown sumber saat tidak ada opsi referensi yang cocok; field tetap tampil sebagai teks langsung dan editable
+    - kolom teks pembelajaran seperti `Tujuan Pembelajaran`, `Capaian Pembelajaran`, `Elemen`, `Kompetensi`, `Konten/Materi`, dan `Dimensi Profil` dipaksa rata kiri sehingga tidak terdampak alignment angka/JP
+    - print Promes menampilkan catatan minggu hasil merge sebagai teks vertikal satu baris tanpa wrap agar tidak pecah/nabrak kotak minggu
 - Area/file disentuh:
   - `frontend/src/pages/teacher/learning-resources/LearningResourceGenerator.tsx`
   - `docs/CODEX_CONTINUITY.md`
