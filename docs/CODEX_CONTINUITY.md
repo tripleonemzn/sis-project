@@ -5,12 +5,12 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-05-01 18:57 WIB
-- Current status: follow-up perangkat ajar selesai. Promes/Program Semester kini diarahkan sebagai `Distribusi Waktu` saat schema memakai kolom bulan-minggu, catatan pada kotak minggu tidak lagi tertimpa toggle klik saat double-click/klik kanan, newline posisi minggu tetap dipertahankan saat parse/simpan, kolom `Keterangan/Ket/Catatan` stale disembunyikan/dibuang dari payload Promes, dan print Promes diberi lebar kolom eksplisit agar lebih proporsional di A4 landscape.
+- Last updated: 2026-05-01 20:14 WIB
+- Current status: follow-up perangkat ajar Promes selesai. Tabel Promes sekarang lebih mendekati pola Excel: tombol `Simpan Tabel` sejajar dengan tab semester, catatan pada kotak minggu tidak lagi dibersihkan oleh normalisasi ceklis, catatan minggu tampil merge-center vertikal pada baris TP terkait, print hanya mencetak tab semester aktif, referensi TP Promes diprioritaskan dari Prota dan difilter sesuai semester section, serta tabel/print dipadatkan agar tidak saling tumpuk.
 - Objective/task aktif:
   - Melanjutkan pengembangan perangkat ajar dinamis setelah polish tab remedial dan editor tabel guru.
 - Batch terakhir selesai:
-  - `Perangkat ajar follow-up - Promes distribusi waktu, catatan minggu, dan print layout`
+  - `Perangkat ajar follow-up - Promes Excel-like semester grid`
 - Progress fitur remedial keseluruhan:
   - `100%`
 - Progress presensi terpadu saat ini:
@@ -26,17 +26,17 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
-  - Commit: `a843b0e`
-  - Title: `fix(teaching-resources): stabilize promes week notes`
+  - Commit: `4f86ad2`
+  - Title: `fix(teaching-resources): refine promes semester grid`
   - Summary:
-    - deteksi bentuk dokumen Wakakur sekarang mengenali `PROMES/PROSEM` atau schema kolom `bulan_minggu` sebagai `Distribusi Waktu`, bukan jatuh ke `Analisis / Pemetaan`
-    - klik tunggal dan double-click/klik kanan pada kotak minggu Promes dipisah dengan timer pendek, sehingga input catatan libur/kegiatan tidak tertimpa toggle ceklis
-    - parse dan payload simpan mempertahankan newline pada kolom bulan-minggu agar posisi catatan tetap menempel pada baris TP yang benar setelah reload
-    - kolom `Keterangan`, `Ket`, atau `Catatan` lama disembunyikan dari Promes bulan-minggu dan dibuang dari payload simpan tabel agar tidak muncul lagi di guru/print
-    - tabel view dan print Promes dipadatkan: kolom `No`, `Alokasi Waktu`, dan minggu dibuat lebih ramping, sementara kolom TP diberi lebar eksplisit agar print A4 landscape tidak bertumpuk
+    - normalisasi sheet tidak lagi menghapus teks catatan pada kolom bulan-minggu Promes; nilai `✓` tetap dinormalisasi, teks libur/kegiatan tetap dipertahankan
+    - catatan minggu pada quick table Promes dirender sebagai cell merge-center vertikal lintas subbaris TP, mengikuti konsep contoh Excel
+    - tombol `Simpan Tabel` dipindah sejajar dengan tab semester untuk menghemat ruang
+    - print Promes kini memakai section/tab aktif saja, bukan menggabungkan ganjil dan genap sekaligus
+    - prioritas referensi Promes diubah ke Prota terlebih dahulu, lalu ATP sebagai fallback; opsi referensi juga difilter berdasarkan semester section jika snapshot sumber punya kolom semester
+    - lebar kolom view/print Promes dipadatkan dan header alokasi JP diberi wrap agar tidak menabrak kolom minggu
 - Area/file disentuh:
   - `frontend/src/pages/teacher/learning-resources/LearningResourceGenerator.tsx`
-  - `frontend/src/pages/teacher/wakasek/curriculum/TeachingResourceProgramManagementPage.tsx`
   - `docs/CODEX_CONTINUITY.md`
 - Verifikasi batch ini:
   - `git diff --check`
