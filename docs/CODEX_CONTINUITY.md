@@ -5,17 +5,12 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-05-01 05:53 WIB
-- Current status: UI remedial guru mapel sudah dirapikan menjadi satu pintu `Kelola Remedial`. Guru tidak lagi menerbitkan remedial dari aksi per siswa atau tombol `Terbitkan Remedial Terpilih` di luar popup. Tombol `Kelola Remedial` membuka popup yang berisi daftar siswa belum KKM dengan checkbox, status blokir wali kelas/remedial aktif, pilihan metode tugas/soal, paket soal, tenggat, dan tombol terbitkan massal. Kolom aksi tabel utama kini hanya untuk `Input Nilai` dan `Riwayat`.
+- Last updated: 2026-05-01 10:35 WIB
+- Current status: perbaikan singkat sebelum lanjut roadmap perangkat ajar sudah selesai. Tab `Remedial` pada `Input Nilai Siswa` kini bertahan saat refresh/kembali ke halaman, print semua dokumen perangkat ajar memakai margin `1cm`, input teks `Judul Bagian` di atas tabel perangkat ajar tidak lagi editable, dan referensi tabel guru sudah line-aware untuk subbaris sehingga Program Tahunan/ATP bisa memilih TP per subbaris tanpa kembali ke placeholder `-`.
 - Objective/task aktif:
-  - Mengembangkan fitur remedial nilai untuk guru mapel dengan sumber nilai spesifik, riwayat percobaan lebih dari 1x, nilai asli tetap utuh, dan nilai efektif remedial dibatasi sampai KKM.
+  - Melanjutkan pengembangan perangkat ajar dinamis setelah polish tab remedial dan editor tabel guru.
 - Batch terakhir selesai:
-  - `Remedial batch 14 - centralized remedial management modal`
-- Progress batch remedial saat ini:
-  - `100%` untuk fondasi database remedial
-  - `100%` untuk API kandidat nilai belum tuntas dan pencatatan remedial
-  - `100%` untuk UI web guru mapel
-  - `100%` untuk integrasi nilai efektif remedial ke perhitungan rapor/leger berbasis `ReportGrade`
+  - `Perangkat ajar polish - tab persistence, print margin, section title cleanup, line-aware references`
 - Progress fitur remedial keseluruhan:
   - `100%`
 - Progress presensi terpadu saat ini:
@@ -31,30 +26,34 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
-  - Commit: `31c97c7`
-  - Title: `fix(grades): centralize remedial publishing`
+  - Commit: `08f3516`
+  - Title: `fix(teaching-resources): improve references and print layout`
   - Summary:
-    - tombol `Terbitkan` per siswa dihapus dari tabel remedial guru mapel
-    - tombol luar `Terbitkan Remedial Terpilih` diganti menjadi satu tombol `Kelola Remedial`
-    - checkbox pemilihan siswa dipindah ke dalam popup `Kelola Remedial`
-    - popup menampilkan daftar siswa belum KKM, status wali kelas/remedial aktif, pilihan metode, paket soal, tenggat, dan catatan
-    - popup `Input Nilai Remedial` hanya menampilkan input nilai manual hasil remedial
-    - popup `Riwayat Remedial` hanya menampilkan data riwayat tanpa tombol simpan/terbitkan
-    - guard blokir wali kelas tetap dihormati pada pemilihan siswa remedial dan input nilai
+    - tab aktif `Input Nilai Siswa` dipersist agar refresh/kembali halaman tidak memaksa kembali ke tab `Input Nilai`
+    - margin print perangkat ajar diubah dari `2cm` menjadi `1cm`
+    - input teks `Judul Bagian` di atas table view perangkat ajar dihapus/diganti label read-only
+    - nilai referensi placeholder `-` tidak lagi ditawarkan sebagai opsi referensi dokumen
+    - referensi cepat di tabel guru dibuat per-subbaris/line-aware agar kolom seperti `No`, `Tujuan Pembelajaran`, dan snapshot turunannya bisa bertambah sejajar saat guru menekan Enter pada satu logical row
 - Area/file disentuh:
+  - `backend/src/controllers/teachingResourceProgram.controller.ts`
   - `frontend/src/pages/teacher/TeacherGradesPage.tsx`
+  - `frontend/src/pages/teacher/learning-resources/LearningResourceGenerator.tsx`
   - `docs/CODEX_CONTINUITY.md`
 - Verifikasi batch ini:
   - `git diff --check`
+  - `cd backend && npm run build`
+  - `cd backend && npm run service:restart`
+  - `cd backend && npm run service:health`
   - `cd frontend && npm run build`
   - `cd frontend && npm run deploy`
 - Publish/live status:
   - Web sudah deploy live
-  - Tidak ada perubahan backend atau mobile pada batch ini
+  - Backend sudah restart ringan dan health check `Backend:200`, `Backend API:200`
+  - Tidak ada perubahan mobile pada batch ini
 - Remaining work:
-  - Tidak ada sisa wajib pada batch remedial ini. Jika user ingin pengalaman native penuh di mobile, batch berikutnya bisa membuat layar CBT remedial native, tetapi saat ini mobile sudah punya aksi aman untuk membuka pengerjaan remedial dari aplikasi.
+  - Lanjut audit/pengembangan perangkat ajar dinamis sesuai arahan user berikutnya.
 - Residual risk:
-  - Mobile masih memakai route web untuk pengerjaan soal remedial, bukan layar CBT native. Scoring otomatis mengikuti kemampuan scoring objektif yang tersedia dari paket soal existing; butir yang memerlukan koreksi manual tetap perlu kebijakan lanjutan bila nanti dipakai untuk remedial esai.
+  - Perubahan referensi bersifat aman dan scoped, tetapi untuk data lama yang sudah menyimpan pilihan referensi multiline, selected state dropdown per-subbaris bisa bergantung pada kecocokan value tersimpan. Nilai tabelnya tetap tersimpan sebagai multiline dan menjadi source of truth tampilan/print.
 
 ## Status Saat Ini
 
