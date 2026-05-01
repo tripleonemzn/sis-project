@@ -5,8 +5,8 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-05-01 13:53 WIB
-- Current status: follow-up perangkat ajar selesai. Engine referensi tabel sekarang memilih sumber dokumen yang paling lengkap untuk satu baris grouping, sehingga kasus PROTA yang kolom TP mengarah ke CP tetapi JP mengarah ke ATP tidak lagi setengah sinkron: primary picker dapat diarahkan ke sumber yang membawa TP + JP + dimensi sekaligus. Snapshot referensi juga membawa konteks dokumen sumber untuk membantu print memakai mapel spesifik seperti NCS saat konteks saat ini masih sistem/generik.
+- Last updated: 2026-05-01 14:20 WIB
+- Current status: follow-up perangkat ajar selesai. Engine referensi tabel sekarang menyembuhkan data lama yang masih menyimpan pilihan referensi lama: jika satu baris dokumen memakai grouping dari sumber sebelumnya tetapi kolom lain dikonfigurasi mengambil sumber lanjutan seperti ATP, frontend akan mencari snapshot sumber yang paling cocok dan mengisi nilai multiline yang lebih lengkap, termasuk kasus JP PROTA dari ATP pada akun `KGB2G071`. Judul/keterangan bagian di atas inline table view guru juga dihapus, dan tombol Enter pada cell editor sekarang membuat subbaris baru lalu memindahkan fokus ke kotak isian baru.
 - Objective/task aktif:
   - Melanjutkan pengembangan perangkat ajar dinamis setelah polish tab remedial dan editor tabel guru.
 - Batch terakhir selesai:
@@ -26,33 +26,29 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
-  - Commit: `7d2fda7`
-  - Title: `fix(teaching-resources): align grouped references and print context`
+  - Commit: `b051ced`
+  - Title: `fix(teaching-resources): reconcile grouped table references`
   - Summary:
-    - resolver referensi kini menilai coverage field per sumber dokumen agar grouping lintas CP/ATP/PROTA tidak setengah terisi
-    - snapshot multiline dari sumber terpilih boleh mengganti nilai lama pada kolom snapshot/manual override jika memang satu grup terkait
-    - snapshot referensi membawa konteks dokumen sumber, dan print dapat memakai mapel sumber saat konteks dokumen saat ini masih sistem/generik
-    - header tabel dan kolom ringkas seperti No/JP dibuat center konsisten di table view dan print
+    - source dokumen untuk kolom snapshot sekarang ikut dimuat, bukan hanya kolom picker utama, sehingga dokumen lanjutan bisa membaca ATP/PROTA sebagai sumber lintas menu
+    - resolver related reference dapat mencocokkan snapshot pilihan lama dengan baris sumber yang lebih lengkap lalu mengganti nilai satu baris menjadi multiline jika sumber terkait punya detail lebih utuh
+    - inline table view guru tidak lagi menampilkan judul/keterangan bagian yang memenuhi area tabel
+    - Enter pada cell quick edit mempertahankan subbaris kosong sementara dan memindahkan fokus ke cell baru
 - Area/file disentuh:
   - `frontend/src/pages/teacher/learning-resources/LearningResourceGenerator.tsx`
-  - `backend/src/controllers/teachingResourceProgram.controller.ts`
   - `docs/CODEX_CONTINUITY.md`
 - Verifikasi batch ini:
   - `git diff --check`
   - `cd frontend && npm run build`
-  - `cd backend && npm run build`
-  - `cd backend && npm run service:restart`
-  - `cd backend && npm run service:health`
   - `cd frontend && npm run deploy`
   - `curl -I https://siskgb2.id/`
 - Publish/live status:
   - Web sudah deploy live
-  - Backend sudah build, restart, dan health check `200`
+  - Backend tidak diubah pada batch ini
   - Tidak ada perubahan mobile pada batch ini
 - Remaining work:
   - Lanjut audit/pengembangan perangkat ajar dinamis sesuai arahan user berikutnya.
 - Residual risk:
-  - Perubahan referensi bersifat aman dan scoped. Untuk dokumen lama yang sudah menyimpan pilihan referensi lama, hasil paling bersih didapat dengan membuka dropdown referensi lalu memilih ulang opsi grup yang tersedia agar snapshot JP/dimensi terbaru tersimpan ke dokumen.
+  - Perubahan referensi bersifat frontend-only dan scoped ke perangkat ajar guru. Endpoint referensi tetap dibatasi `limitPerProgram` maksimal 250 dari client dan 300 dari server; tidak ada polling baru atau perubahan backend runtime.
 
 ## Status Saat Ini
 
