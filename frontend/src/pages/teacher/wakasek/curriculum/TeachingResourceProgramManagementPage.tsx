@@ -1968,6 +1968,12 @@ function isMonthWeekSchemaColumnKey(key: unknown): boolean {
   return MONTH_WEEK_SCHEMA_MONTH_KEYS.has(match[1]) && Number.isInteger(weekNumber) && weekNumber >= 1 && weekNumber <= 6;
 }
 
+function hasMonthWeekScheduleComponent(schema?: TeachingResourceProgramSchema): boolean {
+  return (schema?.sections || []).some((section) =>
+    (section.columns || []).some((column) => isMonthWeekSchemaColumnKey(column.key)),
+  );
+}
+
 function inferBlueprintMode(schema?: TeachingResourceProgramSchema): ProgramBlueprintMode {
   const sections = Array.isArray(schema?.sections) ? schema?.sections : [];
   if (sections.length === 0) return 'FREEFORM';
@@ -2213,7 +2219,7 @@ export default function TeachingResourceProgramManagementPage() {
     setCreateDraft((prev) => ({
       ...prev,
       schema: applySchemaFoundationDefaults(
-        mode === 'TIME_DISTRIBUTION' && isProgramSemesterLikeDraft(prev)
+        mode === 'TIME_DISTRIBUTION'
           ? createMonthWeekPromesSchema(prev.schema, prev.code, prev.label, inferMonthWeekSimpleSetup(prev, rows))
           : createSchemaPreset(mode, prev.code, prev.label),
         prev.code,
@@ -2221,7 +2227,11 @@ export default function TeachingResourceProgramManagementPage() {
       ),
     }));
     const selectedPreset = BLUEPRINT_MODE_OPTIONS.find((option) => option.value === mode);
-    toast.success(`Starter ${selectedPreset?.label || 'template'} diterapkan ke draft.`);
+    toast.success(
+      mode === 'TIME_DISTRIBUTION'
+        ? 'Komponen bulan & minggu ditambahkan ke draft.'
+        : `Starter ${selectedPreset?.label || 'struktur'} diterapkan ke draft.`,
+    );
   };
 
   const handleMonthWeekSimpleSetupChange = (
@@ -2802,11 +2812,12 @@ export default function TeachingResourceProgramManagementPage() {
 
   const isLoading = isActiveYearLoading || (Boolean(selectedAcademicYearId) && programsQuery.isLoading);
   const draftBlueprintMode = inferBlueprintMode(createDraft.schema);
-  const draftBlueprint = BLUEPRINT_MODE_OPTIONS.find((option) => option.value === draftBlueprintMode) || BLUEPRINT_MODE_OPTIONS[4];
   const draftSchemaIssues = validateProgramDraftSchema(createDraft);
   const draftSchemaErrorCount = draftSchemaIssues.filter((issue) => issue.severity === 'error').length;
   const showAdvancedEditor = false;
-  const isMonthWeekSimpleSetupVisible = draftBlueprintMode === 'TIME_DISTRIBUTION' && isProgramSemesterLikeDraft(createDraft);
+  const hasMonthWeekComponent =
+    hasMonthWeekScheduleComponent(createDraft.schema) ||
+    (draftBlueprintMode === 'TIME_DISTRIBUTION' && isProgramSemesterLikeDraft(createDraft));
   const monthWeekSimpleSetup = inferMonthWeekSimpleSetup(createDraft, rows);
   const monthWeekSourceRows = rows.filter(
     (row) => normalizeTeachingResourceProgramCode(row.code) !== normalizeTeachingResourceProgramCode(createDraft.code),
@@ -3072,68 +3083,42 @@ export default function TeachingResourceProgramManagementPage() {
 
               <div className="rounded-xl border border-gray-200 bg-white p-4">
                 <div className="mb-3">
-                  <h3 className="text-sm font-semibold text-gray-900">Pilih Bentuk Dokumen</h3>
-                  <p className="text-xs text-gray-500">
-                    Pilih bentuk yang paling dekat. Setelah dipilih, sistem otomatis menyiapkan isian awal untuk guru.
+                  <h3 className="text-sm font-semibold text-gray-900">Struktur Dokumen Universal</h3>
+                  <p className="mt-1 text-xs leading-5 text-gray-500">
+                    Susun dokumen dari komponen yang sama: kolom manual, kolom sistem, referensi dokumen, dan jadwal
+                    bulan-minggu bila diperlukan. Jadi CP, ATP, Prota, atau Promes tetap memakai alur konfigurasi yang sama.
                   </p>
                 </div>
 
                 <div className="mb-4 rounded-xl border border-blue-200 bg-blue-50 p-4">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
-                      <div className="text-sm font-semibold text-blue-900">Bentuk yang sedang dipakai</div>
-                      <p className="mt-1 text-xs leading-5 text-blue-800">{draftBlueprint.description}</p>
+                      <div className="text-sm font-semibold text-blue-900">Cara kerja konfigurasi</div>
+                      <p className="mt-1 text-xs leading-5 text-blue-800">
+                        Buat kolom sesuai kebutuhan dokumen. Jika kolom harus membaca dokumen sebelumnya, ubah cara isi
+                        menjadi referensi atau otomatis dari pilihan referensi. Untuk Promes, aktifkan komponen bulan-minggu
+                        lalu pilih sumber TP dan JP.
+                      </p>
                     </div>
-                    <span className="inline-flex rounded-full bg-white px-3 py-1 text-xs font-semibold text-blue-700">
-                      {draftBlueprint.label}
-                    </span>
+                    {!hasMonthWeekComponent ? (
+                      <button
+                        type="button"
+                        onClick={() => handleApplyBlueprintPreset('TIME_DISTRIBUTION')}
+                        className="inline-flex items-center gap-2 rounded-lg border border-blue-300 bg-white px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100"
+                      >
+                        <Plus size={14} />
+                        Tambah Bulan & Minggu
+                      </button>
+                    ) : null}
                   </div>
-                  <p className="mt-3 text-xs leading-5 text-blue-800">{draftBlueprint.helper}</p>
                 </div>
 
-                <div className="mb-4 grid grid-cols-1 gap-3 xl:grid-cols-2">
-                  {BLUEPRINT_MODE_OPTIONS.map((option) => {
-                    const active = draftBlueprintMode === option.value;
-                    return (
-                      <div
-                        key={option.value}
-                        className={`rounded-xl border p-3 ${
-                          active ? 'border-blue-300 bg-blue-50' : 'border-gray-200 bg-gray-50'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between gap-3">
-                          <div className="text-sm font-semibold text-gray-900">{option.label}</div>
-                          {active ? (
-                            <span className="inline-flex rounded-full bg-blue-600 px-2 py-1 text-[11px] font-semibold text-white">
-                              Saat Ini
-                            </span>
-                          ) : null}
-                        </div>
-                        <p className="mt-2 text-xs leading-5 text-gray-600">{option.description}</p>
-                        <p className="mt-2 text-xs leading-5 text-gray-500">{option.helper}</p>
-                        <button
-                          type="button"
-                          onClick={() => handleApplyBlueprintPreset(option.value)}
-                          className={`mt-3 inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition ${
-                            active
-                              ? 'border-blue-300 bg-white text-blue-700 hover:bg-blue-100'
-                              : 'border-gray-300 bg-white text-gray-700 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700'
-                          }`}
-                        >
-                          <Pencil size={13} />
-                          {active ? 'Gunakan Ulang Template Ini' : 'Gunakan Template Ini'}
-                        </button>
-                      </div>
-                    );
-                  })}
-	                </div>
-
-	                {isMonthWeekSimpleSetupVisible ? (
+	                {hasMonthWeekComponent ? (
 	                  <div className="mb-4 rounded-xl border border-blue-200 bg-blue-50/60 p-4">
 	                    <div className="mb-4">
-	                      <h3 className="text-sm font-semibold text-gray-900">Setup Distribusi Waktu Program Semester</h3>
+	                      <h3 className="text-sm font-semibold text-gray-900">Komponen Bulan & Minggu</h3>
 	                      <p className="mt-1 text-xs leading-5 text-gray-600">
-	                        Untuk Promes, Wakakur tidak perlu menyusun kolom bulan satu per satu. Tentukan sumber TP dan JP, lalu sistem
+	                        Dipakai untuk dokumen seperti Program Semester. Wakakur cukup memilih sumber TP dan JP, lalu sistem
 	                        membuat tabel No, TP, Alokasi JP, serta bulan-minggu otomatis.
 	                      </p>
 	                    </div>
@@ -3245,13 +3230,13 @@ export default function TeachingResourceProgramManagementPage() {
 	                  </div>
 	                ) : null}
 
-	                {!isMonthWeekSimpleSetupVisible ? (
 	                <div className="rounded-xl border border-gray-200 bg-white p-4">
 	                  <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
 	                    <div>
-	                      <h3 className="text-sm font-semibold text-gray-900">Kolom & Integrasi Dokumen</h3>
+	                      <h3 className="text-sm font-semibold text-gray-900">Struktur & Integrasi Dokumen</h3>
 	                      <p className="mt-1 text-xs leading-5 text-gray-500">
 	                        Atur kolom yang diisi guru. Jika kolom perlu mengambil data dari dokumen sebelumnya, pilih sumber program dan sumber kolomnya di sini.
+	                        Kolom bulan-minggu teknis disembunyikan dari daftar ini agar setup tetap ringkas.
 	                      </p>
 	                    </div>
 	                    {createDraft.schema.sections.some(
@@ -3320,7 +3305,10 @@ export default function TeachingResourceProgramManagementPage() {
 	                                </tr>
 	                              </thead>
 	                              <tbody>
-	                                {(section.columns || []).map((column, columnIndex) => {
+	                                {(section.columns || [])
+                                    .map((column, columnIndex) => ({ column, columnIndex }))
+                                    .filter(({ column }) => !isMonthWeekSchemaColumnKey(column.key))
+                                    .map(({ column, columnIndex }) => {
 	                                  const operationalRole = inferColumnOperationalRole(column);
 	                                  const normalizedSourceProgramCode = normalizeTeachingResourceProgramCode(
 	                                    column.binding?.sourceProgramCode || '',
@@ -3567,15 +3555,6 @@ export default function TeachingResourceProgramManagementPage() {
 	                    ) : null}
 	                  </div>
 	                </div>
-	                ) : (
-	                  <div className="rounded-xl border border-gray-200 bg-white p-4">
-	                    <h3 className="text-sm font-semibold text-gray-900">Struktur yang diterima guru</h3>
-	                    <p className="mt-1 text-xs leading-5 text-gray-500">
-	                      Tabel Promes dibuat otomatis: No, Tujuan Pembelajaran, Alokasi JP, lalu kolom bulan dan minggu. Detail kolom teknis
-	                      disembunyikan agar setup Wakakur tetap sederhana.
-	                    </p>
-	                  </div>
-	                )}
 
 	                {showAdvancedEditor ? (
 	                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
