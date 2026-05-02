@@ -5,12 +5,12 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-05-02 06:55 WIB
-- Current status: polish Promes/Program Semester lanjutan sudah deploy web. Tabel guru dan print sekarang memusatkan vertikal kolom No/JP serta TP, konten No/JP tetap rata tengah dan isi TP tetap rata kiri. Catatan/keterangan pada satu kolom minggu Promes sekarang dirender sebagai merge satu kolom penuh lintas semua TP. Panel setup Wakakur juga dibuat lebih eksplisit: No otomatis, TP dan JP dipilih dari dokumen sumber, bulan-minggu dibuat sistem.
+- Last updated: 2026-05-02 08:32 WIB
+- Current status: builder Wakakur untuk Program Perangkat Ajar sudah dibuat lebih universal dan deploy web. UI pemilihan `Bentuk Dokumen`/template di popup tambah-edit dihapus dari alur utama. Wakakur sekarang melihat satu struktur dokumen universal: kolom manual, kolom sistem, referensi dokumen, dan komponen bulan-minggu jika dibutuhkan. Komponen bulan-minggu tetap menjaga output guru yang sudah cocok, tetapi detail kolom teknis bulan-minggu disembunyikan dari tabel konfigurasi agar setup tidak terasa hardcode/terlalu teknis.
 - Objective/task aktif:
   - Melanjutkan pengembangan perangkat ajar dinamis setelah polish tab remedial dan editor tabel guru.
 - Batch terakhir selesai:
-  - `Perangkat ajar follow-up - Promes alignment, global week note merge, and clearer setup copy`
+  - `Perangkat ajar follow-up - universal Wakakur builder configuration`
 - Progress fitur remedial keseluruhan:
   - `100%`
 - Progress presensi terpadu saat ini:
@@ -26,14 +26,13 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
-  - Commit: `df7704b`
-  - Title: `fix(teaching-resources): refine promes table layout`
+  - Commit: `fc9f87b`
+  - Title: `fix(teaching-resources): make wakakur builder universal`
   - Summary:
-    - No/JP Promes rata tengah dan vertikal tengah di table view serta print; TP vertikal tengah dengan teks tetap rata kiri
-    - catatan minggu Promes dirender sebagai merge satu kolom penuh lintas semua baris TP pada table view dan print
-    - setup Wakakur untuk Promes menjelaskan No otomatis, sumber TP, sumber JP, dan bulan-minggu otomatis agar tidak ambigu
+    - UI pilihan `Bentuk Dokumen`/template dihapus dari popup tambah-edit Program Perangkat Ajar Wakakur
+    - popup sekarang memakai konsep satu builder universal: struktur/integrasi dokumen + komponen bulan-minggu opsional
+    - komponen bulan-minggu tetap bisa diaktifkan dari builder dan memilih sumber TP/JP, sementara kolom teknis bulan-minggu disembunyikan dari daftar kolom agar setup tetap ringkas
 - Area/file disentuh:
-  - `frontend/src/pages/teacher/learning-resources/LearningResourceGenerator.tsx`
   - `frontend/src/pages/teacher/wakasek/curriculum/TeachingResourceProgramManagementPage.tsx`
   - `docs/CODEX_CONTINUITY.md`
 - Verifikasi batch ini:
@@ -48,7 +47,7 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 - Remaining work:
   - Lanjut audit/pengembangan perangkat ajar dinamis sesuai arahan user berikutnya.
 - Residual risk:
-  - Perubahan merge catatan minggu bersifat frontend render-only dan memakai data cell catatan yang sudah ada. Jika ada lebih dari satu catatan berbeda pada kolom minggu yang sama, tampilan memakai catatan pertama sebagai catatan kolom penuh.
+  - Perubahan batch ini frontend-only pada konfigurasi Wakakur. Output dokumen guru tidak diubah. Jika user ingin builder benar-benar menjadi komponen drag/drop lintas semua dokumen, itu bisa menjadi batch lanjutan yang lebih besar karena menyentuh model editor lebih dalam.
 
 ## Status Saat Ini
 
