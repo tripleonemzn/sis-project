@@ -1188,6 +1188,31 @@ const formatReferenceOptionLabel = (value: unknown, fallback = 'Referensi tersim
   return firstLine || fallback;
 };
 
+const truncateReferenceOptionSegment = (value: string, maxLength = 72): string => {
+  const normalized = value.replace(/\s+/g, ' ').trim();
+  if (normalized.length <= maxLength) return normalized;
+  return `${normalized.slice(0, Math.max(0, maxLength - 3)).trimEnd()}...`;
+};
+
+const formatGroupedReferenceOptionLabel = (
+  value: unknown,
+  fallback = 'Referensi tersimpan',
+  lineCount?: number,
+  isAggregate?: boolean,
+): string => {
+  const lines = splitCellLines(value)
+    .map((line) => line.replace(/\s+/g, ' ').trim())
+    .filter(isMeaningfulReferenceValue);
+  const totalLines = Math.max(Number(lineCount || 0), lines.length);
+  if ((isAggregate || totalLines > 1 || lines.length > 1) && lines.length > 1) {
+    const firstLine = truncateReferenceOptionSegment(lines[0]);
+    const lastLine = truncateReferenceOptionSegment(lines[lines.length - 1]);
+    if (firstLine === lastLine) return `${firstLine} (${totalLines} baris)`;
+    return `${firstLine} s.d. ${lastLine} (${totalLines} baris)`;
+  }
+  return formatReferenceOptionLabel(value || fallback, fallback);
+};
+
 const buildReferenceSnapshotForLine = (snapshot: Record<string, string>, lineIndex: number): Record<string, string> =>
   Object.entries(snapshot || {}).reduce<Record<string, string>>((acc, [key, rawValue]) => {
     const lines = parseMonthWeekColumnKey(key)
@@ -2785,7 +2810,12 @@ export const LearningResourceGenerator = ({
           currentOptions.push({
             selectValue: option.selectValue,
             value: option.value,
-            label: formatReferenceOptionLabel(option.value || option.label),
+            label: formatGroupedReferenceOptionLabel(
+              option.value,
+              option.label || 'Referensi tersimpan',
+              option.lineCount,
+              option.isAggregate,
+            ),
             isAggregate: option.isAggregate,
             lineCount: option.lineCount,
             sourceProgramCode: normalizeTeachingResourceProgramCode(option.sourceProgramCode),
@@ -2902,7 +2932,7 @@ export const LearningResourceGenerator = ({
                 snapshot,
                 isAggregate: isMergedGroup || valueLines.length > 1,
                 lineCount: isMergedGroup || valueLines.length > 1 ? rowLineCount : undefined,
-                label: formatReferenceOptionLabel(rawValue),
+                label: formatGroupedReferenceOptionLabel(rawValue, 'Referensi tersimpan', rowLineCount, isMergedGroup),
               },
             ];
             lineOptions.forEach((lineOption) => {
