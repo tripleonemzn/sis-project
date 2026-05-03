@@ -1803,6 +1803,41 @@ const countTruthyCriteriaMarks = (value: unknown): number =>
     .split('\n')
     .filter((line) => isTruthyMark(String(line || ''))).length;
 
+const countKktpCriteriaSlots = (
+  rowValues: Record<string, string>,
+  columns: EntrySectionColumnForm[],
+): number => {
+  let indicatorLineCount = 0;
+  let markLineCount = 0;
+  columns.forEach((column) => {
+    const key = String(column.key || '').trim();
+    if (!key) return;
+    const identityCandidates = getColumnIdentityCandidates(column);
+    const labelToken = `${column.label || ''} ${key}`.toLowerCase();
+    const lines = splitEditableCellLines(rowValues[key]).map((line) => String(line || '').trim());
+    if (
+      identityCandidates.includes('iktp') ||
+      labelToken.includes('iktp') ||
+      labelToken.includes('indikator ketercapaian')
+    ) {
+      indicatorLineCount = Math.max(indicatorLineCount, lines.filter(isMeaningfulReferenceValue).length);
+      return;
+    }
+    if (isKktpCriteriaColumnKey(key)) {
+      markLineCount = Math.max(markLineCount, lines.filter((line) => Boolean(line)).length);
+    }
+  });
+  return Math.max(indicatorLineCount, markLineCount);
+};
+
+const resolveKktpMapelValue = (percentMemadai: number): number => {
+  if (!Number.isFinite(percentMemadai) || percentMemadai <= 40) return 40;
+  if (percentMemadai <= 70) return 65;
+  if (percentMemadai <= 80) return 78;
+  if (percentMemadai <= 94) return 80;
+  return 100;
+};
+
 const getMergedMonthWeekNote = (value: unknown): { note: string; lineIndex: number } | null => {
   const lines = splitEditableCellLines(value);
   const noteIndex = lines.findIndex((line) => {
@@ -1847,6 +1882,15 @@ const isMatriksSebaranWeekColumnKey = (columnKey: unknown): boolean => {
   return Number.isInteger(numeric) && numeric >= 1 && numeric <= WEEK_OPTIONS.length;
 };
 
+const getMatriksSebaranWeekNumber = (columnKey: unknown): number | null => {
+  const key = String(columnKey || '').trim().toLowerCase();
+  const normalized = key.replace(/^minggu(?:_ke)?[-_\s]*/i, '');
+  if (!/^\d{1,2}$/.test(normalized)) return null;
+  const numeric = Number(normalized);
+  if (!Number.isInteger(numeric) || numeric < 1 || numeric > WEEK_OPTIONS.length) return null;
+  return numeric;
+};
+
 const isMatriksSebaranGroupedWeekColumn = (
   column?: Partial<HeaderGroupColumn> | null,
 ): boolean => {
@@ -1889,6 +1933,7 @@ const CENTER_ALIGNED_REFERENCE_IDENTITIES = new Set([
   'jumlah_jp',
   'jam',
   'jumlah_jam',
+  'semester',
 ]);
 
 const LEFT_ALIGNED_REFERENCE_IDENTITIES = new Set([
@@ -2015,6 +2060,7 @@ const applyDerivedSheetSections = (
   let hasKktp = false;
   let totalKurangMemadai = 0;
   let totalMemadai = 0;
+  let totalKktpCriteriaSlots = 0;
 
   sections.forEach((section) => {
     const schema = schemaMap.get(String(section.schemaKey || '').trim());
@@ -2064,6 +2110,7 @@ const applyDerivedSheetSections = (
       section.rows.forEach((row) => {
         totalKurangMemadai += countTruthyCriteriaMarks(row.values.kurang_memadai);
         totalMemadai += countTruthyCriteriaMarks(row.values.memadai);
+        totalKktpCriteriaSlots += countKktpCriteriaSlots(row.values, columns);
       });
     }
   });
@@ -2086,20 +2133,27 @@ const applyDerivedSheetSections = (
   if (hasKktp) {
     const summarySection = sections.find((section) => String(section.schemaKey || '').trim() === 'ringkasan_kktp');
     if (summarySection) {
-      const totalCriteria = totalKurangMemadai + totalMemadai;
-      const percentKurangMemadai = totalCriteria > 0 ? (totalKurangMemadai / totalCriteria) * 100 : 0;
-      const percentMemadai = totalCriteria > 0 ? (totalMemadai / totalCriteria) * 100 : 0;
+      const totalCriteria = Math.max(totalKktpCriteriaSlots, totalKurangMemadai + totalMemadai);
+      const safeTotalCriteria = totalCriteria > 0 ? totalCriteria : 1;
+      const percentKurangMemadai = (totalKurangMemadai / safeTotalCriteria) * 100;
+      const percentMemadai = (totalMemadai / safeTotalCriteria) * 100;
+      const kktpMapelValue = resolveKktpMapelValue(percentMemadai);
       const baseRow = summarySection.rows[0] || {
         id: `row-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         values: {},
       };
       const nextValues = {
         ...baseRow.values,
+        jumlah_kriteria_penilaian: String(totalCriteria),
+        total_kriteria_penilaian: String(totalCriteria),
+        jumlah_total_kriteria: String(totalCriteria),
         jumlah_kurang_memadai: String(totalKurangMemadai),
         jumlah_memadai: String(totalMemadai),
         presentase_kurang_memadai: `${formatNumericValue(percentKurangMemadai)}%`,
         presentase_memadai: `${formatNumericValue(percentMemadai)}%`,
-        kktp_mapel: formatNumericValue(percentMemadai),
+        kktp_mapel: formatNumericValue(kktpMapelValue),
+        kktp_mata_pelajaran: formatNumericValue(kktpMapelValue),
+        penentuan_kktp: formatNumericValue(kktpMapelValue),
       };
       summarySection.rows = [{ ...baseRow, values: nextValues }];
     }
@@ -2540,8 +2594,19 @@ export const LearningResourceGenerator = ({
         }
       });
     });
+    if (isActiveProgramMatriksSebaran) {
+      programConfigRows.forEach((program) => {
+        const token = `${program.code || ''} ${program.label || ''} ${program.shortLabel || ''} ${
+          program.schema?.sourceSheet || ''
+        } ${program.schema?.documentTitle || ''}`.toLowerCase();
+        if (token.includes('promes') || token.includes('prosem') || token.includes('program semester')) {
+          const code = normalizeTeachingResourceProgramCode(program.code);
+          if (code) codes.add(code);
+        }
+      });
+    }
     return Array.from(codes).sort();
-  }, [activeProgramSchemaSections]);
+  }, [activeProgramSchemaSections, isActiveProgramMatriksSebaran, programConfigRows]);
   const ensureDerivedSections = (sourceSections: EntrySectionForm[]): EntrySectionForm[] =>
     applyDerivedSheetSections(sourceSections, activeProgramSchemaMap);
 
@@ -2785,6 +2850,15 @@ export const LearningResourceGenerator = ({
       }
       return column;
     });
+  const applyMatriksSebaranWeekColumnLimit = (columns: EntrySectionColumnForm[]): EntrySectionColumnForm[] => {
+    if (!isActiveProgramMatriksSebaran) return columns;
+    return columns.filter((column) => {
+      const weekNumber = getMatriksSebaranWeekNumber(column.key);
+      return weekNumber === null || weekNumber <= matriksSebaranWeekLimit;
+    });
+  };
+  const applyTableColumnDisplayRules = (columns: EntrySectionColumnForm[]): EntrySectionColumnForm[] =>
+    applyMatriksSebaranWeekColumnLimit(applyDerivedTableColumnMetadata(columns));
   const referenceProjectionRequests = useMemo<TeachingResourceReferenceProjectionRequest[]>(() => {
     const requests: TeachingResourceReferenceProjectionRequest[] = [];
     activeProgramSchemaSections.forEach((section) => {
@@ -2859,7 +2933,7 @@ export const LearningResourceGenerator = ({
       Boolean(academicYearId) &&
       Boolean(user?.id) &&
       referenceSourceProgramCodes.length > 0 &&
-      (Boolean(isPageEditor) || Boolean(isEditorOpen) || Boolean(quickEditEntryId)),
+      (Boolean(isPageEditor) || Boolean(isEditorOpen) || Boolean(quickEditEntryId) || isActiveProgramMatriksSebaran),
     queryFn: async () => {
       const response = await teachingResourceProgramService.getReferenceEntries({
         academicYearId,
@@ -2925,6 +2999,47 @@ export const LearningResourceGenerator = ({
     staleTime: 30 * 1000,
     refetchOnWindowFocus: false,
   });
+  const matriksSebaranWeekLimit = useMemo(() => {
+    if (!isActiveProgramMatriksSebaran) return WEEK_OPTIONS.length;
+    const entriesByProgram = referenceEntriesQuery.data?.entriesByProgram;
+    if (!entriesByProgram || entriesByProgram.size === 0) return WEEK_OPTIONS.length;
+    let selectedWeekCount = 0;
+    entriesByProgram.forEach((entries, sourceProgramCode) => {
+      const sourceProgram = programMetaByCode.get(normalizeTeachingResourceProgramCode(sourceProgramCode));
+      const sourceToken = `${sourceProgramCode || ''} ${sourceProgram?.label || ''} ${sourceProgram?.shortLabel || ''} ${
+        sourceProgram?.schema?.sourceSheet || ''
+      } ${sourceProgram?.schema?.documentTitle || ''}`.toLowerCase();
+      if (!sourceToken.includes('promes') && !sourceToken.includes('prosem') && !sourceToken.includes('program semester')) {
+        return;
+      }
+      entries.forEach((entry) => {
+        if (selectedContext) {
+          const referenceContext = extractEntryContextValues(entry, {
+            tingkat: String(entry.classLevel || '').trim(),
+          });
+          if (Number(entry.subjectId || 0) !== Number(selectedContext.subjectId || 0)) return;
+          if (
+            normalizeClassLevel(referenceContext.tingkat || entry.classLevel || '') !==
+            normalizeClassLevel(selectedContext.classLevel)
+          ) {
+            return;
+          }
+          const entryMajor = String(referenceContext.programKeahlian || '').trim().toLowerCase();
+          if (entryMajor && entryMajor !== String(selectedContext.programKeahlian || '').trim().toLowerCase()) return;
+        }
+        toEntryReferenceSections(entry).forEach((section) => {
+          section.rows.forEach((row) => {
+            Object.entries(row || {}).forEach(([key, rawValue]) => {
+              if (!parseMonthWeekColumnKey(key)) return;
+              selectedWeekCount += splitEditableCellLines(rawValue).filter((line) => isTruthyMark(String(line || ''))).length;
+            });
+          });
+        });
+      });
+    });
+    if (selectedWeekCount <= 0) return WEEK_OPTIONS.length;
+    return Math.max(1, Math.min(WEEK_OPTIONS.length, selectedWeekCount));
+  }, [isActiveProgramMatriksSebaran, programMetaByCode, referenceEntriesQuery.data, selectedContext]);
 
   const entryPayload = entryQuery.data?.data;
   const canReview = Boolean(entryPayload?.canReview);
@@ -3244,10 +3359,12 @@ export const LearningResourceGenerator = ({
 
   const resolveSectionColumnsForSnapshot = (section: EntrySectionForm): EntrySectionColumnForm[] => {
     const customColumns = sanitizeSectionColumns(section.columns);
-    if (customColumns.length > 0) return applyMonthWeekCalendarColumns(section, customColumns);
-    return applyMonthWeekCalendarColumns(
-      section,
-      sanitizeSectionColumns(activeProgramSchemaMap.get(String(section.schemaKey || '').trim())?.columns),
+    if (customColumns.length > 0) return applyTableColumnDisplayRules(applyMonthWeekCalendarColumns(section, customColumns));
+    return applyTableColumnDisplayRules(
+      applyMonthWeekCalendarColumns(
+        section,
+        sanitizeSectionColumns(activeProgramSchemaMap.get(String(section.schemaKey || '').trim())?.columns),
+      ),
     );
   };
 
@@ -3796,10 +3913,10 @@ export const LearningResourceGenerator = ({
   const resolveSectionColumns = (section: EntrySectionForm): EntrySectionColumnForm[] => {
     const customColumns = sanitizeSectionColumns(section.columns);
     if (customColumns.length > 0) {
-      return applyDerivedTableColumnMetadata(applyMonthWeekCalendarColumns(section, customColumns));
+      return applyTableColumnDisplayRules(applyMonthWeekCalendarColumns(section, customColumns));
     }
     const schema = resolveSectionSchema(section);
-    return applyDerivedTableColumnMetadata(applyMonthWeekCalendarColumns(section, sanitizeSectionColumns(schema?.columns)));
+    return applyTableColumnDisplayRules(applyMonthWeekCalendarColumns(section, sanitizeSectionColumns(schema?.columns)));
   };
 
   const isKktpPrimaryReferenceColumn = (column?: Partial<EntrySectionColumnForm> | null): boolean =>
@@ -6143,22 +6260,51 @@ export const LearningResourceGenerator = ({
             return `<th${classAttribute}>${escapeHtml(header.label)}</th>`;
           })
           .join('')}</tr>`;
-    const tbody = rows
-      .map((row) => {
-        const lineGroups = headers.map((header) => getVisualPrintCellLines(header.column, row.values?.[header.key]));
-        const maxLineCount = Math.max(1, ...lineGroups.map((lines) => lines.length));
+    const rowLayouts = rows.map((row) => {
+      const lineGroups = headers.map((header) => getVisualPrintCellLines(header.column, row.values?.[header.key]));
+      return {
+        lineGroups,
+        maxLineCount: Math.max(1, ...lineGroups.map((lines) => lines.length)),
+      };
+    });
+    let visualRowCursor = 0;
+    const visualRowOffsets = rowLayouts.map((layout) => {
+      const currentOffset = visualRowCursor;
+      visualRowCursor += layout.maxLineCount;
+      return currentOffset;
+    });
+    const tbody = rowLayouts
+      .map((rowLayout, rowIndex) => {
+        const { lineGroups, maxLineCount } = rowLayout;
+        const visualRowOffset = visualRowOffsets[rowIndex] || 0;
         return Array.from({ length: maxLineCount })
           .map((_, lineIndex) => {
             const cells = headers
               .map((header, headerIndex) => {
                 const lines = lineGroups[headerIndex] || [''];
-                const shouldRenderPerVisualLine = isKktpCriteriaColumnKey(header.key) && maxLineCount > 1;
+                const normalizedHeaderKey = String(header.key || '').trim().toLowerCase();
+                const isMatriksNoColumn =
+                  hasMatriksSebaranPrintLayout && ['no', 'nomor', 'number'].includes(normalizedHeaderKey);
+                const isMatriksWeekColumn =
+                  hasMatriksSebaranPrintLayout &&
+                  (isMatriksSebaranGroupedWeekColumn(header.column) ||
+                    isMatriksSebaranWeekColumnKey(normalizedHeaderKey));
+                const shouldRenderPerVisualLine =
+                  (isKktpCriteriaColumnKey(header.key) && maxLineCount > 1) || hasMatriksSebaranPrintLayout;
                 if (lines.length <= 1 && lineIndex > 0 && !shouldRenderPerVisualLine) return '';
                 const classAttribute = renderPrintClassAttribute(getGenericPrintColumnClassName(header));
                 const rowSpanAttribute =
                   !shouldRenderPerVisualLine && lines.length <= 1 && maxLineCount > 1 ? ` rowspan="${maxLineCount}"` : '';
                 const valignAttribute = rowSpanAttribute ? ' style="vertical-align: middle;"' : '';
-                const lineValue = shouldRenderPerVisualLine ? (lines[lineIndex] ?? '') : lines[Math.min(lineIndex, lines.length - 1)];
+                if (isMatriksNoColumn) {
+                  return `<td${classAttribute}>${escapeHtml(String(visualRowOffset + lineIndex + 1))}</td>`;
+                }
+                const lineValue =
+                  hasMatriksSebaranPrintLayout && !isMatriksWeekColumn && lines.length <= 1
+                    ? lines[0] ?? ''
+                    : shouldRenderPerVisualLine
+                      ? lines[lineIndex] ?? ''
+                      : lines[Math.min(lineIndex, lines.length - 1)];
                 const content =
                   lines.length > 1 && lineIndex >= lines.length
                     ? ''
@@ -6887,6 +7033,12 @@ export const LearningResourceGenerator = ({
                                           isMatriksSebaranGroupedWeekColumn(column) ||
                                           isMatriksSebaranWeekColumnKey(column.key),
                                       );
+                                    const quickRowVisualCounts = sectionRows.map((row) => {
+                                      const lineCounts = sectionColumns.map((column) =>
+                                        getVisualEditableCellLines(column, row.values[String(column.key || '').trim()]).length,
+                                      );
+                                      return Math.max(1, ...lineCounts);
+                                    });
                                     return (
                                       <div key={`quick-section-table-${quickSection.id}`}>
                                         {!shouldUseQuickSectionTabs && displayedQuickSections.length > 1 ? (
@@ -6959,11 +7111,11 @@ export const LearningResourceGenerator = ({
                                                 )}
                                               </thead>
                                               <tbody>
-                                                {sectionRows.map((row) => {
-                                                  const lineCounts = sectionColumns.map((column) =>
-                                                    getVisualEditableCellLines(column, row.values[String(column.key || '').trim()]).length,
-                                                  );
-                                                  const maxLineCount = Math.max(1, ...lineCounts);
+                                                {sectionRows.map((row, rowIndex) => {
+                                                  const maxLineCount = quickRowVisualCounts[rowIndex] || 1;
+                                                  const visualRowOffset = quickRowVisualCounts
+                                                    .slice(0, rowIndex)
+                                                    .reduce((total, count) => total + count, 0);
                                                   return Array.from({ length: maxLineCount }).map((_, lineIndex) => (
                                                     <tr
                                                       key={`quick-row-${row.id}-${lineIndex}`}
@@ -6972,8 +7124,17 @@ export const LearningResourceGenerator = ({
                                                       {sectionColumns.map((column) => {
                                                         const columnKey = String(column.key || '').trim();
                                                         const cellLines = getVisualEditableCellLines(column, row.values[columnKey]);
+                                                        const normalizedColumnKey = columnKey.toLowerCase();
+                                                        const isMatriksNoColumn =
+                                                          hasMatriksSebaranWeekGrid &&
+                                                          ['no', 'nomor', 'number'].includes(normalizedColumnKey);
+                                                        const isMatriksWeekColumn =
+                                                          hasMatriksSebaranWeekGrid &&
+                                                          (isMatriksSebaranGroupedWeekColumn(column) ||
+                                                            isMatriksSebaranWeekColumnKey(columnKey));
                                                         const shouldRenderPerVisualLine =
-                                                          isKktpCriteriaColumnKey(columnKey) && maxLineCount > 1;
+                                                          (isKktpCriteriaColumnKey(columnKey) && maxLineCount > 1) ||
+                                                          hasMatriksSebaranWeekGrid;
                                                         if (cellLines.length <= 1 && lineIndex > 0 && !shouldRenderPerVisualLine) {
                                                           return null;
                                                         }
@@ -6992,6 +7153,23 @@ export const LearningResourceGenerator = ({
                                                             />
                                                           );
                                                         }
+                                                        if (isMatriksNoColumn) {
+                                                          return (
+                                                            <td
+                                                              key={`quick-cell-${row.id}-${column.key}-${lineIndex}`}
+                                                              style={getQuickColumnStyle(column, sectionColumns)}
+                                                              className="border border-slate-300 bg-white p-1 text-center align-middle"
+                                                            >
+                                                              <div className="inline-flex min-h-[34px] w-full items-center justify-center text-xs text-slate-800">
+                                                                {visualRowOffset + lineIndex + 1}
+                                                              </div>
+                                                            </td>
+                                                          );
+                                                        }
+                                                        const effectiveLineIndex =
+                                                          hasMatriksSebaranWeekGrid && !isMatriksWeekColumn && cellLines.length <= 1
+                                                            ? 0
+                                                            : lineIndex;
                                                         return (
                                                           <td
                                                             key={`quick-cell-${row.id}-${column.key}-${lineIndex}`}
@@ -7007,7 +7185,7 @@ export const LearningResourceGenerator = ({
                                                                 : 'align-top'
                                                             } ${isCenterAlignedTableColumn(column) ? 'text-center' : ''}`}
                                                           >
-                                                            {renderQuickEditCellControl(quickSection, row, column, lineIndex)}
+                                                            {renderQuickEditCellControl(quickSection, row, column, effectiveLineIndex)}
                                                           </td>
                                                         );
                                                       })}
