@@ -5,12 +5,12 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-05-02 08:32 WIB
-- Current status: builder Wakakur untuk Program Perangkat Ajar sudah dibuat lebih universal dan deploy web. UI pemilihan `Bentuk Dokumen`/template di popup tambah-edit dihapus dari alur utama. Wakakur sekarang melihat satu struktur dokumen universal: kolom manual, kolom sistem, referensi dokumen, dan komponen bulan-minggu jika dibutuhkan. Komponen bulan-minggu tetap menjaga output guru yang sudah cocok, tetapi detail kolom teknis bulan-minggu disembunyikan dari tabel konfigurasi agar setup tidak terasa hardcode/terlalu teknis.
+- Last updated: 2026-05-03 11:30 WIB
+- Current status: builder Wakakur untuk Program Perangkat Ajar sudah makin disederhanakan ke model satu struktur dokumen universal. Preset/bentuk dokumen lama dihapus dari flow utama, konfigurasi bulan-minggu terpisah dihapus, dan kebutuhan seperti header gabungan `Kriteria Penetapan KKTP` atau grid `Pelaksanaan Minggu Ke-` kini dibuat langsung dari baris kolom terkait. Bagian konteks/catatan/pengesahan tidak lagi dicampur ke tabel utama Wakakur, sementara renderer guru dan print sudah mendukung header gabungan dinamis.
 - Objective/task aktif:
   - Melanjutkan pengembangan perangkat ajar dinamis setelah polish tab remedial dan editor tabel guru.
 - Batch terakhir selesai:
-  - `Perangkat ajar follow-up - universal Wakakur builder configuration`
+  - `Perangkat ajar follow-up - universal grouped column builder`
 - Progress fitur remedial keseluruhan:
   - `100%`
 - Progress presensi terpadu saat ini:
@@ -26,14 +26,18 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
-  - Commit: `fc9f87b`
-  - Title: `fix(teaching-resources): make wakakur builder universal`
+  - Commit: `77ce24f`
+  - Title: `fix(teaching-resources): support universal grouped columns`
   - Summary:
-    - UI pilihan `Bentuk Dokumen`/template dihapus dari popup tambah-edit Program Perangkat Ajar Wakakur
-    - popup sekarang memakai konsep satu builder universal: struktur/integrasi dokumen + komponen bulan-minggu opsional
-    - komponen bulan-minggu tetap bisa diaktifkan dari builder dan memilih sumber TP/JP, sementara kolom teknis bulan-minggu disembunyikan dari daftar kolom agar setup tetap ringkas
+    - metadata kolom perangkat ajar ditambah untuk header group dinamis (`headerGroupKey`, `headerGroupLabel`) dan jumlah subkolom grid
+    - builder Wakakur sekarang membuat header gabungan langsung di baris kolom, termasuk tombol `Buat Subkolom` untuk `Grid Minggu / Periode`
+    - rantai preset/bentuk dokumen lama dan panel bulan-minggu terpisah dibersihkan agar konfigurasi tidak terasa hardcode
+    - renderer tabel guru dan print dokumen kini menampilkan header group dua baris secara dinamis
+    - block konteks/catatan/pengesahan tidak ikut tampil sebagai kolom tabel utama di builder siap pakai
 - Area/file disentuh:
   - `frontend/src/pages/teacher/wakasek/curriculum/TeachingResourceProgramManagementPage.tsx`
+  - `frontend/src/pages/teacher/learning-resources/LearningResourceGenerator.tsx`
+  - `frontend/src/services/teachingResourceProgram.service.ts`
   - `docs/CODEX_CONTINUITY.md`
 - Verifikasi batch ini:
   - `git diff --check`
@@ -45,9 +49,10 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - Backend tidak diubah pada batch ini
   - Tidak ada perubahan mobile pada batch ini
 - Remaining work:
-  - Lanjut audit/pengembangan perangkat ajar dinamis sesuai arahan user berikutnya.
+  - Uji manual dari UI Wakakur: buat kolom biasa, buat header induk gabungan, buat grid minggu/periode lewat tipe kolom, lalu cek tampilan guru dan print.
+  - Lanjut polish perangkat ajar dinamis sesuai feedback user berikutnya.
 - Residual risk:
-  - Perubahan batch ini frontend-only pada konfigurasi Wakakur. Output dokumen guru tidak diubah. Jika user ingin builder benar-benar menjadi komponen drag/drop lintas semua dokumen, itu bisa menjadi batch lanjutan yang lebih besar karena menyentuh model editor lebih dalam.
+  - Perubahan batch ini frontend-only dan mempertahankan schema lama. Dokumen existing tetap dibaca seperti sebelumnya, tetapi konfigurasi baru perlu uji manual untuk kombinasi header gabungan yang kompleks.
 
 ## Status Saat Ini
 
