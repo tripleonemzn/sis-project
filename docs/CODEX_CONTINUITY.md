@@ -26,7 +26,7 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
-  - Commit: `pending commit after verification`
+  - Commit: `41ed1e2`
   - Title: `feat(teaching-resources): add package review workflow`
   - Summary:
     - backend menambah endpoint paket review perangkat ajar tanpa migration baru; metadata paket disimpan aman di `content.reviewPackage`
