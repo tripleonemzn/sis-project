@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, CalendarDays, Check, Pencil, Plus, Printer, RotateCcw, Save, Send, Trash2, X } from 'lucide-react';
+import { AlertTriangle, CalendarDays, Pencil, Plus, Printer, Save, Trash2, X } from 'lucide-react';
 import { useNavigate, useOutletContext } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import ReactQuill from 'react-quill-new';
@@ -3799,17 +3799,6 @@ export const LearningResourceGenerator = ({
     },
   });
 
-  const submitMutation = useMutation({
-    mutationFn: (entryId: number) => teachingResourceProgramService.submitEntry(entryId),
-    onSuccess: async () => {
-      toast.success('Dokumen berhasil dikirim untuk review.');
-      await invalidateEntries();
-    },
-    onError: (error) => {
-      toast.error(toErrorMessage(error, 'Gagal mengirim dokumen untuk review.'));
-    },
-  });
-
   const deleteMutation = useMutation({
     mutationFn: (entryId: number) => teachingResourceProgramService.deleteEntry(entryId),
     onSuccess: async () => {
@@ -3818,25 +3807,6 @@ export const LearningResourceGenerator = ({
     },
     onError: (error) => {
       toast.error(toErrorMessage(error, 'Gagal menghapus dokumen.'));
-    },
-  });
-
-  const reviewMutation = useMutation({
-    mutationFn: ({
-      entryId,
-      action,
-      reviewNote,
-    }: {
-      entryId: number;
-      action: 'APPROVE' | 'REJECT';
-      reviewNote?: string;
-    }) => teachingResourceProgramService.reviewEntry(entryId, { action, reviewNote }),
-    onSuccess: async (_, variables) => {
-      toast.success(variables.action === 'APPROVE' ? 'Dokumen disetujui.' : 'Dokumen dikembalikan untuk revisi.');
-      await invalidateEntries();
-    },
-    onError: (error) => {
-      toast.error(toErrorMessage(error, 'Gagal memproses review dokumen.'));
     },
   });
 
@@ -6396,6 +6366,7 @@ export const LearningResourceGenerator = ({
     entry: TeachingResourceEntry,
     contextOverride?: Partial<EntryContextValues> | null,
     printableSectionId?: string,
+    signatureQr?: { teacherQrDataUrl?: string | null; principalQrDataUrl?: string | null } | null,
   ): string => {
     const defaultSections = buildDefaultSections(activeProgramMeta);
     const displaySections = hydrateEntrySectionsForDisplay(entry, parseEntrySections(entry, defaultSections));
@@ -6647,6 +6618,17 @@ export const LearningResourceGenerator = ({
           .signature-spacer {
             height: 72px;
           }
+          .signature-qr {
+            height: 72px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+          }
+          .signature-qr img {
+            width: 62px;
+            height: 62px;
+            object-fit: contain;
+          }
           .signature-name {
             display: inline-block;
             width: auto;
@@ -6679,13 +6661,21 @@ export const LearningResourceGenerator = ({
           <div class="signature-box">
             <div>${escapeHtml(signatureValues.principalOpening || 'Mengetahui,')}</div>
             <div>${escapeHtml(signatureValues.principalTitle)}</div>
-            <div class="signature-spacer"></div>
+            ${
+              signatureQr?.principalQrDataUrl
+                ? `<div class="signature-qr"><img src="${escapeHtml(signatureQr.principalQrDataUrl)}" alt="QR Kepala Sekolah" /></div>`
+                : '<div class="signature-spacer"></div>'
+            }
             <div class="signature-name">${escapeHtml(signatureValues.principalName || '-')}</div>
           </div>
           <div class="signature-box is-right">
             <div>${escapeHtml(printDateLine)}</div>
             <div>${escapeHtml(signatureValues.curriculumTitle)}</div>
-            <div class="signature-spacer"></div>
+            ${
+              signatureQr?.teacherQrDataUrl
+                ? `<div class="signature-qr"><img src="${escapeHtml(signatureQr.teacherQrDataUrl)}" alt="QR Guru Mata Pelajaran" /></div>`
+                : '<div class="signature-spacer"></div>'
+            }
             <div class="signature-name">${escapeHtml(signatureValues.curriculumName || '-')}</div>
           </div>
         </div>
@@ -6697,7 +6687,19 @@ export const LearningResourceGenerator = ({
   const handlePrintEntry = async (entry: TeachingResourceEntry, printableSectionId?: string) => {
     try {
       const contextOverride = await loadReferenceContextOverride(entry);
-      const html = buildPrintHtml(entry, contextOverride, printableSectionId);
+      let signatureQr: { teacherQrDataUrl?: string | null; principalQrDataUrl?: string | null } | null = null;
+      try {
+        const signatureResponse = await teachingResourceProgramService.getPackageSignatureQr(entry.id);
+        if (signatureResponse.data?.approved) {
+          signatureQr = {
+            teacherQrDataUrl: signatureResponse.data.teacherQrDataUrl,
+            principalQrDataUrl: signatureResponse.data.principalQrDataUrl,
+          };
+        }
+      } catch {
+        signatureQr = null;
+      }
+      const html = buildPrintHtml(entry, contextOverride, printableSectionId, signatureQr);
       const iframe = printIframeRef.current;
       if (!iframe?.contentWindow) {
         toast.error('Frame print tidak tersedia. Coba muat ulang halaman.');
@@ -6859,8 +6861,6 @@ export const LearningResourceGenerator = ({
                     const isOwner = Number(entry.teacherId) === Number(user?.id || 0);
                     const contextLabel = resolveEntryContextLabel(entry, assignmentLabelMap);
                     const coveredClasses = extractCoveredClasses(entry);
-                    const showReviewActions = canReview && viewMode === 'review' && !isOwner;
-                    const canSubmit = isOwner && (entry.status === 'DRAFT' || entry.status === 'REJECTED');
                     const canEdit = isOwner && entry.status !== 'APPROVED';
                     const canDelete = isOwner && entry.status !== 'APPROVED';
                     const isQuickEditing = quickEditEntryId === entry.id;
@@ -6937,54 +6937,6 @@ export const LearningResourceGenerator = ({
                                     <Trash2 size={14} />
                                   </button>
                                 ) : null}
-                              {canSubmit ? (
-                                <button
-                                  type="button"
-                                  onClick={() => submitMutation.mutate(entry.id)}
-                                  disabled={submitMutation.isPending}
-                                  title="Kirim Review"
-                                  aria-label="Kirim Review"
-                                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60"
-                                >
-                                  <Send size={14} />
-                                </button>
-                              ) : null}
-                              {showReviewActions ? (
-                                <>
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      reviewMutation.mutate({
-                                        entryId: entry.id,
-                                        action: 'APPROVE',
-                                      })
-                                    }
-                                    disabled={reviewMutation.isPending}
-                                    title="Setujui"
-                                    aria-label="Setujui"
-                                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 disabled:opacity-60"
-                                  >
-                                    <Check size={14} />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      const note = window.prompt('Catatan revisi (opsional):', '') || '';
-                                      reviewMutation.mutate({
-                                        entryId: entry.id,
-                                        action: 'REJECT',
-                                        reviewNote: note.trim() || undefined,
-                                      });
-                                    }}
-                                    disabled={reviewMutation.isPending}
-                                    title="Revisi"
-                                    aria-label="Revisi"
-                                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 disabled:opacity-60"
-                                  >
-                                    <RotateCcw size={14} />
-                                  </button>
-                                </>
-                              ) : null}
                             </div>
                           </td>
                         </tr>

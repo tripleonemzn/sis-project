@@ -5,12 +5,12 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-05-03 19:45 WIB
-- Current status: hotfix lanjutan `Matriks Sebaran` dan `KKTP` perangkat ajar sudah live. `Matriks Sebaran` sekarang merender baris per TP untuk tabel view dan print preview, kolom `Semester`/`No`/`JP` dibuat center, jumlah kolom minggu mengikuti jumlah ceklis dari dokumen `Promes/Program Semester` yang cocok konteksnya, dan ringkasan `KKTP` menghitung jumlah kriteria, persentase, serta penentuan KKTP otomatis dari ceklis `Kurang Memadai`/`Memadai` sesuai pola sheet Excel.
+- Last updated: 2026-05-03 20:59 WIB
+- Current status: workflow baru `Pengajuan Review Perangkat Ajar` sudah live. Review tidak lagi dikirim per dokumen dari tiap halaman perangkat ajar, tetapi melalui paket mapel di menu khusus `PERANGKAT AJAR > Pengajuan Review`.
 - Objective/task aktif:
-  - Melanjutkan pengembangan perangkat ajar dinamis setelah polish tab remedial dan editor tabel guru.
+  - Menjadikan review perangkat ajar sebagai alur paket: Guru kirim paket mapel lengkap ke Kurikulum, Kurikulum setujui/kembalikan, Kurikulum ajukan ke Kepala Sekolah, Kepala Sekolah setujui final, lalu print dokumen menampilkan QR tanda tangan guru dan kepala sekolah.
 - Batch terakhir selesai:
-  - `Perangkat ajar hotfix - Matriks Sebaran per-TP + rumus KKTP`
+  - `Teaching resource package review workflow`
 - Progress fitur remedial keseluruhan:
   - `100%`
 - Progress presensi terpadu saat ini:
@@ -26,33 +26,46 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
-  - Commit: `3622d8b`
-  - Title: `fix(teaching-resources): sync matrix and kktp calculations`
+  - Commit: `pending commit after verification`
+  - Title: `feat(teaching-resources): add package review workflow`
   - Summary:
-    - kolom `Semester` ikut center di tabel view dan print
-    - `Matriks Sebaran` tidak lagi membuat satu kotak besar per nomor untuk `Semester`/minggu; render visualnya mengikuti setiap baris TP
-    - jumlah kolom minggu `Matriks Sebaran` dibatasi secara dinamis dari jumlah ceklis pada dokumen `Promes/Program Semester` yang cocok mapel/tingkat/program keahlian
-    - ringkasan `KKTP` menghitung `Jumlah Kriteria Penilaian`, persentase `Kurang/Memadai`, dan nilai `KKTP Mata Pelajaran` otomatis dari ceklis kriteria
-    - print preview `Matriks Sebaran` mengikuti baris TP yang sama dengan table view agar tidak mismatch antara layar dan cetak
-    - perubahan frontend-only, tidak mengubah backend atau data tersimpan
+    - backend menambah endpoint paket review perangkat ajar tanpa migration baru; metadata paket disimpan aman di `content.reviewPackage`
+    - menu web baru `Pengajuan Review` ditambahkan di sidebar Perangkat Ajar dan breadcrumb
+    - guru melihat paket mapel, kelengkapan dokumen wajib, lalu hanya bisa kirim paket jika lengkap
+    - Kurikulum dapat menyetujui/mengembalikan paket dan mengajukan paket yang disetujui ke Kepala Sekolah
+    - Kepala Sekolah dapat menyetujui final atau mengembalikan paket
+    - print perangkat ajar mengambil QR tanda tangan guru dan kepala sekolah setelah status paket `PRINCIPAL_APPROVED`
+    - halaman publik `/verify/teaching-resource/:token` tersedia untuk scan QR
+    - tombol `Kirim Review` dan aksi review per dokumen disembunyikan dari tabel dokumen agar workflow tidak bercabang
 - Area/file disentuh:
+  - `backend/src/controllers/teachingResourceProgram.controller.ts`
+  - `backend/src/routes/teachingResourceProgram.routes.ts`
+  - `backend/src/routes/public.routes.ts`
+  - `frontend/src/pages/teacher/learning-resources/LearningResourceReviewSubmissionPage.tsx`
   - `frontend/src/pages/teacher/learning-resources/LearningResourceGenerator.tsx`
+  - `frontend/src/pages/public/TeachingResourceVerificationPage.tsx`
+  - `frontend/src/services/teachingResourceProgram.service.ts`
+  - `frontend/src/components/layout/Sidebar.tsx`
+  - `frontend/src/layouts/DashboardLayout.tsx`
+  - `frontend/src/App.tsx`
   - `docs/CODEX_CONTINUITY.md`
 - Verifikasi batch ini:
-  - `git diff --check`
+  - `cd backend && npm run build`
+  - `cd frontend && npm run build`
+  - `cd backend && npm run service:restart`
+  - `cd backend && npm run service:health`
   - `cd frontend && npm run build`
   - `cd frontend && npm run deploy`
-  - `curl -I https://siskgb2.id/`
 - Publish/live status:
   - Web sudah deploy live
-  - Backend tidak diubah pada hotfix ini
+  - Backend sudah build, restart via PM2 reload, dan health check `Backend:200`, `Backend API:200`
   - Tidak ada perubahan mobile pada batch ini
 - Remaining work:
-  - QA manual pada akun `KGB2G071`: buka `Matriks Sebaran`, pastikan jumlah minggu mengikuti Promes, setiap TP punya kotak `Semester` sendiri, dan print preview sama dengan tabel view.
-  - QA manual pada menu `KKTP`: ceklis `Kurang Memadai`/`Memadai`, simpan tabel, lalu pastikan ringkasan jumlah kriteria, persentase, dan KKTP mata pelajaran otomatis berubah.
+  - QA manual end-to-end dengan akun guru, kurikulum, dan kepala sekolah: buat paket lengkap, kirim ke Kurikulum, setujui Kurikulum, ajukan ke Kepala Sekolah, setujui final, lalu print salah satu dokumen dan scan QR.
+  - Jika user ingin alur notifikasi realtime untuk setiap tahap, tambahkan batch terpisah dengan scope notifikasi yang kecil dan terarah.
 - Residual risk:
-  - Perubahan ini frontend-only dan tidak memigrasi isi dokumen existing. Dokumen lama mengikuti schema/kolom yang sudah tersimpan; jika dokumen `Promes/Program Semester` belum punya ceklis minggu yang tersimpan, `Matriks Sebaran` fallback ke jumlah minggu standar.
-  - File upload referensi `etc/contoh_perangkat_ajar.xlsx` masih untracked dan sengaja tidak di-commit.
+  - Tidak ada tabel baru; workflow paket menggunakan metadata JSON pada dokumen perangkat ajar existing. Ini minim risiko migration, tetapi QA manual lintas role tetap diperlukan untuk memastikan mapping paket sesuai data guru/mapel aktual.
+  - Endpoint daftar paket membatasi pembacaan maksimal 2000 dokumen aktif per request sebagai guardrail agar tidak menjadi query tidak terbatas.
 
 ## Status Saat Ini
 

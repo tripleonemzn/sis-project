@@ -1,7 +1,10 @@
 import { Request, Response } from 'express';
 import { Prisma } from '@prisma/client';
+import crypto from 'crypto';
+import QRCode from 'qrcode';
 import prisma from '../utils/prisma';
 import { ApiError, ApiResponse, asyncHandler } from '../utils/api';
+import { resolvePublicAppBaseUrl } from '../utils/publicAppBaseUrl';
 
 type TeachingResourceProgramDefinition = {
   code: string;
@@ -43,6 +46,14 @@ type UpsertTeachingResourceProgramInput = {
 
 type RoleContext = 'teacher' | 'all';
 type TeachingResourceEntryStatus = 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'REJECTED';
+type TeachingResourcePackageStatus =
+  | 'INCOMPLETE'
+  | 'READY'
+  | 'SUBMITTED_TO_CURRICULUM'
+  | 'REVISION_REQUESTED'
+  | 'CURRICULUM_APPROVED'
+  | 'SUBMITTED_TO_PRINCIPAL'
+  | 'PRINCIPAL_APPROVED';
 type TeachingResourceColumnDataType =
   | 'TEXT'
   | 'TEXTAREA'
@@ -2577,6 +2588,118 @@ async function assertCanReviewTeachingResourceEntries(user: { id: number; role: 
   }
 }
 
+async function isCurriculumReviewer(user: { id: number; role: string }) {
+  if (String(user.role).toUpperCase() === 'ADMIN') return true;
+  if (String(user.role).toUpperCase() !== 'TEACHER') return false;
+
+  const actor = await prisma.user.findUnique({
+    where: { id: Number(user.id) },
+    select: { additionalDuties: true },
+  });
+
+  const duties = (actor?.additionalDuties || []).map((duty) => String(duty || '').trim().toUpperCase());
+  return duties.includes('WAKASEK_KURIKULUM') || duties.includes('SEKRETARIS_KURIKULUM');
+}
+
+function readEntryContentObject(content: Prisma.JsonValue | null | undefined): Record<string, unknown> {
+  if (!content || typeof content !== 'object' || Array.isArray(content)) return {};
+  return { ...(content as Record<string, unknown>) };
+}
+
+function readReviewPackageMeta(content: Prisma.JsonValue | null | undefined): Record<string, unknown> {
+  const payload = readEntryContentObject(content);
+  const raw = payload.reviewPackage;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  return { ...(raw as Record<string, unknown>) };
+}
+
+function writeReviewPackageMeta(content: Prisma.JsonValue | null | undefined, meta: Record<string, unknown>) {
+  const payload = readEntryContentObject(content);
+  return toJsonValue({
+    ...payload,
+    reviewPackage: {
+      ...readReviewPackageMeta(content),
+      ...meta,
+    },
+  });
+}
+
+function buildTeachingResourcePackageKey(params: {
+  academicYearId: number;
+  teacherId: number;
+  subjectId?: number | null;
+  classLevel?: string | null;
+  className?: string | null;
+}) {
+  const raw = [
+    Number(params.academicYearId || 0),
+    Number(params.teacherId || 0),
+    Number(params.subjectId || 0),
+    normalizeClassLevelToken(params.classLevel) || '-',
+    String(params.className || '').trim().toLowerCase() || '-',
+  ].join('|');
+  return crypto.createHash('sha1').update(raw).digest('hex').slice(0, 20);
+}
+
+function packageStatusRank(status: TeachingResourcePackageStatus) {
+  const rank: Record<TeachingResourcePackageStatus, number> = {
+    INCOMPLETE: 0,
+    READY: 1,
+    REVISION_REQUESTED: 2,
+    SUBMITTED_TO_CURRICULUM: 3,
+    CURRICULUM_APPROVED: 4,
+    SUBMITTED_TO_PRINCIPAL: 5,
+    PRINCIPAL_APPROVED: 6,
+  };
+  return rank[status] ?? 0;
+}
+
+function normalizePackageStatus(raw: unknown): TeachingResourcePackageStatus | null {
+  const value = String(raw || '').trim().toUpperCase();
+  if (
+    value === 'INCOMPLETE' ||
+    value === 'READY' ||
+    value === 'SUBMITTED_TO_CURRICULUM' ||
+    value === 'REVISION_REQUESTED' ||
+    value === 'CURRICULUM_APPROVED' ||
+    value === 'SUBMITTED_TO_PRINCIPAL' ||
+    value === 'PRINCIPAL_APPROVED'
+  ) {
+    return value;
+  }
+  return null;
+}
+
+function buildCompactVerificationToken(prefix: string) {
+  return `${prefix}_${crypto.randomBytes(10).toString('base64url')}`;
+}
+
+function programMatchesClassLevel(program: TeachingResourceProgramPayload, classLevel?: string | null) {
+  const normalizedClassLevel = normalizeClassLevelToken(classLevel);
+  const targetLevels = (Array.isArray(program.targetClassLevels) ? program.targetClassLevels : [])
+    .map((level) => normalizeClassLevelToken(level))
+    .filter(Boolean);
+  if (targetLevels.length === 0 || !normalizedClassLevel) return true;
+  return targetLevels.includes(normalizedClassLevel);
+}
+
+function isEntryContentSubstantial(content: Prisma.JsonValue | null | undefined) {
+  const payload = readEntryContentObject(content);
+  const sections = Array.isArray(payload.sections) ? payload.sections : [];
+  if (sections.length === 0) return false;
+  return sections.some((section) => {
+    if (!section || typeof section !== 'object') return false;
+    const item = section as Record<string, unknown>;
+    const body = String(item.body || '').trim();
+    if (body) return true;
+    const rows = Array.isArray(item.rows) ? item.rows : [];
+    return rows.some((row) => {
+      if (!row || typeof row !== 'object') return false;
+      return Object.values(row as Record<string, unknown>).some((value) => String(value || '').trim());
+    });
+  });
+}
+
 function mapPrograms(
   rows: Array<{
     id: number;
@@ -3647,6 +3770,522 @@ export const getTeachingResourceEntriesSummary = asyncHandler(async (req: Reques
         latest,
       },
       'Ringkasan perangkat ajar berhasil dimuat.',
+    ),
+  );
+});
+
+type TeachingResourcePackageEntryRow = {
+  id: number;
+  academicYearId: number;
+  teacherId: number;
+  reviewerId: number | null;
+  programCode: string;
+  subjectId: number | null;
+  classLevel: string | null;
+  className: string | null;
+  title: string;
+  summary: string | null;
+  content: Prisma.JsonValue | null;
+  tags: string[];
+  status: TeachingResourceEntryStatus;
+  submittedAt: Date | null;
+  reviewedAt: Date | null;
+  reviewNote: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  teacher?: { id: number; name: string; username: string | null } | null;
+};
+
+function serializeTeachingResourcePackages(
+  rows: TeachingResourcePackageEntryRow[],
+  programs: TeachingResourceProgramPayload[],
+) {
+  const programByCode = new Map(programs.map((program) => [normalizeProgramCode(program.code), program]));
+  const groups = new Map<string, TeachingResourcePackageEntryRow[]>();
+
+  rows.forEach((entry) => {
+    const key = buildTeachingResourcePackageKey({
+      academicYearId: Number(entry.academicYearId),
+      teacherId: Number(entry.teacherId),
+      subjectId: entry.subjectId,
+      classLevel: entry.classLevel,
+      className: entry.className,
+    });
+    const current = groups.get(key) || [];
+    current.push(entry);
+    groups.set(key, current);
+  });
+
+  return Array.from(groups.entries())
+    .map(([packageKey, packageRows]) => {
+      const first = packageRows[0];
+      const classLevel = first?.classLevel || null;
+      const requiredPrograms = programs
+        .filter((program) => program.isActive && program.showOnTeacherMenu && programMatchesClassLevel(program, classLevel))
+        .sort((a, b) => Number(a.order || 0) - Number(b.order || 0));
+      const entriesByProgram = new Map<string, TeachingResourcePackageEntryRow[]>();
+      packageRows.forEach((entry) => {
+        const code = normalizeProgramCode(entry.programCode);
+        const current = entriesByProgram.get(code) || [];
+        current.push(entry);
+        entriesByProgram.set(code, current);
+      });
+
+      const requiredItems = requiredPrograms.map((program) => {
+        const code = normalizeProgramCode(program.code);
+        const programRows = entriesByProgram.get(code) || [];
+        const latestEntry = [...programRows].sort((a, b) => Number(b.updatedAt) - Number(a.updatedAt))[0] || null;
+        return {
+          code,
+          label: program.label,
+          shortLabel: program.shortLabel,
+          isComplete: Boolean(latestEntry),
+          entryId: latestEntry?.id || null,
+          status: latestEntry?.status || null,
+          updatedAt: latestEntry?.updatedAt || null,
+        };
+      });
+
+      const isComplete = requiredItems.length > 0 && requiredItems.every((item) => item.isComplete);
+      const metaStatuses = packageRows
+        .map((entry) => normalizePackageStatus(readReviewPackageMeta(entry.content).status))
+        .filter((status): status is TeachingResourcePackageStatus => Boolean(status));
+      const strongestMetaStatus = metaStatuses.sort((a, b) => packageStatusRank(b) - packageStatusRank(a))[0] || null;
+      const status: TeachingResourcePackageStatus =
+        strongestMetaStatus && packageStatusRank(strongestMetaStatus) >= packageStatusRank('SUBMITTED_TO_CURRICULUM')
+          ? strongestMetaStatus
+          : isComplete
+            ? 'READY'
+            : 'INCOMPLETE';
+
+      const latestEntry = [...packageRows].sort((a, b) => Number(b.updatedAt) - Number(a.updatedAt))[0] || first;
+      const latestMeta = readReviewPackageMeta(latestEntry?.content);
+      const subjectLabel = String(latestEntry?.tags?.find((tag) => String(tag).startsWith('subject:')) || '').replace(
+        /^subject:/,
+        '',
+      );
+
+      return {
+        packageKey,
+        status,
+        academicYearId: Number(first?.academicYearId || 0),
+        teacherId: Number(first?.teacherId || 0),
+        teacherName: String(first?.teacher?.name || '').trim(),
+        subjectId: first?.subjectId || null,
+        subjectLabel: subjectLabel || null,
+        classLevel: first?.classLevel || null,
+        className: first?.className || null,
+        entryIds: packageRows.map((entry) => entry.id),
+        totalDocuments: packageRows.length,
+        requiredDocuments: requiredItems.length,
+        completedDocuments: requiredItems.filter((item) => item.isComplete).length,
+        missingDocuments: requiredItems.filter((item) => !item.isComplete),
+        documents: requiredItems,
+        submittedAt: latestMeta.submittedAt || null,
+        curriculumApprovedAt: latestMeta.curriculumApprovedAt || null,
+        principalApprovedAt: latestMeta.principalApprovedAt || null,
+        reviewNote: latestMeta.reviewNote || null,
+        updatedAt: latestEntry?.updatedAt || null,
+      };
+    })
+    .sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
+}
+
+async function loadPackageRowsFromEntryIds(entryIds: number[]) {
+  const distinctIds = Array.from(new Set(entryIds.map((id) => Number(id || 0)).filter((id) => Number.isFinite(id) && id > 0)));
+  if (distinctIds.length === 0) {
+    throw new ApiError(400, 'Dokumen paket review wajib dipilih.');
+  }
+
+  const seed = await prisma.teachingResourceEntry.findFirst({
+    where: { id: { in: distinctIds } },
+    select: {
+      academicYearId: true,
+      teacherId: true,
+      subjectId: true,
+      classLevel: true,
+      className: true,
+    },
+  });
+  if (!seed) throw new ApiError(404, 'Paket perangkat ajar tidak ditemukan.');
+
+  return prisma.teachingResourceEntry.findMany({
+    where: {
+      academicYearId: seed.academicYearId,
+      teacherId: seed.teacherId,
+      subjectId: seed.subjectId,
+      classLevel: seed.classLevel,
+      className: seed.className,
+    },
+    orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+    include: {
+      teacher: { select: { id: true, name: true, username: true } },
+    },
+  }) as Promise<TeachingResourcePackageEntryRow[]>;
+}
+
+async function updateTeachingResourcePackageRows(
+  rows: TeachingResourcePackageEntryRow[],
+  data: {
+    entryStatus?: TeachingResourceEntryStatus;
+    reviewerId?: number | null;
+    submittedAt?: Date | null;
+    reviewedAt?: Date | null;
+    reviewNote?: string | null;
+    meta: Record<string, unknown>;
+  },
+) {
+  await prisma.$transaction(
+    rows.map((entry) =>
+      prisma.teachingResourceEntry.update({
+        where: { id: entry.id },
+        data: {
+          ...(data.entryStatus ? { status: data.entryStatus } : {}),
+          ...(data.reviewerId !== undefined ? { reviewerId: data.reviewerId } : {}),
+          ...(data.submittedAt !== undefined ? { submittedAt: data.submittedAt } : {}),
+          ...(data.reviewedAt !== undefined ? { reviewedAt: data.reviewedAt } : {}),
+          ...(data.reviewNote !== undefined ? { reviewNote: data.reviewNote } : {}),
+          content: writeReviewPackageMeta(entry.content, data.meta),
+        },
+      }),
+    ),
+  );
+}
+
+export const getTeachingResourceReviewPackages = asyncHandler(async (req: Request, res: Response) => {
+  const user = (req as Request & { user?: { id?: number; role?: string } }).user;
+  if (!user?.id || !user?.role) {
+    throw new ApiError(401, 'Tidak memiliki otorisasi.');
+  }
+
+  const academicYearId = await resolveAcademicYearId(req.query?.academicYearId);
+  const view = String(req.query?.view || 'mine').trim().toLowerCase();
+  const roleUpper = String(user.role).toUpperCase();
+  const canCurriculumReview = await isCurriculumReviewer({ id: Number(user.id), role: String(user.role) });
+  const canPrincipalReview = roleUpper === 'PRINCIPAL' || roleUpper === 'ADMIN';
+
+  if (view === 'curriculum' && !canCurriculumReview) {
+    throw new ApiError(403, 'Akses pengajuan review kurikulum ditolak.');
+  }
+  if (view === 'principal' && !canPrincipalReview) {
+    throw new ApiError(403, 'Akses persetujuan kepala sekolah ditolak.');
+  }
+
+  const where: Prisma.TeachingResourceEntryWhereInput = { academicYearId };
+  if (view === 'mine') {
+    if (roleUpper !== 'TEACHER' && roleUpper !== 'ADMIN') {
+      throw new ApiError(403, 'Akses paket perangkat ajar ditolak.');
+    }
+    if (roleUpper === 'TEACHER') where.teacherId = Number(user.id);
+  } else if (view === 'principal') {
+    where.status = 'APPROVED';
+  }
+
+  const [programs, rows] = await Promise.all([
+    loadPrograms(academicYearId),
+    prisma.teachingResourceEntry.findMany({
+      where,
+      take: 2000,
+      orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+      include: {
+        teacher: { select: { id: true, name: true, username: true } },
+      },
+    }) as Promise<TeachingResourcePackageEntryRow[]>,
+  ]);
+
+  const allPackages = serializeTeachingResourcePackages(rows, programs);
+  const packages =
+    view === 'principal'
+      ? allPackages.filter((item) => ['SUBMITTED_TO_PRINCIPAL', 'PRINCIPAL_APPROVED'].includes(item.status))
+      : view === 'curriculum'
+        ? allPackages.filter((item) =>
+            ['SUBMITTED_TO_CURRICULUM', 'REVISION_REQUESTED', 'CURRICULUM_APPROVED', 'SUBMITTED_TO_PRINCIPAL', 'PRINCIPAL_APPROVED'].includes(
+              item.status,
+            ),
+          )
+        : allPackages;
+
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        academicYearId,
+        view,
+        canCurriculumReview,
+        canPrincipalReview,
+        packages,
+      },
+      'Paket pengajuan review perangkat ajar berhasil dimuat.',
+    ),
+  );
+});
+
+export const submitTeachingResourceReviewPackage = asyncHandler(async (req: Request, res: Response) => {
+  const user = (req as Request & { user?: { id?: number; role?: string } }).user;
+  if (!user?.id || !user?.role) throw new ApiError(401, 'Tidak memiliki otorisasi.');
+
+  const rows = await loadPackageRowsFromEntryIds(Array.isArray(req.body?.entryIds) ? req.body.entryIds : []);
+  const roleUpper = String(user.role).toUpperCase();
+  if (roleUpper === 'TEACHER' && rows.some((entry) => Number(entry.teacherId) !== Number(user.id))) {
+    throw new ApiError(403, 'Guru hanya dapat mengirim paket perangkat ajar miliknya sendiri.');
+  }
+
+  const programs = await loadPrograms(Number(rows[0]?.academicYearId || 0));
+  const [pkg] = serializeTeachingResourcePackages(rows, programs);
+  if (!pkg || pkg.status === 'INCOMPLETE') {
+    throw new ApiError(400, 'Paket belum lengkap. Lengkapi semua dokumen perangkat ajar sebelum dikirim.');
+  }
+
+  const now = new Date();
+  await updateTeachingResourcePackageRows(rows, {
+    entryStatus: 'SUBMITTED',
+    submittedAt: now,
+    reviewedAt: null,
+    reviewerId: null,
+    reviewNote: null,
+    meta: {
+      packageKey: pkg.packageKey,
+      status: 'SUBMITTED_TO_CURRICULUM',
+      submittedAt: now.toISOString(),
+      submittedBy: Number(user.id),
+      reviewNote: null,
+    },
+  });
+
+  const updatedRows = await loadPackageRowsFromEntryIds(rows.map((entry) => entry.id));
+  const [updatedPackage] = serializeTeachingResourcePackages(updatedRows, programs);
+  return res.status(200).json(new ApiResponse(200, updatedPackage, 'Paket perangkat ajar berhasil dikirim ke Kurikulum.'));
+});
+
+export const reviewTeachingResourcePackageByCurriculum = asyncHandler(async (req: Request, res: Response) => {
+  const user = (req as Request & { user?: { id?: number; role?: string } }).user;
+  if (!user?.id || !user?.role) throw new ApiError(401, 'Tidak memiliki otorisasi.');
+  if (!(await isCurriculumReviewer({ id: Number(user.id), role: String(user.role) }))) {
+    throw new ApiError(403, 'Akses review Kurikulum ditolak.');
+  }
+
+  const rows = await loadPackageRowsFromEntryIds(Array.isArray(req.body?.entryIds) ? req.body.entryIds : []);
+  const action = String(req.body?.action || '').trim().toUpperCase();
+  if (!['APPROVE', 'REJECT'].includes(action)) throw new ApiError(400, 'Aksi review tidak valid.');
+
+  const programs = await loadPrograms(Number(rows[0]?.academicYearId || 0));
+  const [pkg] = serializeTeachingResourcePackages(rows, programs);
+  if (!pkg || !['SUBMITTED_TO_CURRICULUM', 'REVISION_REQUESTED', 'CURRICULUM_APPROVED'].includes(pkg.status)) {
+    throw new ApiError(400, 'Paket belum berada pada tahap review Kurikulum.');
+  }
+
+  const now = new Date();
+  const reviewNote = String(req.body?.reviewNote || '').trim();
+  await updateTeachingResourcePackageRows(rows, {
+    entryStatus: action === 'APPROVE' ? 'APPROVED' : 'REJECTED',
+    reviewerId: Number(user.id),
+    reviewedAt: now,
+    reviewNote: reviewNote || null,
+    meta: {
+      packageKey: pkg.packageKey,
+      status: action === 'APPROVE' ? 'CURRICULUM_APPROVED' : 'REVISION_REQUESTED',
+      curriculumReviewedAt: now.toISOString(),
+      curriculumReviewerId: Number(user.id),
+      curriculumApprovedAt: action === 'APPROVE' ? now.toISOString() : null,
+      reviewNote: reviewNote || null,
+    },
+  });
+
+  const updatedRows = await loadPackageRowsFromEntryIds(rows.map((entry) => entry.id));
+  const [updatedPackage] = serializeTeachingResourcePackages(updatedRows, programs);
+  return res
+    .status(200)
+    .json(new ApiResponse(200, updatedPackage, action === 'APPROVE' ? 'Paket disetujui Kurikulum.' : 'Paket dikembalikan untuk revisi.'));
+});
+
+export const submitTeachingResourcePackageToPrincipal = asyncHandler(async (req: Request, res: Response) => {
+  const user = (req as Request & { user?: { id?: number; role?: string } }).user;
+  if (!user?.id || !user?.role) throw new ApiError(401, 'Tidak memiliki otorisasi.');
+  if (!(await isCurriculumReviewer({ id: Number(user.id), role: String(user.role) }))) {
+    throw new ApiError(403, 'Hanya Kurikulum yang dapat mengajukan paket ke Kepala Sekolah.');
+  }
+
+  const rows = await loadPackageRowsFromEntryIds(Array.isArray(req.body?.entryIds) ? req.body.entryIds : []);
+  const programs = await loadPrograms(Number(rows[0]?.academicYearId || 0));
+  const [pkg] = serializeTeachingResourcePackages(rows, programs);
+  if (!pkg || !['CURRICULUM_APPROVED', 'SUBMITTED_TO_PRINCIPAL', 'PRINCIPAL_APPROVED'].includes(pkg.status)) {
+    throw new ApiError(400, 'Paket harus disetujui Kurikulum sebelum diajukan ke Kepala Sekolah.');
+  }
+
+  const now = new Date();
+  await updateTeachingResourcePackageRows(rows, {
+    entryStatus: 'APPROVED',
+    meta: {
+      packageKey: pkg.packageKey,
+      status: 'SUBMITTED_TO_PRINCIPAL',
+      principalSubmittedAt: now.toISOString(),
+      principalSubmittedBy: Number(user.id),
+    },
+  });
+
+  const updatedRows = await loadPackageRowsFromEntryIds(rows.map((entry) => entry.id));
+  const [updatedPackage] = serializeTeachingResourcePackages(updatedRows, programs);
+  return res.status(200).json(new ApiResponse(200, updatedPackage, 'Paket berhasil diajukan ke Kepala Sekolah.'));
+});
+
+export const reviewTeachingResourcePackageByPrincipal = asyncHandler(async (req: Request, res: Response) => {
+  const user = (req as Request & { user?: { id?: number; role?: string } }).user;
+  if (!user?.id || !user?.role) throw new ApiError(401, 'Tidak memiliki otorisasi.');
+
+  const roleUpper = String(user.role).toUpperCase();
+  if (roleUpper !== 'PRINCIPAL' && roleUpper !== 'ADMIN') {
+    throw new ApiError(403, 'Hanya Kepala Sekolah/Admin yang dapat menyetujui paket ini.');
+  }
+
+  const rows = await loadPackageRowsFromEntryIds(Array.isArray(req.body?.entryIds) ? req.body.entryIds : []);
+  const programs = await loadPrograms(Number(rows[0]?.academicYearId || 0));
+  const [pkg] = serializeTeachingResourcePackages(rows, programs);
+  if (!pkg || !['SUBMITTED_TO_PRINCIPAL', 'PRINCIPAL_APPROVED'].includes(pkg.status)) {
+    throw new ApiError(400, 'Paket belum diajukan ke Kepala Sekolah.');
+  }
+
+  const action = String(req.body?.action || 'APPROVE').trim().toUpperCase();
+  if (!['APPROVE', 'REJECT'].includes(action)) throw new ApiError(400, 'Aksi persetujuan tidak valid.');
+
+  const now = new Date();
+  const reviewNote = String(req.body?.reviewNote || '').trim();
+  const currentMeta = readReviewPackageMeta(rows[0]?.content);
+  await updateTeachingResourcePackageRows(rows, {
+    entryStatus: action === 'APPROVE' ? 'APPROVED' : 'REJECTED',
+    reviewerId: Number(user.id),
+    reviewedAt: now,
+    reviewNote: reviewNote || null,
+    meta: {
+      packageKey: pkg.packageKey,
+      status: action === 'APPROVE' ? 'PRINCIPAL_APPROVED' : 'REVISION_REQUESTED',
+      principalReviewedAt: now.toISOString(),
+      principalReviewerId: Number(user.id),
+      principalApprovedAt: action === 'APPROVE' ? now.toISOString() : null,
+      teacherSignatureToken:
+        action === 'APPROVE'
+          ? String(currentMeta.teacherSignatureToken || buildCompactVerificationToken('trg'))
+          : currentMeta.teacherSignatureToken || null,
+      principalSignatureToken:
+        action === 'APPROVE'
+          ? String(currentMeta.principalSignatureToken || buildCompactVerificationToken('trp'))
+          : currentMeta.principalSignatureToken || null,
+      reviewNote: reviewNote || null,
+    },
+  });
+
+  const updatedRows = await loadPackageRowsFromEntryIds(rows.map((entry) => entry.id));
+  const [updatedPackage] = serializeTeachingResourcePackages(updatedRows, programs);
+  return res
+    .status(200)
+    .json(new ApiResponse(200, updatedPackage, action === 'APPROVE' ? 'Paket disetujui Kepala Sekolah.' : 'Paket dikembalikan untuk revisi.'));
+});
+
+export const getTeachingResourcePackageSignatureQr = asyncHandler(async (req: Request, res: Response) => {
+  const user = (req as Request & { user?: { id?: number; role?: string } }).user;
+  if (!user?.id || !user?.role) throw new ApiError(401, 'Tidak memiliki otorisasi.');
+
+  const entryId = Number(req.params?.entryId || req.query?.entryId || 0);
+  if (!Number.isFinite(entryId) || entryId <= 0) throw new ApiError(400, 'ID dokumen tidak valid.');
+
+  const entry = await prisma.teachingResourceEntry.findUnique({
+    where: { id: entryId },
+    select: { id: true, teacherId: true, content: true },
+  });
+  if (!entry) throw new ApiError(404, 'Dokumen perangkat ajar tidak ditemukan.');
+
+  const canCurriculumReview = await isCurriculumReviewer({ id: Number(user.id), role: String(user.role) });
+  const roleUpper = String(user.role).toUpperCase();
+  if (roleUpper === 'TEACHER' && Number(entry.teacherId) !== Number(user.id) && !canCurriculumReview) {
+    throw new ApiError(403, 'Akses QR tanda tangan ditolak.');
+  }
+
+  const meta = readReviewPackageMeta(entry.content);
+  if (normalizePackageStatus(meta.status) !== 'PRINCIPAL_APPROVED') {
+    return res.status(200).json(
+      new ApiResponse(
+        200,
+        {
+          approved: false,
+          teacherQrDataUrl: null,
+          principalQrDataUrl: null,
+        },
+        'Paket belum disetujui Kepala Sekolah.',
+      ),
+    );
+  }
+
+  const teacherToken = String(meta.teacherSignatureToken || '').trim();
+  const principalToken = String(meta.principalSignatureToken || '').trim();
+  const baseUrl = resolvePublicAppBaseUrl(req);
+  const teacherUrl = `${baseUrl}/verify/teaching-resource/${teacherToken}`;
+  const principalUrl = `${baseUrl}/verify/teaching-resource/${principalToken}`;
+
+  const [teacherQrDataUrl, principalQrDataUrl] = await Promise.all([
+    QRCode.toDataURL(teacherUrl, { errorCorrectionLevel: 'M', margin: 1, width: 110 }),
+    QRCode.toDataURL(principalUrl, { errorCorrectionLevel: 'M', margin: 1, width: 110 }),
+  ]);
+
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        approved: true,
+        teacherUrl,
+        principalUrl,
+        teacherQrDataUrl,
+        principalQrDataUrl,
+        approvedAt: meta.principalApprovedAt || null,
+      },
+      'QR tanda tangan perangkat ajar berhasil dimuat.',
+    ),
+  );
+});
+
+export const verifyPublicTeachingResourcePackageSignature = asyncHandler(async (req: Request, res: Response) => {
+  const token = String(req.params?.token || '').trim();
+  if (!token) throw new ApiError(400, 'Token verifikasi tidak valid.');
+
+  const rows = await prisma.teachingResourceEntry.findMany({
+    where: {
+      OR: [
+        { content: { path: ['reviewPackage', 'teacherSignatureToken'], equals: token } as Prisma.JsonFilter },
+        { content: { path: ['reviewPackage', 'principalSignatureToken'], equals: token } as Prisma.JsonFilter },
+      ],
+    },
+    take: 1,
+    include: {
+      teacher: { select: { id: true, name: true, username: true } },
+      reviewer: { select: { id: true, name: true, role: true } },
+    },
+  });
+
+  const entry = rows[0];
+  if (!entry) throw new ApiError(404, 'Tanda tangan perangkat ajar tidak ditemukan.');
+  const meta = readReviewPackageMeta(entry.content);
+  if (normalizePackageStatus(meta.status) !== 'PRINCIPAL_APPROVED') {
+    throw new ApiError(400, 'Paket perangkat ajar belum final.');
+  }
+
+  const signerRole =
+    String(meta.teacherSignatureToken || '') === token
+      ? 'Guru Mata Pelajaran'
+      : String(meta.principalSignatureToken || '') === token
+        ? 'Kepala Sekolah'
+        : 'Penanda Tangan';
+
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        verified: true,
+        module: 'teaching_resource_package',
+        signerRole,
+        documentTitle: entry.title,
+        teacherName: entry.teacher?.name || null,
+        approvedAt: meta.principalApprovedAt || null,
+        packageKey: meta.packageKey || null,
+      },
+      'Tanda tangan perangkat ajar terverifikasi.',
     ),
   );
 });

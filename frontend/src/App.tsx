@@ -91,6 +91,7 @@ const OsisManagementPage = lazy(() => import("./pages/teacher/osis/OsisManagemen
 const OsisElectionMonitoringPage = lazy(() => import("./pages/common/OsisElectionMonitoringPage").then(m => ({ default: m.OsisElectionMonitoringPage })));
 const StudentOsisElectionPage = lazy(() => import("./pages/student/StudentOsisElectionPage").then(m => ({ default: m.StudentOsisElectionPage })));
 const LearningResourceProgramPage = lazy(() => import("./pages/teacher/learning-resources/LearningResourceProgramPage"));
+const LearningResourceReviewSubmissionPage = lazy(() => import("./pages/teacher/learning-resources/LearningResourceReviewSubmissionPage"));
 const AuditLogPage = lazy(() => import("./pages/admin/audit/AuditLogPage").then(m => ({ default: m.AuditLogPage })));
 const ServerAreaPage = lazy(() => import("./pages/admin/ServerAreaPage").then(m => ({ default: m.default })));
 const StudentExamsPage = lazy(() => import("./pages/student/StudentExamsPage"));
@@ -142,6 +143,7 @@ const ExamCardVerificationPage = lazy(() => import("./pages/public/ExamCardVerif
 const StudentReportVerificationPage = lazy(() => import("./pages/public/StudentReportVerificationPage"));
 const ProfileSummaryVerificationPage = lazy(() => import("./pages/public/ProfileSummaryVerificationPage"));
 const PklLetterVerificationPage = lazy(() => import("./pages/public/PklLetterVerificationPage"));
+const TeachingResourceVerificationPage = lazy(() => import("./pages/public/TeachingResourceVerificationPage"));
 const EmailPage = lazy(() => import("./pages/common/EmailPage").then(m => ({ default: m.EmailPage })));
 
 // Helper hook for auth
@@ -256,6 +258,7 @@ function App() {
           <Route path="/v/rc/:token" element={<StudentReportVerificationPage />} />
           <Route path="/verify/profile-summary/:token" element={<ProfileSummaryVerificationPage />} />
           <Route path="/v/ps/:token" element={<ProfileSummaryVerificationPage />} />
+          <Route path="/verify/teaching-resource/:token" element={<TeachingResourceVerificationPage />} />
         
           <Route path="/" element={<DashboardLayout />}>
             <Route index element={<DashboardRedirect />} />
@@ -467,6 +470,7 @@ function App() {
             <Route path="learning-resources/alokasi-waktu" element={<LearningResourceProgramPage />} />
             <Route path="learning-resources/kktp" element={<LearningResourceProgramPage />} />
             <Route path="learning-resources/matriks-sebaran" element={<LearningResourceProgramPage />} />
+            <Route path="learning-resources/review-submissions" element={<LearningResourceReviewSubmissionPage />} />
             <Route path="learning-resources/:programCode/new" element={<LearningResourceProgramPage />} />
             <Route path="learning-resources/:programCode" element={<LearningResourceProgramPage />} />
             <Route path="communication" element={<TeacherPlaceholderPage />} />

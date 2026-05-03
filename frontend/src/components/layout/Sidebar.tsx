@@ -459,6 +459,14 @@ export const getMenuItems = (
       path: `/teacher/learning-resources/${teachingResourceProgramCodeToSlug(program.code)}`,
       icon: getTeachingResourceProgramIcon(program.code),
     }));
+    const learningResourceChildren: MenuItem[] = [
+      ...dynamicLearningPrograms,
+      {
+        label: 'Pengajuan Review',
+        path: '/teacher/learning-resources/review-submissions',
+        icon: ClipboardCheck,
+      },
+    ];
     const teacherAssignedInventoryChildren: MenuItem[] =
       linkedAssignedInventory.detachedRooms.map((room) => ({
         label: room.name,
@@ -518,13 +526,13 @@ export const getMenuItems = (
           { label: 'Rapor Mapel', path: '/teacher/report-subjects', icon: FileBarChart },
         ]
       },
-      ...(dynamicLearningPrograms.length > 0
+      ...(learningResourceChildren.length > 0
         ? [
             {
               label: 'PERANGKAT AJAR',
               path: '/teacher/learning-resources',
               icon: BookOpen,
-              children: dynamicLearningPrograms,
+              children: learningResourceChildren,
             } as MenuItem,
           ]
         : []),

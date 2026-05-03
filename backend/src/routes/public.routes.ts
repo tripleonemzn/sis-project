@@ -6,6 +6,7 @@ import { getPublicPklLetterQr, verifyPublicPklLetter } from '../controllers/inte
 import { verifyPublicExamCard } from '../controllers/exam-card.controller';
 import { verifyPublicProfilePrintSummary } from '../controllers/user.controller';
 import { verifyPublicStudentSbtsReport } from '../controllers/report.controller';
+import { verifyPublicTeachingResourcePackageSignature } from '../controllers/teachingResourceProgram.controller';
 
 const router = Router();
 
@@ -18,5 +19,6 @@ router.get('/pkl-letters/qr/:id', getPublicPklLetterQr);
 router.get('/exam-cards/verify/:token', verifyPublicExamCard);
 router.get('/report-cards/verify/:token', verifyPublicStudentSbtsReport);
 router.get('/profile-summaries/verify/:token', verifyPublicProfilePrintSummary);
+router.get('/teaching-resources/verify/:token', verifyPublicTeachingResourcePackageSignature);
 
 export default router;

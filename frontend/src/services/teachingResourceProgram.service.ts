@@ -268,6 +268,63 @@ export interface TeachingResourceSignatureDefaults {
   };
 }
 
+export type TeachingResourcePackageStatus =
+  | 'INCOMPLETE'
+  | 'READY'
+  | 'SUBMITTED_TO_CURRICULUM'
+  | 'REVISION_REQUESTED'
+  | 'CURRICULUM_APPROVED'
+  | 'SUBMITTED_TO_PRINCIPAL'
+  | 'PRINCIPAL_APPROVED';
+
+export interface TeachingResourceReviewPackage {
+  packageKey: string;
+  status: TeachingResourcePackageStatus;
+  academicYearId: number;
+  teacherId: number;
+  teacherName?: string | null;
+  subjectId?: number | null;
+  subjectLabel?: string | null;
+  classLevel?: string | null;
+  className?: string | null;
+  entryIds: number[];
+  totalDocuments: number;
+  requiredDocuments: number;
+  completedDocuments: number;
+  missingDocuments: Array<{
+    code: string;
+    label: string;
+    shortLabel?: string;
+    isComplete: boolean;
+    entryId?: number | null;
+    status?: TeachingResourceEntryStatus | null;
+    updatedAt?: string | null;
+  }>;
+  documents: Array<{
+    code: string;
+    label: string;
+    shortLabel?: string;
+    isComplete: boolean;
+    entryId?: number | null;
+    status?: TeachingResourceEntryStatus | null;
+    updatedAt?: string | null;
+  }>;
+  submittedAt?: string | null;
+  curriculumApprovedAt?: string | null;
+  principalApprovedAt?: string | null;
+  reviewNote?: string | null;
+  updatedAt?: string | null;
+}
+
+export interface TeachingResourcePackageSignatureQr {
+  approved: boolean;
+  teacherUrl?: string | null;
+  principalUrl?: string | null;
+  teacherQrDataUrl?: string | null;
+  principalQrDataUrl?: string | null;
+  approvedAt?: string | null;
+}
+
 export const normalizeTeachingResourceProgramCode = (raw: unknown): string => {
   return String(raw || '')
     .trim()
@@ -497,6 +554,66 @@ export const teachingResourceProgramService = {
       success: boolean;
       message: string;
       data: TeachingResourceSignatureDefaults;
+    };
+  },
+  getReviewPackages: async (params?: { academicYearId?: number; view?: 'mine' | 'curriculum' | 'principal' }) => {
+    const response = await api.get('/teaching-resources/review-packages', { params });
+    return response.data as {
+      statusCode: number;
+      success: boolean;
+      message: string;
+      data: {
+        academicYearId: number;
+        view: 'mine' | 'curriculum' | 'principal';
+        canCurriculumReview: boolean;
+        canPrincipalReview: boolean;
+        packages: TeachingResourceReviewPackage[];
+      };
+    };
+  },
+  submitReviewPackage: async (payload: { entryIds: number[] }) => {
+    const response = await api.post('/teaching-resources/review-packages/submit', payload);
+    return response.data as {
+      statusCode: number;
+      success: boolean;
+      message: string;
+      data: TeachingResourceReviewPackage;
+    };
+  },
+  reviewPackageByCurriculum: async (payload: { entryIds: number[]; action: 'APPROVE' | 'REJECT'; reviewNote?: string }) => {
+    const response = await api.post('/teaching-resources/review-packages/review-curriculum', payload);
+    return response.data as {
+      statusCode: number;
+      success: boolean;
+      message: string;
+      data: TeachingResourceReviewPackage;
+    };
+  },
+  submitPackageToPrincipal: async (payload: { entryIds: number[] }) => {
+    const response = await api.post('/teaching-resources/review-packages/submit-principal', payload);
+    return response.data as {
+      statusCode: number;
+      success: boolean;
+      message: string;
+      data: TeachingResourceReviewPackage;
+    };
+  },
+  reviewPackageByPrincipal: async (payload: { entryIds: number[]; action: 'APPROVE' | 'REJECT'; reviewNote?: string }) => {
+    const response = await api.post('/teaching-resources/review-packages/review-principal', payload);
+    return response.data as {
+      statusCode: number;
+      success: boolean;
+      message: string;
+      data: TeachingResourceReviewPackage;
+    };
+  },
+  getPackageSignatureQr: async (entryId: number) => {
+    const response = await api.get(`/teaching-resources/review-packages/signatures/${entryId}`);
+    return response.data as {
+      statusCode: number;
+      success: boolean;
+      message: string;
+      data: TeachingResourcePackageSignatureQr;
     };
   },
 };

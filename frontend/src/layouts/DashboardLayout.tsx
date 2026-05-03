@@ -406,6 +406,7 @@ const resolveTeacherCommitteeBreadcrumbGroup = (user: User | null): string => {
       'learning-resources/modul-ajar': { label: 'Modul Ajar', group: 'PERANGKAT AJAR' },
       'learning-resources/kktp': { label: 'Kriteria Ketercapaian Tujuan Pembelajaran (KKTP)', group: 'PERANGKAT AJAR' },
       'learning-resources/matriks-sebaran': { label: 'Matriks Sebaran', group: 'PERANGKAT AJAR' },
+      'learning-resources/review-submissions': { label: 'Pengajuan Review', group: 'PERANGKAT AJAR' },
 
       // UJIAN
       'exams': { label: 'UJIAN', group: 'UJIAN' },
