@@ -6390,7 +6390,9 @@ export const LearningResourceGenerator = ({
                             <div className="flex flex-nowrap items-center justify-end gap-2">
                                 <button
                                   type="button"
-                                  onClick={() => handlePrintEntry(entry, activeQuickSection?.id)}
+                                  onClick={() =>
+                                    handlePrintEntry(entry, shouldUseQuickSectionTabs ? activeQuickSection?.id : undefined)
+                                  }
                                   title="Print"
                                   aria-label="Print"
                                   className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
