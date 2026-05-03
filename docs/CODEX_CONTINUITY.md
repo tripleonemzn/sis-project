@@ -5,12 +5,12 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-05-03 19:15 WIB
-- Current status: hotfix `Matriks Sebaran` perangkat ajar sudah live. Kolom minggu `1-19` kini diberi parent header dinamis `Pelaksanaan Minggu Ke-`, table view memakai lebar khusus agar kolom `Tujuan Pembelajaran` tidak gepeng/menabrak minggu, dan print preview memakai colgroup + garis lebih tipis untuk bentuk matriks.
+- Last updated: 2026-05-03 19:45 WIB
+- Current status: hotfix lanjutan `Matriks Sebaran` dan `KKTP` perangkat ajar sudah live. `Matriks Sebaran` sekarang merender baris per TP untuk tabel view dan print preview, kolom `Semester`/`No`/`JP` dibuat center, jumlah kolom minggu mengikuti jumlah ceklis dari dokumen `Promes/Program Semester` yang cocok konteksnya, dan ringkasan `KKTP` menghitung jumlah kriteria, persentase, serta penentuan KKTP otomatis dari ceklis `Kurang Memadai`/`Memadai` sesuai pola sheet Excel.
 - Objective/task aktif:
   - Melanjutkan pengembangan perangkat ajar dinamis setelah polish tab remedial dan editor tabel guru.
 - Batch terakhir selesai:
-  - `Perangkat ajar hotfix - Matriks Sebaran table/print layout`
+  - `Perangkat ajar hotfix - Matriks Sebaran per-TP + rumus KKTP`
 - Progress fitur remedial keseluruhan:
   - `100%`
 - Progress presensi terpadu saat ini:
@@ -26,13 +26,14 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
-  - Commit: `2c4f7a7`
-  - Title: `fix(teaching-resources): align matriks sebaran table layout`
+  - Commit: `3622d8b`
+  - Title: `fix(teaching-resources): sync matrix and kktp calculations`
   - Summary:
-    - deteksi dokumen `Matriks Sebaran` ditambahkan berdasarkan kode/label/schema aktif
-    - kolom minggu numerik `1-19` otomatis dikelompokkan di bawah header `Pelaksanaan Minggu Ke-`
-    - table view `Matriks Sebaran` memakai lebar kolom khusus untuk `No`, `Tujuan Pembelajaran`, `Waktu/Jumlah Jam`, `Semester`, dan minggu agar tidak saling tabrak
-    - print preview `Matriks Sebaran` memakai colgroup dan CSS khusus agar output lebih dekat dengan contoh Excel
+    - kolom `Semester` ikut center di tabel view dan print
+    - `Matriks Sebaran` tidak lagi membuat satu kotak besar per nomor untuk `Semester`/minggu; render visualnya mengikuti setiap baris TP
+    - jumlah kolom minggu `Matriks Sebaran` dibatasi secara dinamis dari jumlah ceklis pada dokumen `Promes/Program Semester` yang cocok mapel/tingkat/program keahlian
+    - ringkasan `KKTP` menghitung `Jumlah Kriteria Penilaian`, persentase `Kurang/Memadai`, dan nilai `KKTP Mata Pelajaran` otomatis dari ceklis kriteria
+    - print preview `Matriks Sebaran` mengikuti baris TP yang sama dengan table view agar tidak mismatch antara layar dan cetak
     - perubahan frontend-only, tidak mengubah backend atau data tersimpan
 - Area/file disentuh:
   - `frontend/src/pages/teacher/learning-resources/LearningResourceGenerator.tsx`
@@ -47,10 +48,11 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - Backend tidak diubah pada hotfix ini
   - Tidak ada perubahan mobile pada batch ini
 - Remaining work:
-  - QA manual pada akun `KGB2G071`: buka menu `Matriks Sebaran`, pastikan header `Pelaksanaan Minggu Ke-` muncul di tabel view dan print preview, kolom TP tidak bertabrakan dengan minggu, dan cetak tetap muat A4 landscape.
-  - Jika user ingin warna/ceklis minggu pada `Matriks Sebaran` dibuat otomatis seperti contoh Excel, lakukan batch terpisah setelah struktur dasar ini divalidasi.
+  - QA manual pada akun `KGB2G071`: buka `Matriks Sebaran`, pastikan jumlah minggu mengikuti Promes, setiap TP punya kotak `Semester` sendiri, dan print preview sama dengan tabel view.
+  - QA manual pada menu `KKTP`: ceklis `Kurang Memadai`/`Memadai`, simpan tabel, lalu pastikan ringkasan jumlah kriteria, persentase, dan KKTP mata pelajaran otomatis berubah.
 - Residual risk:
-  - Perubahan ini frontend-only dan tidak memigrasi isi dokumen existing. Dokumen lama mengikuti schema/kolom yang sudah tersimpan; jika konfigurasi minggu tidak memakai key numerik `1-19` atau `minggu_1..19`, parent header tidak akan diterapkan sampai konfigurasi kolomnya disesuaikan.
+  - Perubahan ini frontend-only dan tidak memigrasi isi dokumen existing. Dokumen lama mengikuti schema/kolom yang sudah tersimpan; jika dokumen `Promes/Program Semester` belum punya ceklis minggu yang tersimpan, `Matriks Sebaran` fallback ke jumlah minggu standar.
+  - File upload referensi `etc/contoh_perangkat_ajar.xlsx` masih untracked dan sengaja tidak di-commit.
 
 ## Status Saat Ini
 
