@@ -5,12 +5,12 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-05-03 15:53 WIB
-- Current status: hotfix perilaku referensi grup perangkat ajar sudah live. Saat guru memilih dropdown induk TP/kolom referensi yang berisi beberapa subbaris, subbaris di bawahnya sekarang tampil otomatis sebagai hasil terkunci dari grup tersebut, bukan dropdown kosong yang harus dipilih satu per satu.
+- Last updated: 2026-05-03 16:16 WIB
+- Current status: hotfix KKTP perangkat ajar sudah live. Dropdown TP pada program KKTP kini memakai opsi TP per baris agar `1.1` tidak lagi terbawa sebagai grup `1.1 s.d. 1.4`, kolom `Kurang Memadai` dan `Memadai` punya header induk `Kriteria Penetapan KKTP`, serta ceklis kriteria dipertahankan per subbaris IKTP.
 - Objective/task aktif:
   - Melanjutkan pengembangan perangkat ajar dinamis setelah polish tab remedial dan editor tabel guru.
 - Batch terakhir selesai:
-  - `Perangkat ajar hotfix - grouped reference subrows`
+  - `Perangkat ajar hotfix - KKTP grouped criteria`
 - Progress fitur remedial keseluruhan:
   - `100%`
 - Progress presensi terpadu saat ini:
@@ -26,12 +26,12 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
-  - Commit: `9fcfae5`
-  - Title: `fix(teaching-resources): render grouped reference subrows`
+  - Commit: `fe569d1`
+  - Title: `fix(teaching-resources): refine kktp grouped table`
   - Summary:
-    - subbaris dari pilihan referensi agregat kini dirender sebagai hasil terkunci dari pilihan induk
-    - setelah memilih opsi seperti TP `1.1 s.d. 1.4`, baris visual di bawahnya menampilkan `1.2`, `1.3`, `1.4` otomatis tanpa dropdown kosong
-    - fallback label referensi lama juga memakai format grup agar tidak kembali terlihat sebagai satu baris pertama saja
+    - referensi TP pada program KKTP dipisah per line agar guru bisa memilih `1.1`, `1.2`, dst sebagai unit TP mandiri
+    - tabel quick edit dan print menampilkan header grup `Kriteria Penetapan KKTP` di atas `Kurang Memadai` dan `Memadai`
+    - ceklis `Kurang/Memadai` kini disimpan dan dihitung per subbaris IKTP, bukan dipaksa satu nilai untuk seluruh row
     - perubahan frontend-only, tidak mengubah backend atau data tersimpan
 - Area/file disentuh:
   - `frontend/src/pages/teacher/learning-resources/LearningResourceGenerator.tsx`
@@ -46,7 +46,7 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - Backend tidak diubah pada hotfix ini
   - Tidak ada perubahan mobile pada batch ini
 - Remaining work:
-  - QA manual pada akun `KGB2G071`: buka Program Tahunan/KKTP, pilih ulang opsi TP grup pada baris induk, dan pastikan subbaris turunannya otomatis tampil tanpa dropdown kosong.
+  - QA manual pada akun `KGB2G071`: buka program KKTP, pilih ulang TP pada baris yang sebelumnya masih agregat jika ada data lama, lalu pastikan TP `1.1` bisa memiliki beberapa IKTP dan kriteria per IKTP.
   - Jika user ingin output print KKTP/Matrik Sebaran dipoles lebih mirip contoh Excel sampai detail tipografi/merge, lakukan batch terpisah setelah menu dasar dan korelasi referensi diuji.
 - Residual risk:
   - Perubahan ini frontend-only dan tidak memigrasi isi dokumen existing. Baris lama yang sudah sempat tersimpan saat UI salah mungkin tetap perlu pilih ulang referensi utama sekali agar snapshot korelasinya tersimpan benar.
