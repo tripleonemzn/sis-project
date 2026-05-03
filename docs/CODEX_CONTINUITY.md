@@ -5,12 +5,12 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-05-03 14:31 WIB
-- Current status: batch pengesahan dan reference hydration perangkat ajar sudah live. Blok pengesahan di Wakakur sekarang dinormalisasi menjadi struktur kiri/kanan yang sama dengan output guru: sisi kepala sekolah (`Mengetahui,/Kepala Sekolah/Nama Kepala Sekolah`) dan sisi guru mapel (`Tempat, Tanggal/Guru Mata Pelajaran/Nama Guru Mapel`). Sisi guru juga menormalisasi kolom yang punya binding dokumen sumber agar terbaca sebagai reference/snapshot, sehingga dokumen existing seperti akun `KGB2G071` tidak lagi terasa sebagai input manual bebas saat kolomnya memang berasal dari CP/ATP/Prota.
+- Last updated: 2026-05-03 14:55 WIB
+- Current status: batch dropdown referensi dan penambahan menu perangkat ajar sudah live. Kolom perangkat ajar yang punya binding dokumen sumber kini kembali tampil sebagai dropdown referensi agar guru bisa memilih korelasi per kolom, bukan read-only snapshot yang membingungkan. Dua menu aktif tahun ajaran `2025/2026` juga sudah ditambahkan: `KKTP` dan `MATRIKS_SEBARAN`, dengan schema awal yang mengambil referensi dari dokumen sebelumnya.
 - Objective/task aktif:
   - Melanjutkan pengembangan perangkat ajar dinamis setelah polish tab remedial dan editor tabel guru.
 - Batch terakhir selesai:
-  - `Perangkat ajar follow-up - pengesahan 1:1 dan reference hydration existing document`
+  - `Perangkat ajar follow-up - restore dropdown referensi, KKTP, dan Matrik Sebaran`
 - Progress fitur remedial keseluruhan:
   - `100%`
 - Progress presensi terpadu saat ini:
@@ -26,32 +26,36 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
-  - Commit: `8216bfa`
-  - Title: `fix(teaching-resources): align signatures and references`
+  - Commit: `2f30d12`
+  - Title: `fix(teaching-resources): restore references and add resource menus`
   - Summary:
-    - default blok pengesahan Wakakur memakai field manusiawi dan 1:1 dengan output guru
-    - schema pengesahan lama yang masih berisi `guru_mapel`/`catatan_pengesahan` dinormalisasi ke struktur tanda tangan kiri/kanan tanpa migrasi database
-    - output print guru membaca teks persetujuan dinamis dari field pengesahan
-    - field pengesahan sisi guru dihydrate sesuai posisi yang benar: guru mapel di kanan, kepala sekolah di kiri
-    - kolom yang punya binding dokumen sumber tetapi masih bertipe manual dinormalisasi sebagai snapshot agar dokumen existing tetap mengikuti konfigurasi Wakakur
-    - reference multi-baris di quick table guru ditampilkan sebagai nilai referensi read-only, bukan textarea bebas
+    - kolom dengan binding dokumen sumber di sisi guru dinormalisasi sebagai `DOCUMENT_REFERENCE`, sehingga ATP/Prota/dokumen turunan kembali memakai dropdown referensi
+    - semua kolom `DOCUMENT_REFERENCE` dirender sebagai picker dropdown, termasuk kolom korelasi turunan seperti Tujuan Pembelajaran dan Dimensi Profil Lulusan
+    - schema default backend untuk `KKTP` diperbarui agar TP mengambil referensi dari `ATP.tujuan_pembelajaran` dan kolom kriteria memiliki header grup `Kriteria Penetapan KKTP`
+    - schema default backend untuk `MATRIKS_SEBARAN` diperbarui agar TP, JP, dan Semester mengambil referensi/snapshot dari `PROTA`, lalu menyediakan minggu ke-1 sampai ke-19
+    - konfigurasi aktif DB tahun ajaran `2025/2026` di-upsert untuk `KKTP` (`id=182`) dan `MATRIKS_SEBARAN` (`id=183`)
 - Area/file disentuh:
-  - `frontend/src/pages/teacher/wakasek/curriculum/TeachingResourceProgramManagementPage.tsx`
   - `frontend/src/pages/teacher/learning-resources/LearningResourceGenerator.tsx`
+  - `backend/src/controllers/teachingResourceProgram.controller.ts`
   - `docs/CODEX_CONTINUITY.md`
 - Verifikasi batch ini:
   - `git diff --check`
+  - `cd backend && npm run build`
+  - `cd backend && npm run service:restart`
+  - `cd backend && npm run service:health`
   - `cd frontend && npm run build`
   - `cd frontend && npm run deploy`
   - `curl -I https://siskgb2.id/`
+  - sanity DB active year memastikan `CP`, `ATP`, `PROTA`, `PROMES`, `KKTP`, dan `MATRIKS_SEBARAN` aktif di tahun ajaran `2025/2026`
 - Publish/live status:
   - Web sudah deploy live
-  - Backend tidak diubah pada batch ini
+  - Backend sudah build dan reload PM2, health check `Backend:200` dan `Backend API:200`
   - Tidak ada perubahan mobile pada batch ini
 - Remaining work:
-  - Buffer QA manual pada akun `KGB2G071` untuk memastikan ATP/Prota/Promes existing tampil sebagai referensi sesuai konfigurasi Wakakur dan pengesahan sudah mudah dipahami.
+  - QA manual pada akun `KGB2G071` untuk memastikan ATP existing sekarang menampilkan dropdown pada kolom referensi yang sebelumnya terlihat read-only.
+  - Jika user ingin output print KKTP/Matrik Sebaran dipoles lebih mirip contoh Excel sampai detail tipografi/merge, lakukan batch terpisah setelah menu dasar dan korelasi referensi diuji.
 - Residual risk:
-  - Perubahan batch ini frontend-only dan tidak memigrasi data. Risiko rendah, tetapi dokumen existing yang terlanjur menyimpan nilai snapshot lama tetap perlu disimpan ulang jika user ingin memperbarui isi snapshot dari dokumen sumber terbaru.
+  - Perubahan ini tidak memigrasi isi dokumen guru existing. Nilai yang sudah tersimpan tetap aman, tetapi agar korelasi dropdown baru tersimpan ulang, guru mungkin perlu memilih ulang referensi pada baris lama jika sebelumnya sudah berubah menjadi snapshot/read-only.
 
 ## Status Saat Ini
 
