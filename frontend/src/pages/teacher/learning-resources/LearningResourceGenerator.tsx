@@ -797,14 +797,14 @@ const getColumnSourceProgramCode = (column: Partial<EntrySectionColumnForm> | nu
   normalizeTeachingResourceProgramCode(column?.binding?.sourceProgramCode);
 
 const isSecondaryReferenceColumn = (
-  section: Pick<EntrySectionForm, 'columns'>,
+  section: { columns?: Array<Partial<EntrySectionColumnForm>> | null },
   column: Partial<EntrySectionColumnForm> | null | undefined,
 ): boolean => {
   if (!isDocumentReferencePickerColumn(column)) return false;
   const columnKey = String(column?.key || '').trim();
   const sourceProgramCode = getColumnSourceProgramCode(column);
   if (!columnKey || !sourceProgramCode) return false;
-  const columns = ensureArray<EntrySectionColumnForm>(section.columns);
+  const columns = ensureArray<Partial<EntrySectionColumnForm>>(section.columns);
   const columnIndex = columns.findIndex((item) => String(item.key || '').trim() === columnKey);
   if (columnIndex <= 0) return false;
   return columns.slice(0, columnIndex).some((candidate) => {
@@ -812,6 +812,11 @@ const isSecondaryReferenceColumn = (
     return candidateKey !== columnKey && isDocumentReferencePickerColumn(candidate) && getColumnSourceProgramCode(candidate) === sourceProgramCode;
   });
 };
+
+const shouldRenderDocumentReferencePicker = (
+  section: { columns?: Array<Partial<EntrySectionColumnForm>> | null },
+  column: Partial<EntrySectionColumnForm> | null | undefined,
+): boolean => isDocumentReferencePickerColumn(column) && !isSecondaryReferenceColumn(section, column);
 
 const REFERENCE_IDENTITY_ALIASES: Record<string, string> = {
   tp: 'tujuan_pembelajaran',
@@ -1894,6 +1899,7 @@ const getPrintColumnClassName = (column?: EntrySectionColumnForm): string => {
   const dataType = getColumnDataType(column);
   const classes: string[] = [];
   if (dataType === 'WEEK_GRID') classes.push('print-week-grid-column');
+  if (['no', 'nomor'].includes(String(column?.key || '').trim().toLowerCase())) classes.push('print-no-column');
   if (isWeekColumnKey(String(column?.key || ''))) classes.push('print-month-week-column');
   if (['NUMBER', 'BOOLEAN', 'WEEK', 'SEMESTER', 'MONTH'].includes(dataType) || isCenterAlignedTableColumn(column)) {
     classes.push('print-compact-column');
@@ -2671,7 +2677,7 @@ export const LearningResourceGenerator = ({
     activeProgramSchemaSections.forEach((section) => {
       const sectionKey = String(section.key || '').trim();
       ensureArray<EntrySectionColumnForm>(section.columns).forEach((column) => {
-        if (!isDocumentReferencePickerColumn(column)) return;
+        if (!shouldRenderDocumentReferencePicker(section, column)) return;
         const columnKey = String(column.key || '').trim();
         const sourceProgramCode = normalizeTeachingResourceProgramCode(column.binding?.sourceProgramCode);
         const candidates = extractReferenceCandidates(column);
@@ -4327,7 +4333,7 @@ export const LearningResourceGenerator = ({
       );
     }
 
-    if (isDocumentReferencePickerColumn(column)) {
+    if (shouldRenderDocumentReferencePicker(section, column)) {
       const selectionKey = buildReferenceSelectionLineKey(columnKey, lineIndex);
       const referenceSelection =
         row?.referenceSelections?.[selectionKey] || (lineIndex === 0 ? row?.referenceSelections?.[columnKey] : undefined);
@@ -5012,7 +5018,7 @@ export const LearningResourceGenerator = ({
     } ${isCenterAlignedTableColumn(column) ? 'text-center' : ''}`;
     const selectClassName = `${inputClassName} ${readOnly ? 'cursor-not-allowed' : ''}`;
 
-    if (isDocumentReferencePickerColumn(column)) {
+    if (shouldRenderDocumentReferencePicker(section, column)) {
       return (
         <div className="space-y-1">
           {showReferenceSearch ? (
@@ -5669,7 +5675,7 @@ export const LearningResourceGenerator = ({
       const getMonthWeekPrintColumnWidth = (header: { key: string; label: string; column?: EntrySectionColumnForm }) => {
         const key = String(header.key || '').trim().toLowerCase();
         if (parseMonthWeekColumnKey(key)) return '5mm';
-        if (['no', 'nomor'].includes(key)) return '8mm';
+        if (['no', 'nomor'].includes(key)) return '10mm';
         if (key.includes('alokasi') || key.includes('jp') || key.includes('waktu')) return '12mm';
         if (key.includes('tujuan') || key.includes('pembelajaran')) return '88mm';
         return '18mm';
@@ -6007,8 +6013,15 @@ export const LearningResourceGenerator = ({
           table { width: 100%; border-collapse: collapse; font-size: ${compactTable ? '10px' : '11px'}; page-break-inside: auto; }
           thead { display: table-header-group; }
           tr { break-inside: avoid; page-break-inside: avoid; }
-          th, td { border: 1px solid #000; padding: ${compactTable ? '5px 6px' : '6px 8px'}; vertical-align: top; text-align: left; }
+          th, td { border: 0.5pt solid #111; padding: ${compactTable ? '5px 6px' : '6px 8px'}; vertical-align: top; text-align: left; }
           th { background: #f8fafc; font-weight: 700; text-align: center; vertical-align: middle; }
+          .print-no-column {
+            width: 12mm;
+            min-width: 12mm;
+            white-space: nowrap;
+            text-align: center;
+            vertical-align: middle;
+          }
           .print-compact-column {
             text-align: center;
             white-space: normal;
