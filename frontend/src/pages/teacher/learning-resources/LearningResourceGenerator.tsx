@@ -165,6 +165,7 @@ type EntrySignatureValues = {
   placeDate: string;
   curriculumTitle: string;
   curriculumName: string;
+  principalOpening: string;
   principalTitle: string;
   principalName: string;
 };
@@ -744,14 +745,16 @@ const extractEntrySignatureValues = (
     isDigitalApprovalOnlySection(section.schemaKey, section.title),
   );
   const firstRow = signatureSection?.rows?.[0] || {};
-  const curriculumTitle = String(firstRow.pihak_1_jabatan || defaults?.curriculumTitle || 'Wakasek Kurikulum').trim();
+  const curriculumTitle = String(firstRow.pihak_1_jabatan || firstRow.guru_mapel_jabatan || defaults?.curriculumTitle || 'Guru Mata Pelajaran').trim();
   const curriculumName = String(firstRow.pihak_1_nama || defaults?.curriculumName || '-').trim();
+  const principalOpening = String(firstRow.pihak_2_awalan || 'Mengetahui,').trim();
   const principalTitle = String(firstRow.pihak_2_jabatan || defaults?.principalTitle || 'Kepala Sekolah').trim();
   const principalName = String(firstRow.pihak_2_nama || defaults?.principalName || '-').trim();
   return {
     placeDate: String(firstRow.tempat_tanggal || '').trim(),
     curriculumTitle,
     curriculumName,
+    principalOpening,
     principalTitle,
     principalName,
   };
@@ -997,6 +1000,31 @@ const normalizeTeacherReferenceSections = (
         });
       }
     }
+    nextColumns = nextColumns.map((column) => {
+      const sourceProgramCode = normalizeTeachingResourceProgramCode(column.binding?.sourceProgramCode);
+      const sourceFieldIdentity = normalizeReferenceIdentity(
+        column.binding?.sourceFieldIdentity || column.binding?.sourceDocumentFieldIdentity,
+      );
+      const sourceType = String(column.sourceType || '').trim().toUpperCase();
+      if (!sourceProgramCode || !sourceFieldIdentity || sourceType !== 'MANUAL') return column;
+      return {
+        ...column,
+        sourceType: 'DOCUMENT_SNAPSHOT' as const,
+        valueSource: 'BOUND' as const,
+        readOnly: true,
+        teacherEditMode: 'SYSTEM_LOCKED' as const,
+        binding: {
+          ...(column.binding || {}),
+          sourceProgramCode,
+          sourceFieldIdentity,
+          sourceDocumentFieldIdentity: sourceFieldIdentity,
+          selectionMode: column.binding?.selectionMode || 'PICK_SINGLE',
+          syncMode: column.binding?.syncMode || 'SNAPSHOT_ON_SELECT',
+          allowManualOverride: column.binding?.allowManualOverride ?? false,
+        },
+      };
+    });
+
     const hasReferencePicker = nextColumns.some(isDocumentReferencePickerColumn);
 
     if (!hasReferencePicker) {
@@ -2161,9 +2189,10 @@ const hydrateSheetSections = (params: {
       if (columnKeys.includes('program_keahlian')) setIfBlank(values, 'program_keahlian', programKeahlian);
       if (columnKeys.includes('tahun_ajaran')) setIfBlank(values, 'tahun_ajaran', tahunAjaran);
       if (columnKeys.includes('semester')) setIfBlank(values, 'semester', semester);
-      if (columnKeys.includes('pihak_1_jabatan')) setIfBlank(values, 'pihak_1_jabatan', 'Kepala Sekolah');
-      if (columnKeys.includes('pihak_2_jabatan')) setIfBlank(values, 'pihak_2_jabatan', 'Guru Mata Pelajaran');
-      if (columnKeys.includes('pihak_2_nama')) setIfBlank(values, 'pihak_2_nama', guruMapel);
+      if (columnKeys.includes('pihak_1_jabatan')) setIfBlank(values, 'pihak_1_jabatan', 'Guru Mata Pelajaran');
+      if (columnKeys.includes('pihak_1_nama')) setIfBlank(values, 'pihak_1_nama', guruMapel);
+      if (columnKeys.includes('pihak_2_awalan')) setIfBlank(values, 'pihak_2_awalan', 'Mengetahui,');
+      if (columnKeys.includes('pihak_2_jabatan')) setIfBlank(values, 'pihak_2_jabatan', 'Kepala Sekolah');
       if (columnKeys.includes('tempat_tanggal')) setIfBlank(values, 'tempat_tanggal', tempatTanggal);
       columns.forEach((column) => {
         const key = String(column.key || '').trim();
@@ -4327,28 +4356,14 @@ export const LearningResourceGenerator = ({
           splitCellLines(referenceSelectionValue).length > 1);
       if (shouldRenderReferenceAsCellValue) {
         return (
-          <textarea
-            ref={(element) => {
-              if (focusKey) quickEditCellRefs.current[focusKey] = element;
-              resizeTextareaToContent(element);
-            }}
-            rows={2}
-            value={effectiveReferenceValue}
-            disabled={readOnly}
-            onChange={(event) =>
-              updateQuickEditRowCellLine(section.id, row?.id || '', columnKey, lineIndex, event.target.value)
-            }
-            onKeyDown={(event) => {
-              if (event.key !== 'Enter' || event.shiftKey || readOnly || !row?.id) return;
-              event.preventDefault();
-              handleQuickEditCellEnter(section.id, row.id, columnKey, lineIndex, effectiveReferenceValue);
-            }}
-            onInput={(event) => {
-              resizeTextareaToContent(event.currentTarget);
-            }}
-            placeholder={column.placeholder || ''}
-            className={`${tableCellControlClassName} min-h-[42px] resize-y overflow-hidden`}
-          />
+          <div
+            className={`min-h-[42px] whitespace-pre-wrap rounded-md border border-blue-100 bg-blue-50 px-2 py-2 text-xs leading-relaxed text-slate-800 ${
+              centerAligned ? 'text-center' : 'text-left'
+            }`}
+            title="Nilai ini berasal dari referensi dokumen sumber. Ubah referensinya lewat Edit Lengkap jika diperlukan."
+          >
+            {effectiveReferenceValue || '-'}
+          </div>
         );
       }
       const sourceProgramLabel =
@@ -6165,7 +6180,7 @@ export const LearningResourceGenerator = ({
         ${printableSections.map(renderSectionPrintHtml).join('')}
         <div class="signature-wrap">
           <div class="signature-box">
-            <div>Mengetahui,</div>
+            <div>${escapeHtml(signatureValues.principalOpening || 'Mengetahui,')}</div>
             <div>${escapeHtml(signatureValues.principalTitle)}</div>
             <div class="signature-spacer"></div>
             <div class="signature-name">${escapeHtml(signatureValues.principalName || '-')}</div>

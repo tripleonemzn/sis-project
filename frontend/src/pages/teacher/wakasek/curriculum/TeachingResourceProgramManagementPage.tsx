@@ -1071,31 +1071,7 @@ function createSectionFromQuickPreset(preset: SectionQuickPreset, index: number)
       ...section,
       key: normalizeSchemaKey(section.key || `bagian_${index + 1}`, `bagian_${index + 1}`),
       blockId: normalizeSchemaKey(section.blockId || section.key || `bagian_${index + 1}`, `bagian_${index + 1}`),
-      columns: [
-        createColumnFromQuickPreset(0, 'SYSTEM_PLACE_DATE', {
-          key: 'tempat_tanggal',
-          label: 'Tempat, Tanggal',
-          fieldIdentity: 'tempat_tanggal',
-          semanticKey: 'tempat_tanggal',
-          placeholder: 'Tempat dan tanggal otomatis',
-        }),
-        createColumnFromQuickPreset(1, 'SYSTEM_TEACHER_NAME', {
-          key: 'guru_mapel',
-          label: 'Guru Mata Pelajaran',
-          fieldIdentity: 'guru_mapel',
-          semanticKey: 'guru_mapel',
-          placeholder: 'Nama guru login',
-        }),
-        createColumnFromQuickPreset(2, null, {
-          key: 'catatan_pengesahan',
-          label: 'Catatan Pengesahan',
-          fieldIdentity: 'catatan_pengesahan',
-          semanticKey: 'catatan_pengesahan',
-          placeholder: 'Catatan tambahan pengesahan',
-          dataType: 'TEXTAREA',
-          multiline: true,
-        }),
-      ],
+      columns: normalizeSignatureColumns(section.columns),
     };
   }
 
@@ -1170,11 +1146,14 @@ function applySchemaFoundationDefaults(
       allowEditBinding: base.teacherRules?.allowEditBinding ?? false,
       allowOverrideReadOnlyValue: base.teacherRules?.allowOverrideReadOnlyValue ?? false,
     },
-    sections: (Array.isArray(base.sections) ? base.sections : []).map((section, sectionIndex) => ({
+    sections: (Array.isArray(base.sections) ? base.sections : []).map((section, sectionIndex) => {
+      const blockType = inferBlockType(section);
+      const rawColumns = blockType === 'SIGNATURE' ? normalizeSignatureColumns(section.columns) : section.columns || [];
+      return {
       ...section,
       blockId: section.blockId || section.key || `bagian_${sectionIndex + 1}`,
-      blockType: inferBlockType(section),
-      layout: inferBlockLayout(section),
+      blockType,
+      layout: blockType === 'SIGNATURE' ? 'STACK' : inferBlockLayout(section),
       teacherRules: {
         allowAddSection: section.teacherRules?.allowAddSection ?? false,
         allowDeleteSection: section.teacherRules?.allowDeleteSection ?? false,
@@ -1187,7 +1166,7 @@ function applySchemaFoundationDefaults(
         allowEditBinding: section.teacherRules?.allowEditBinding ?? false,
         allowOverrideReadOnlyValue: section.teacherRules?.allowOverrideReadOnlyValue ?? false,
       },
-      columns: (section.columns || []).map((column, columnIndex) => {
+      columns: rawColumns.map((column, columnIndex) => {
         const fieldId = normalizeSchemaKey(column.fieldId || column.key, `field_${columnIndex + 1}`);
         const fieldIdentity = normalizeSchemaKey(
           column.fieldIdentity || column.semanticKey || column.bindingKey || column.key,
@@ -1219,7 +1198,8 @@ function applySchemaFoundationDefaults(
           },
         };
       }),
-    })),
+    };
+    }),
   };
 }
 
@@ -1404,17 +1384,89 @@ function createSignatureSection(): TeachingResourceProgramSectionSchema {
   return {
     key: 'pengesahan_dokumen',
     label: 'Pengesahan Dokumen',
-    description: 'Blok pengesahan ringan yang bisa dipakai saat dokumen dicetak.',
+    description: 'Blok tanda tangan di bawah dokumen, mengikuti tampilan cetak guru.',
     repeatable: false,
     defaultRows: 1,
     editorType: 'TABLE',
     sectionTitleEditable: false,
-    columns: [
-      { key: 'tempat_tanggal', label: 'Tempat, Tanggal', valueSource: 'SYSTEM_PLACE_DATE' },
-      { key: 'guru_mapel', label: 'Guru Mata Pelajaran', valueSource: 'SYSTEM_TEACHER_NAME' },
-      { key: 'catatan_pengesahan', label: 'Catatan Pengesahan', multiline: true },
-    ],
+    blockType: 'SIGNATURE',
+    layout: 'STACK',
+    columns: createDefaultSignatureColumns(),
   };
+}
+
+function createDefaultSignatureColumns(): TeachingResourceProgramColumnSchema[] {
+  return [
+    {
+      key: 'tempat_tanggal',
+      label: 'Tempat, Tanggal',
+      valueSource: 'SYSTEM_PLACE_DATE',
+      sourceType: 'SYSTEM',
+      fieldIdentity: 'tempat_tanggal',
+      semanticKey: 'tempat_tanggal',
+      placeholder: 'Bekasi, tanggal dokumen',
+    },
+    {
+      key: 'pihak_1_jabatan',
+      label: 'Guru Mata Pelajaran',
+      valueSource: 'MANUAL',
+      sourceType: 'MANUAL',
+      fieldIdentity: 'pihak_1_jabatan',
+      semanticKey: 'pihak_1_jabatan',
+      placeholder: 'Guru Mata Pelajaran',
+    },
+    {
+      key: 'pihak_1_nama',
+      label: 'Nama Guru Mapel',
+      valueSource: 'SYSTEM_TEACHER_NAME',
+      sourceType: 'SYSTEM',
+      fieldIdentity: 'pihak_1_nama',
+      semanticKey: 'pihak_1_nama',
+      placeholder: 'Nama guru login',
+    },
+    {
+      key: 'pihak_2_awalan',
+      label: 'Teks Persetujuan',
+      valueSource: 'MANUAL',
+      sourceType: 'MANUAL',
+      fieldIdentity: 'pihak_2_awalan',
+      semanticKey: 'pihak_2_awalan',
+      placeholder: 'Mengetahui,',
+    },
+    {
+      key: 'pihak_2_jabatan',
+      label: 'Kepala Sekolah',
+      valueSource: 'MANUAL',
+      sourceType: 'MANUAL',
+      fieldIdentity: 'pihak_2_jabatan',
+      semanticKey: 'pihak_2_jabatan',
+      placeholder: 'Kepala Sekolah',
+    },
+    {
+      key: 'pihak_2_nama',
+      label: 'Nama Kepala Sekolah',
+      valueSource: 'MANUAL',
+      sourceType: 'MANUAL',
+      fieldIdentity: 'pihak_2_nama',
+      semanticKey: 'pihak_2_nama',
+      placeholder: 'Nama kepala sekolah',
+    },
+  ];
+}
+
+function normalizeSignatureColumns(columns?: TeachingResourceProgramColumnSchema[]): TeachingResourceProgramColumnSchema[] {
+  const existingByKey = new Map(
+    (columns || [])
+      .filter((column) => !['guru_mapel', 'catatan_pengesahan'].includes(String(column.key || '').trim()))
+      .map((column) => [String(column.key || '').trim(), column]),
+  );
+  return createDefaultSignatureColumns().map((defaultColumn) => ({
+    ...defaultColumn,
+    ...(existingByKey.get(defaultColumn.key) || {}),
+    key: defaultColumn.key,
+    fieldIdentity: defaultColumn.fieldIdentity,
+    semanticKey: defaultColumn.semanticKey,
+  }));
 }
 
 function normalizeSchemaKey(raw: unknown, fallback: string): string {
@@ -1651,21 +1703,6 @@ function formatVisualColumnLabel(column: TeachingResourceProgramColumnSchema): s
   const monthWeek = parseMonthWeekSchemaColumn(column.key);
   if (monthWeek) return String(monthWeek.weekNumber);
   return String(column.label || column.key || '').trim() || 'Kolom';
-}
-
-function getReadableSignatureFieldLabel(column: TeachingResourceProgramColumnSchema): string {
-  const key = normalizeSchemaKey(column.fieldIdentity || column.semanticKey || column.key || column.label, '');
-  const label = String(column.label || '').trim();
-  if (key.includes('tempat') || key.includes('tanggal')) return 'Tempat, tanggal';
-  if (key.includes('pihak_1') && key.includes('jabatan')) return 'Jabatan penandatangan kiri';
-  if (key.includes('pihak_1') && key.includes('nama')) return 'Nama penandatangan kiri';
-  if (key.includes('pihak_2') && key.includes('jabatan')) return 'Jabatan penandatangan kanan';
-  if (key.includes('pihak_2') && key.includes('nama')) return 'Nama penandatangan kanan';
-  if (key.includes('guru') || key.includes('mapel')) return 'Guru mata pelajaran';
-  if (key.includes('kepala') || key.includes('principal')) return 'Kepala sekolah';
-  if (key.includes('jabatan')) return 'Jabatan penandatangan';
-  if (key.includes('nama')) return 'Nama penandatangan';
-  return label || 'Field pengesahan';
 }
 
 function validateProgramDraftSchema(draft: CreateProgramDraft): DraftSchemaIssue[] {
@@ -2515,6 +2552,32 @@ export default function TeachingResourceProgramManagementPage() {
     .map((section, sectionIndex) => ({ section, sectionIndex }))
     .filter(({ section }) => ['CONTEXT', 'NOTE', 'SIGNATURE', 'RICH_TEXT'].includes(inferBlockType(section)));
   const visualSignatureSections = visualSupportSections.filter(({ section }) => inferBlockType(section) === 'SIGNATURE');
+  const findSignatureColumnIndex = (section: TeachingResourceProgramSectionSchema, key: string) =>
+    (section.columns || []).findIndex((column) => String(column.key || '').trim() === key);
+  const renderSignatureColumnLabelInput = (
+    section: TeachingResourceProgramSectionSchema,
+    sectionIndex: number,
+    key: string,
+    fallback: string,
+  ) => {
+    const columnIndex = findSignatureColumnIndex(section, key);
+    const column = columnIndex >= 0 ? section.columns?.[columnIndex] : undefined;
+    if (!column) return null;
+    return (
+      <div>
+        <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-emerald-700">
+          {fallback}
+        </label>
+        <input
+          type="text"
+          value={column.label || fallback}
+          onChange={(event) => handleColumnChange(sectionIndex, columnIndex, 'label', event.target.value)}
+          className="w-full rounded-lg border border-emerald-200 bg-white px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none"
+          placeholder={fallback}
+        />
+      </div>
+    );
+  };
 
   const renderVisualTablePreview = (section: TeachingResourceProgramSectionSchema) => {
     const columns = Array.isArray(section.columns) ? section.columns : [];
@@ -2615,6 +2678,9 @@ export default function TeachingResourceProgramManagementPage() {
     const blockType = inferBlockType(section);
     const columns = Array.isArray(section.columns) ? section.columns : [];
     if (blockType === 'SIGNATURE') {
+      const normalizedColumns = normalizeSignatureColumns(columns);
+      const labelOf = (key: string, fallback: string) =>
+        String(normalizedColumns.find((column) => column.key === key)?.label || fallback).trim();
       return (
         <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -2628,18 +2694,23 @@ export default function TeachingResourceProgramManagementPage() {
               Blok khusus
             </span>
           </div>
-          <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">
-            {columns.map((column, index) => (
-              <div
-                key={`signature-preview-${section.key}-${column.key || index}`}
-                className="rounded-lg border border-emerald-100 bg-white px-3 py-2 text-xs text-emerald-900"
-              >
-                <div className="font-semibold">{getReadableSignatureFieldLabel(column)}</div>
-                <div className="mt-1 text-[11px] text-emerald-700">
-                  Key teknis: {String(column.fieldIdentity || column.key || '-')}
-                </div>
+          <div className="mt-4 grid grid-cols-1 gap-8 rounded-xl border border-emerald-100 bg-white px-5 py-4 text-center text-xs text-slate-800 md:grid-cols-2">
+            <div>
+              <div>{labelOf('pihak_2_awalan', 'Mengetahui,')}</div>
+              <div>{labelOf('pihak_2_jabatan', 'Kepala Sekolah')}</div>
+              <div className="h-14" />
+              <div className="mx-auto inline-block border-b border-slate-700 px-2 pb-1 font-semibold">
+                {labelOf('pihak_2_nama', 'Nama Kepala Sekolah')}
               </div>
-            ))}
+            </div>
+            <div>
+              <div>{labelOf('tempat_tanggal', 'Tempat, Tanggal')}</div>
+              <div>{labelOf('pihak_1_jabatan', 'Guru Mata Pelajaran')}</div>
+              <div className="h-14" />
+              <div className="mx-auto inline-block border-b border-slate-700 px-2 pb-1 font-semibold">
+                {labelOf('pihak_1_nama', 'Nama Guru Mapel')}
+              </div>
+            </div>
           </div>
         </div>
       );
@@ -3025,27 +3096,27 @@ export default function TeachingResourceProgramManagementPage() {
                               Posisi: bawah dokumen/print
                             </div>
                           </div>
-                          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                            {(section.columns || []).map((column, columnIndex) => (
-                              <div
-                                key={`signature-column-editor-${section.key}-${column.key || columnIndex}`}
-                                className="rounded-lg border border-emerald-100 bg-emerald-50/70 p-3"
-                              >
-                                <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-emerald-700">
-                                  {getReadableSignatureFieldLabel(column)}
-                                </label>
-                                <input
-                                  type="text"
-                                  value={column.label}
-                                  onChange={(event) => handleColumnChange(sectionIndex, columnIndex, 'label', event.target.value)}
-                                  className="w-full rounded-lg border border-emerald-200 bg-white px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none"
-                                  placeholder={getReadableSignatureFieldLabel(column)}
-                                />
-                                <p className="mt-1 text-[11px] leading-5 text-emerald-700">
-                                  Dibaca guru sebagai {getReadableSignatureFieldLabel(column).toLowerCase()}.
-                                </p>
+                          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                            <div className="rounded-lg border border-emerald-100 bg-emerald-50/70 p-3">
+                              <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-emerald-700">
+                                Sebelah kiri output
                               </div>
-                            ))}
+                              <div className="space-y-3">
+                                {renderSignatureColumnLabelInput(section, sectionIndex, 'pihak_2_awalan', 'Teks Persetujuan')}
+                                {renderSignatureColumnLabelInput(section, sectionIndex, 'pihak_2_jabatan', 'Kepala Sekolah')}
+                                {renderSignatureColumnLabelInput(section, sectionIndex, 'pihak_2_nama', 'Nama Kepala Sekolah')}
+                              </div>
+                            </div>
+                            <div className="rounded-lg border border-emerald-100 bg-emerald-50/70 p-3">
+                              <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-emerald-700">
+                                Sebelah kanan output
+                              </div>
+                              <div className="space-y-3">
+                                {renderSignatureColumnLabelInput(section, sectionIndex, 'tempat_tanggal', 'Tempat, Tanggal')}
+                                {renderSignatureColumnLabelInput(section, sectionIndex, 'pihak_1_jabatan', 'Guru Mata Pelajaran')}
+                                {renderSignatureColumnLabelInput(section, sectionIndex, 'pihak_1_nama', 'Nama Guru Mapel')}
+                              </div>
+                            </div>
                           </div>
                         </div>
                       ))}

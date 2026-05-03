@@ -5,12 +5,12 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-05-03 12:37 WIB
-- Current status: batch visual builder Wakakur 1:1 dan sinkron print mode sudah live. Konfigurasi tabel sekarang punya blok `Urutan Tampilan Guru` yang memperlihatkan susunan kolom sesuai output guru, termasuk header gabungan dan bulan -> minggu. Wakakur bisa menambah grup bulan-minggu dari posisi tabel yang sama, mengatur jumlah minggu per bulan, dan menghapus grup bulan tanpa melihat kolom teknis seperti `juli_1`. Sisi guru juga sudah memastikan print pada mode `Satu halaman` mencetak semua tabel, bukan hanya section aktif pertama.
+- Last updated: 2026-05-03 14:31 WIB
+- Current status: batch pengesahan dan reference hydration perangkat ajar sudah live. Blok pengesahan di Wakakur sekarang dinormalisasi menjadi struktur kiri/kanan yang sama dengan output guru: sisi kepala sekolah (`Mengetahui,/Kepala Sekolah/Nama Kepala Sekolah`) dan sisi guru mapel (`Tempat, Tanggal/Guru Mata Pelajaran/Nama Guru Mapel`). Sisi guru juga menormalisasi kolom yang punya binding dokumen sumber agar terbaca sebagai reference/snapshot, sehingga dokumen existing seperti akun `KGB2G071` tidak lagi terasa sebagai input manual bebas saat kolomnya memang berasal dari CP/ATP/Prota.
 - Objective/task aktif:
   - Melanjutkan pengembangan perangkat ajar dinamis setelah polish tab remedial dan editor tabel guru.
 - Batch terakhir selesai:
-  - `Perangkat ajar follow-up - visual builder kolom, bulan-minggu, dan print mode`
+  - `Perangkat ajar follow-up - pengesahan 1:1 dan reference hydration existing document`
 - Progress fitur remedial keseluruhan:
   - `100%`
 - Progress presensi terpadu saat ini:
@@ -26,14 +26,15 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
-  - Commit: `f047e86`
-  - Title: `fix(teaching-resources): respect stacked print mode`
+  - Commit: `pending`
+  - Title: `fix(teaching-resources): align signatures and references`
   - Summary:
-    - setiap tabel pada modal Wakakur kini punya blok `Urutan Tampilan Guru`
-    - grup bulan-minggu tampil sebagai komponen visual, bisa ditambah, dihapus, dan diatur jumlah minggu 1-6
-    - kolom biasa dan header gabungan tetap terlihat dalam urutan yang sama dengan preview/output guru
-    - label kecil pada form kolom dirapikan agar `fieldIdentity` tidak tampil sebagai istilah mentah, tetapi sebagai `Kode referensi`
-    - print guru tidak lagi memfilter ke section aktif ketika mode tampilan program adalah `Satu halaman`
+    - default blok pengesahan Wakakur memakai field manusiawi dan 1:1 dengan output guru
+    - schema pengesahan lama yang masih berisi `guru_mapel`/`catatan_pengesahan` dinormalisasi ke struktur tanda tangan kiri/kanan tanpa migrasi database
+    - output print guru membaca teks persetujuan dinamis dari field pengesahan
+    - field pengesahan sisi guru dihydrate sesuai posisi yang benar: guru mapel di kanan, kepala sekolah di kiri
+    - kolom yang punya binding dokumen sumber tetapi masih bertipe manual dinormalisasi sebagai snapshot agar dokumen existing tetap mengikuti konfigurasi Wakakur
+    - reference multi-baris di quick table guru ditampilkan sebagai nilai referensi read-only, bukan textarea bebas
 - Area/file disentuh:
   - `frontend/src/pages/teacher/wakasek/curriculum/TeachingResourceProgramManagementPage.tsx`
   - `frontend/src/pages/teacher/learning-resources/LearningResourceGenerator.tsx`
@@ -48,9 +49,9 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - Backend tidak diubah pada batch ini
   - Tidak ada perubahan mobile pada batch ini
 - Remaining work:
-  - Buffer QA manual pada akun real user untuk memastikan dokumen existing CP/ATP/Prota/Promes tetap tidak berubah formatnya dan wording teknis sudah cukup minim.
+  - Buffer QA manual pada akun `KGB2G071` untuk memastikan ATP/Prota/Promes existing tampil sebagai referensi sesuai konfigurasi Wakakur dan pengesahan sudah mudah dipahami.
 - Residual risk:
-  - Perubahan batch ini frontend-only pada konfigurasi Wakakur. Risiko rendah, tetapi tetap perlu uji manual pada tambah/edit program agar urutan kolom dan grup bulan-minggu terasa sesuai sebelum batch berikutnya memperluas polish ke sisi guru/print.
+  - Perubahan batch ini frontend-only dan tidak memigrasi data. Risiko rendah, tetapi dokumen existing yang terlanjur menyimpan nilai snapshot lama tetap perlu disimpan ulang jika user ingin memperbarui isi snapshot dari dokumen sumber terbaru.
 
 ## Status Saat Ini
 
