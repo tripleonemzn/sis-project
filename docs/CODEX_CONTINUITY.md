@@ -5,12 +5,12 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-05-03 12:08 WIB
-- Current status: batch awal visual 1:1 Wakakur -> Guru sudah live. Popup tambah/edit Program Perangkat Ajar Wakakur sekarang menampilkan blok `Preview Struktur Guru` yang membaca schema yang sama dengan role guru: tabel biasa, header gabungan, struktur bulan -> minggu Promes, mode multi-tabel/tab, dan blok pengesahan. Ini membuat struktur yang selama ini hanya terlihat di role guru sekarang terlihat juga di konfigurasi Wakakur.
+- Last updated: 2026-05-03 12:21 WIB
+- Current status: batch lanjutan 1:1 Wakakur -> Guru sudah selesai secara source dan sedang dipublish. Schema perangkat ajar kini punya `displayMode` eksplisit (`STACK` / `TABS`), modal Wakakur punya pilihan `Tampilan Guru`, preview mengikuti pilihan tersebut, dan sisi guru membaca pilihan yang sama saat menampilkan tabel cepat. Blok pengesahan di Wakakur juga sudah punya editor user-friendly sehingga label seperti `pihak_1` tidak menjadi bahasa utama untuk user.
 - Objective/task aktif:
   - Melanjutkan pengembangan perangkat ajar dinamis setelah polish tab remedial dan editor tabel guru.
 - Batch terakhir selesai:
-  - `Perangkat ajar follow-up - Wakakur visual 1:1 preview`
+  - `Perangkat ajar follow-up - mode tampilan eksplisit dan editor pengesahan`
 - Progress fitur remedial keseluruhan:
   - `100%`
 - Progress presensi terpadu saat ini:
@@ -26,31 +26,31 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
-  - Commit: `d10a3c9`
-  - Title: `fix(teaching-resources): add wakakur visual schema preview`
+  - Commit: pending commit batch ini
+  - Title: pending
   - Summary:
-    - modal Wakakur sekarang punya preview visual 1:1 yang memakai schema yang sama dengan renderer guru
-    - preview menampilkan header bertingkat untuk kolom dengan `headerGroupLabel`
-    - preview menampilkan kolom teknis Promes seperti `juli_1` sebagai `Juli -> 1`, sehingga bulan/minggu tidak lagi terasa hilang dari konfigurasi
-    - jika ada lebih dari satu tabel/section, preview menampilkan indikator `Tab per tabel`
-    - blok pengesahan ditampilkan dengan label manusiawi seperti `Tempat, tanggal`, `Guru mata pelajaran`, dan `Kepala sekolah`, bukan hanya key teknis
+    - schema `TeachingResourceProgramSchema` ditambah `displayMode` agar Wakakur bisa menentukan apakah guru melihat tabel sebagai satu halaman atau tab per tabel
+    - preview Wakakur sekarang punya dropdown `Tampilan Guru` dan indikatornya mengikuti mode yang dipilih
+    - quick table view guru membaca `displayMode`; mode `TABS` menampilkan tab, mode `STACK` menampilkan tabel berurutan dalam satu halaman
+    - blok pengesahan di modal Wakakur punya editor label siap pakai dan keterangan posisi, bukan hanya key teknis
 - Area/file disentuh:
   - `frontend/src/pages/teacher/wakasek/curriculum/TeachingResourceProgramManagementPage.tsx`
+  - `frontend/src/pages/teacher/learning-resources/LearningResourceGenerator.tsx`
+  - `frontend/src/services/teachingResourceProgram.service.ts`
   - `docs/CODEX_CONTINUITY.md`
 - Verifikasi batch ini:
   - `git diff --check`
   - `cd frontend && npm run build`
-  - `cd frontend && npm run deploy`
-  - `curl -I https://siskgb2.id/`
+  - `cd frontend && npm run deploy` (akan dijalankan sebelum final)
+  - `curl -I https://siskgb2.id/` (akan dijalankan sebelum final)
 - Publish/live status:
   - Web sudah deploy live
   - Backend tidak diubah pada batch ini
   - Tidak ada perubahan mobile pada batch ini
 - Remaining work:
-  - Batch berikutnya bisa membuat mode tab benar-benar editable eksplisit, bukan sekadar dibaca dari jumlah table section.
-  - Batch berikutnya bisa membuat editor pengesahan siap pakai agar Wakakur mengedit jabatan/nama kiri-kanan tanpa melihat key teknis sama sekali.
+  - Setelah batch ini, sisa besar adalah polish konfigurasi kolom agar komponen bulan/minggu, header group, dan field pengesahan bisa terasa benar-benar seperti builder visual 1:1, bukan form teknis.
 - Residual risk:
-  - Perubahan batch ini frontend-only, read-only preview terhadap schema existing, dan tidak mengubah format data/backend. Risiko rendah; butuh uji manual di modal Wakakur untuk memastikan preview sesuai dokumen real user seperti Promes/Prota/CP.
+  - Perubahan batch ini frontend-only dan menambah field schema optional. Risiko rendah; butuh uji manual di modal Wakakur dan sisi guru untuk memastikan pilihan `Satu halaman` / `Tab per tabel` tersimpan sesuai ekspektasi pada dokumen existing.
 
 ## Status Saat Ini
 

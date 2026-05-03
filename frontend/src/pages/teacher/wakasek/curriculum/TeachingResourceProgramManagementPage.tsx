@@ -14,6 +14,7 @@ import {
   type TeachingResourceFieldSyncMode,
   type TeachingResourcePrintRules,
   type TeachingResourceProgramColumnSchema,
+  type TeachingResourceProgramDisplayMode,
   type TeachingResourceProgram,
   type TeachingResourceProgramSchema,
   type TeachingResourceProgramSectionSchema,
@@ -1115,6 +1116,7 @@ function buildDefaultProgramSchemaBase(code: string, label: string): TeachingRes
   return {
     version: 1,
     schemaMode: 'BLOCKS_V1',
+    displayMode: 'STACK',
     sourceSheet: normalizedCode,
     intro: `Struktur dokumen ${label || normalizedCode} diatur kurikulum dan diisi guru sesuai template aktif.`,
     titleHint: `Dokumen ${label || normalizedCode}`,
@@ -1123,6 +1125,15 @@ function buildDefaultProgramSchemaBase(code: string, label: string): TeachingRes
     documentShortTitle: label || normalizedCode,
     sections: [createEmptySection(0, 'TABLE')],
   };
+}
+
+function resolveProgramDisplayMode(schema?: TeachingResourceProgramSchema): TeachingResourceProgramDisplayMode {
+  const explicitMode = String(schema?.displayMode || '').trim().toUpperCase();
+  if (explicitMode === 'TABS' || explicitMode === 'STACK') return explicitMode;
+  const tableSectionCount = (Array.isArray(schema?.sections) ? schema?.sections : []).filter(
+    (section) => (section.editorType || 'TABLE') === 'TABLE' && inferBlockType(section) === 'TABLE',
+  ).length;
+  return tableSectionCount > 1 ? 'TABS' : 'STACK';
 }
 
 function applySchemaFoundationDefaults(
@@ -1138,6 +1149,7 @@ function applySchemaFoundationDefaults(
   return {
     ...base,
     schemaMode: base.schemaMode || 'BLOCKS_V1',
+    displayMode: resolveProgramDisplayMode(base),
     documentTitle: normalizedDocumentTitle || undefined,
     documentShortTitle: normalizedDocumentShortTitle || undefined,
     printRules: {
@@ -2382,12 +2394,14 @@ export default function TeachingResourceProgramManagementPage() {
   const draftSchemaIssues = validateProgramDraftSchema(createDraft);
   const draftSchemaErrorCount = draftSchemaIssues.filter((issue) => issue.severity === 'error').length;
   const showAdvancedEditor = false;
+  const currentDisplayMode = resolveProgramDisplayMode(createDraft.schema);
   const visualTableSections = createDraft.schema.sections
     .map((section, sectionIndex) => ({ section, sectionIndex }))
     .filter(({ section }) => (section.editorType || 'TABLE') === 'TABLE' && inferBlockType(section) === 'TABLE');
   const visualSupportSections = createDraft.schema.sections
     .map((section, sectionIndex) => ({ section, sectionIndex }))
     .filter(({ section }) => ['CONTEXT', 'NOTE', 'SIGNATURE', 'RICH_TEXT'].includes(inferBlockType(section)));
+  const visualSignatureSections = visualSupportSections.filter(({ section }) => inferBlockType(section) === 'SIGNATURE');
 
   const renderVisualTablePreview = (section: TeachingResourceProgramSectionSchema) => {
     const columns = Array.isArray(section.columns) ? section.columns : [];
@@ -2802,11 +2816,23 @@ export default function TeachingResourceProgramManagementPage() {
                         Ini gambaran struktur yang dipakai guru. Kalau di sini bertingkat atau berbentuk tab, di guru juga begitu.
                       </p>
                     </div>
-                    <span className="rounded-full bg-white px-3 py-1 text-[11px] font-semibold text-blue-700">
-                      {visualTableSections.length > 1 ? 'Tab per tabel' : 'Satu tabel'}
-                    </span>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <label className="text-[11px] font-semibold uppercase tracking-wide text-blue-700">
+                        Tampilan Guru
+                      </label>
+                      <select
+                        value={currentDisplayMode}
+                        onChange={(event) =>
+                          handleSchemaMetaChange('displayMode', event.target.value as TeachingResourceProgramDisplayMode)
+                        }
+                        className="rounded-lg border border-blue-200 bg-white px-3 py-1.5 text-xs font-semibold text-blue-700 focus:border-blue-500 focus:outline-none"
+                      >
+                        <option value="STACK">Satu halaman</option>
+                        <option value="TABS">Tab per tabel</option>
+                      </select>
+                    </div>
                   </div>
-                  {visualTableSections.length > 1 ? (
+                  {currentDisplayMode === 'TABS' && visualTableSections.length > 1 ? (
                     <div className="mb-3 flex flex-wrap gap-2 border-b border-blue-200">
                       {visualTableSections.map(({ section }, index) => (
                         <div
@@ -2820,7 +2846,13 @@ export default function TeachingResourceProgramManagementPage() {
                         </div>
                       ))}
                     </div>
-                  ) : null}
+                  ) : (
+                    <div className="mb-3 rounded-lg border border-blue-100 bg-white px-3 py-2 text-xs leading-5 text-blue-700">
+                      {visualTableSections.length > 1
+                        ? 'Tabel guru akan tampil berurutan dalam satu halaman tanpa tab.'
+                        : 'Guru akan melihat satu tabel utama sesuai struktur di bawah.'}
+                    </div>
+                  )}
                   <div className="space-y-4">
                     {visualTableSections.map(({ section, sectionIndex }) => (
                       <div key={`visual-table-${section.key}-${sectionIndex}`} className="rounded-xl bg-white p-3 shadow-sm">
@@ -2847,6 +2879,66 @@ export default function TeachingResourceProgramManagementPage() {
                     ) : null}
                   </div>
                 </div>
+
+                {visualSignatureSections.length > 0 ? (
+                  <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+                    <div className="mb-3">
+                      <h3 className="text-sm font-semibold text-emerald-950">Pengesahan Dokumen</h3>
+                      <p className="mt-1 text-xs leading-5 text-emerald-800">
+                        Bagian ini tampil sebagai tanda tangan di output guru, bukan sebagai tabel isian. Label di sini
+                        dibuat user-friendly agar tidak memakai istilah teknis seperti `pihak_1`.
+                      </p>
+                    </div>
+                    <div className="space-y-3">
+                      {visualSignatureSections.map(({ section, sectionIndex }) => (
+                        <div
+                          key={`signature-editor-${section.key}-${sectionIndex}`}
+                          className="rounded-xl border border-emerald-100 bg-white p-3"
+                        >
+                          <div className="mb-3 grid grid-cols-1 gap-3 md:grid-cols-[1fr_180px] md:items-end">
+                            <div>
+                              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-emerald-700">
+                                Nama Bagian
+                              </label>
+                              <input
+                                type="text"
+                                value={section.label}
+                                onChange={(event) => handleSectionChange(sectionIndex, 'label', event.target.value)}
+                                className="w-full rounded-lg border border-emerald-200 bg-white px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none"
+                                placeholder="Contoh: Pengesahan"
+                              />
+                            </div>
+                            <div className="rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs leading-5 text-emerald-700">
+                              Posisi: bawah dokumen/print
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                            {(section.columns || []).map((column, columnIndex) => (
+                              <div
+                                key={`signature-column-editor-${section.key}-${column.key || columnIndex}`}
+                                className="rounded-lg border border-emerald-100 bg-emerald-50/70 p-3"
+                              >
+                                <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-emerald-700">
+                                  {getReadableSignatureFieldLabel(column)}
+                                </label>
+                                <input
+                                  type="text"
+                                  value={column.label}
+                                  onChange={(event) => handleColumnChange(sectionIndex, columnIndex, 'label', event.target.value)}
+                                  className="w-full rounded-lg border border-emerald-200 bg-white px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none"
+                                  placeholder={getReadableSignatureFieldLabel(column)}
+                                />
+                                <p className="mt-1 text-[11px] leading-5 text-emerald-700">
+                                  Dibaca guru sebagai {getReadableSignatureFieldLabel(column).toLowerCase()}.
+                                </p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
 
                 <div className="rounded-xl border border-gray-200 bg-white p-4">
 	                  <div className="mb-4 flex flex-wrap items-start justify-between gap-3">

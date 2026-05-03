@@ -18,6 +18,7 @@ import {
   type TeachingResourceFieldSourceType,
   type TeachingResourceProgram,
   type TeachingResourceProgramColumnSchema,
+  type TeachingResourceProgramDisplayMode,
   type TeachingResourceProgramSectionSchema,
   type TeachingResourceProjectedReferenceOption,
   type TeachingResourceReferenceProjectionRequest,
@@ -518,6 +519,15 @@ const buildDefaultSections = (programMeta: TeachingResourceProgram | null): Entr
     }
   });
   return generated.length ? generated : [createSection()];
+};
+
+const resolveProgramDisplayMode = (programMeta: TeachingResourceProgram | null): TeachingResourceProgramDisplayMode => {
+  const explicitMode = String(programMeta?.schema?.displayMode || '').trim().toUpperCase();
+  if (explicitMode === 'TABS' || explicitMode === 'STACK') return explicitMode;
+  const tableSectionCount = Array.isArray(programMeta?.schema?.sections)
+    ? programMeta!.schema!.sections.filter((section) => section.editorType === 'TABLE').length
+    : 0;
+  return tableSectionCount > 1 ? 'TABS' : 'STACK';
 };
 
 const getRawCellValueForStorage = (key: string, value: unknown): string => {
@@ -2337,6 +2347,7 @@ export const LearningResourceGenerator = ({
       },
     };
   }, [programMetaByCode, rawActiveProgramMeta]);
+  const activeProgramDisplayMode = useMemo(() => resolveProgramDisplayMode(activeProgramMeta), [activeProgramMeta]);
   const isActiveProgramMonthWeekPromes = useMemo(() => {
     const token = `${programCode} ${activeProgramMeta?.code || ''} ${activeProgramMeta?.label || ''} ${
       activeProgramMeta?.shortLabel || ''
@@ -6346,9 +6357,9 @@ export const LearningResourceGenerator = ({
                       : [];
                     const activeQuickSection =
                       quickSections.find((section) => section.id === quickEditActiveSectionId) || quickSections[0] || null;
-                    const visibleQuickColumns = activeQuickSection ? getVisibleSectionColumns(activeQuickSection) : [];
-                    const compactQuickColumns = visibleQuickColumns;
-                    const compactQuickRows = activeQuickSection ? activeQuickSection.rows : [];
+                    const shouldUseQuickSectionTabs = activeProgramDisplayMode === 'TABS' && quickSections.length > 1;
+                    const displayedQuickSections =
+                      shouldUseQuickSectionTabs && activeQuickSection ? [activeQuickSection] : quickSections;
 
                     return (
                       <Fragment key={entry.id}>
@@ -6468,7 +6479,7 @@ export const LearningResourceGenerator = ({
                             <td colSpan={6} className="px-3 py-3">
                               <div className="rounded-lg border border-slate-200 bg-white p-3">
                                 <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200">
-                                  {quickSections.length > 1 ? (
+                                  {shouldUseQuickSectionTabs ? (
                                     <UnderlineTabBar
                                       items={quickSections.map((section) => ({
                                         id: section.id,
@@ -6496,78 +6507,95 @@ export const LearningResourceGenerator = ({
                                   </button>
                                 </div>
 
-                                {buildMonthWeekColumnLayout(compactQuickColumns) ? (
-                                  renderQuickEditMonthWeekTable(activeQuickSection, compactQuickColumns, compactQuickRows)
-                                ) : (
-                                  <div className="mt-3 rounded-lg border border-slate-300">
-                                    <table className="w-full table-fixed border-collapse text-xs">
-                                      <thead className="bg-slate-100">
-                                        <tr>
-                                          {compactQuickColumns.map((column) => (
-                                            <th
-                                              key={`quick-head-${activeQuickSection.id}-${column.key}`}
-                                              style={getQuickColumnStyle(column, compactQuickColumns)}
-                                              className="border border-slate-300 px-2 py-2 text-center text-[11px] font-semibold uppercase leading-snug text-slate-700"
-                                            >
-                                              {column.label}
-                                            </th>
-                                          ))}
-                                        </tr>
-                                      </thead>
-                                      <tbody>
-                                        {compactQuickRows.map((row) => {
-                                          const lineCounts = compactQuickColumns.map((column) =>
-                                            splitEditableCellLines(row.values[String(column.key || '').trim()]).length,
-                                          );
-                                          const maxLineCount = Math.max(1, ...lineCounts);
-                                          return Array.from({ length: maxLineCount }).map((_, lineIndex) => (
-                                            <tr
-                                              key={`quick-row-${row.id}-${lineIndex}`}
-                                              className="border-b border-slate-100 last:border-b-0"
-                                            >
-                                              {compactQuickColumns.map((column) => {
-                                                const columnKey = String(column.key || '').trim();
-                                                const cellLines = splitEditableCellLines(row.values[columnKey]);
-                                                if (cellLines.length <= 1 && lineIndex > 0) return null;
-                                                if (cellLines.length > 1 && lineIndex >= cellLines.length) {
-                                                  return (
-                                                    <td
-                                                      key={`quick-cell-${row.id}-${column.key}-${lineIndex}`}
-                                                      style={getQuickColumnStyle(column, compactQuickColumns)}
-                                                      className={`border border-slate-300 bg-white p-1 align-top ${
-                                                        isCenterAlignedTableColumn(column) ? 'text-center' : ''
-                                                      }`}
-                                                    />
+                                <div className="space-y-4">
+                                  {displayedQuickSections.map((quickSection) => {
+                                    const sectionColumns = getVisibleSectionColumns(quickSection);
+                                    const sectionRows = quickSection.rows;
+                                    return (
+                                      <div key={`quick-section-table-${quickSection.id}`}>
+                                        {!shouldUseQuickSectionTabs && displayedQuickSections.length > 1 ? (
+                                          <div className="mb-2 text-sm font-semibold text-slate-900">
+                                            {quickSection.title || 'Tabel'}
+                                          </div>
+                                        ) : null}
+                                        {buildMonthWeekColumnLayout(sectionColumns) ? (
+                                          renderQuickEditMonthWeekTable(quickSection, sectionColumns, sectionRows)
+                                        ) : (
+                                          <div className="mt-3 rounded-lg border border-slate-300">
+                                            <table className="w-full table-fixed border-collapse text-xs">
+                                              <thead className="bg-slate-100">
+                                                <tr>
+                                                  {sectionColumns.map((column) => (
+                                                    <th
+                                                      key={`quick-head-${quickSection.id}-${column.key}`}
+                                                      style={getQuickColumnStyle(column, sectionColumns)}
+                                                      className="border border-slate-300 px-2 py-2 text-center text-[11px] font-semibold uppercase leading-snug text-slate-700"
+                                                    >
+                                                      {column.label}
+                                                    </th>
+                                                  ))}
+                                                </tr>
+                                              </thead>
+                                              <tbody>
+                                                {sectionRows.map((row) => {
+                                                  const lineCounts = sectionColumns.map((column) =>
+                                                    splitEditableCellLines(row.values[String(column.key || '').trim()]).length,
                                                   );
-                                                }
-                                                return (
-                                                  <td
-                                                    key={`quick-cell-${row.id}-${column.key}-${lineIndex}`}
-                                                    rowSpan={cellLines.length <= 1 ? maxLineCount : undefined}
-                                                    style={getQuickColumnStyle(column, compactQuickColumns)}
-                                                    className={`border border-slate-300 bg-white p-1 ${
-                                                      cellLines.length <= 1 && maxLineCount > 1 ? 'align-middle' : 'align-top'
-                                                    } ${isCenterAlignedTableColumn(column) ? 'text-center' : ''}`}
-                                                  >
-                                                    {renderQuickEditCellControl(activeQuickSection, row, column, lineIndex)}
-                                                  </td>
-                                                );
-                                              })}
-                                            </tr>
-                                          ));
-                                        })}
-                                      </tbody>
-                                    </table>
-                                  </div>
-                                )}
-                                <div className="mt-3 flex items-center gap-2">
-                                  <button
-                                    type="button"
-                                    onClick={() => addQuickEditSectionRow(activeQuickSection.id)}
-                                    className="rounded-md border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700 hover:bg-blue-100"
-                                  >
-                                    + Tambah Baris
-                                  </button>
+                                                  const maxLineCount = Math.max(1, ...lineCounts);
+                                                  return Array.from({ length: maxLineCount }).map((_, lineIndex) => (
+                                                    <tr
+                                                      key={`quick-row-${row.id}-${lineIndex}`}
+                                                      className="border-b border-slate-100 last:border-b-0"
+                                                    >
+                                                      {sectionColumns.map((column) => {
+                                                        const columnKey = String(column.key || '').trim();
+                                                        const cellLines = splitEditableCellLines(row.values[columnKey]);
+                                                        if (cellLines.length <= 1 && lineIndex > 0) return null;
+                                                        if (cellLines.length > 1 && lineIndex >= cellLines.length) {
+                                                          return (
+                                                            <td
+                                                              key={`quick-cell-${row.id}-${column.key}-${lineIndex}`}
+                                                              style={getQuickColumnStyle(column, sectionColumns)}
+                                                              className={`border border-slate-300 bg-white p-1 align-top ${
+                                                                isCenterAlignedTableColumn(column) ? 'text-center' : ''
+                                                              }`}
+                                                            />
+                                                          );
+                                                        }
+                                                        return (
+                                                          <td
+                                                            key={`quick-cell-${row.id}-${column.key}-${lineIndex}`}
+                                                            rowSpan={cellLines.length <= 1 ? maxLineCount : undefined}
+                                                            style={getQuickColumnStyle(column, sectionColumns)}
+                                                            className={`border border-slate-300 bg-white p-1 ${
+                                                              cellLines.length <= 1 && maxLineCount > 1
+                                                                ? 'align-middle'
+                                                                : 'align-top'
+                                                            } ${isCenterAlignedTableColumn(column) ? 'text-center' : ''}`}
+                                                          >
+                                                            {renderQuickEditCellControl(quickSection, row, column, lineIndex)}
+                                                          </td>
+                                                        );
+                                                      })}
+                                                    </tr>
+                                                  ));
+                                                })}
+                                              </tbody>
+                                            </table>
+                                          </div>
+                                        )}
+                                        <div className="mt-3 flex items-center gap-2">
+                                          <button
+                                            type="button"
+                                            onClick={() => addQuickEditSectionRow(quickSection.id)}
+                                            className="rounded-md border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700 hover:bg-blue-100"
+                                          >
+                                            + Tambah Baris
+                                          </button>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
                                 </div>
 
                               </div>

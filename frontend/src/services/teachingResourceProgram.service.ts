@@ -41,6 +41,7 @@ export type TeachingResourceColumnValueSource =
   | 'BOUND';
 
 export type TeachingResourceSchemaMode = 'LEGACY_SECTIONS' | 'BLOCKS_V1';
+export type TeachingResourceProgramDisplayMode = 'STACK' | 'TABS';
 export type TeachingResourceBlockType = 'HEADER' | 'CONTEXT' | 'TABLE' | 'RICH_TEXT' | 'SIGNATURE' | 'NOTE';
 export type TeachingResourceBlockLayout = 'STACK' | 'GRID' | 'TABLE';
 export type TeachingResourceFieldSourceType =
@@ -193,6 +194,7 @@ export interface TeachingResourceProgramSchema {
   titleHint?: string;
   summaryHint?: string;
   schemaMode?: TeachingResourceSchemaMode;
+  displayMode?: TeachingResourceProgramDisplayMode;
   documentTitle?: string;
   documentShortTitle?: string;
   teacherRules?: TeachingResourceTeacherRules;
