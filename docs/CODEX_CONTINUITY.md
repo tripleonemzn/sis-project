@@ -5,12 +5,12 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-05-04 04:53 WIB
-- Current status: halaman perangkat ajar guru sudah dirapikan lagi: tombol `Tambah Dokumen` sejajar dengan judul halaman, tombol `Simpan Tabel` menjadi floating seperti pola simpan presensi/nilai, dan judul/teks section di atas tabel tidak lagi tampil pada table view maupun print untuk section tabel.
+- Last updated: 2026-05-04 05:28 WIB
+- Current status: halaman perangkat ajar guru sudah menghapus sisa ruang kosong di atas quick edit table saat tidak ada tab section, dan alur review paket perangkat ajar sekarang diekspos jelas untuk Wakakur Kurikulum serta Kepala Sekolah melalui menu masing-masing. Link menu role reviewer langsung membuka tab yang tepat (`Review Kurikulum` atau `Persetujuan Kepala Sekolah`).
 - Objective/task aktif:
   - Menjadikan review perangkat ajar sebagai alur paket: Guru kirim paket mapel lengkap ke Kurikulum, Kurikulum setujui/kembalikan, Kurikulum ajukan ke Kepala Sekolah, Kepala Sekolah setujui final, lalu print dokumen menampilkan QR tanda tangan guru dan kepala sekolah.
 - Batch terakhir selesai:
-  - `Teaching resource table action and section title cleanup`
+  - `Teaching resource review menu exposure and quick edit spacing cleanup`
 - Progress fitur remedial keseluruhan:
   - `100%`
 - Progress presensi terpadu saat ini:
@@ -26,29 +26,36 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
-  - Commit: `01735aa`
-  - Title: `fix(teaching-resources): polish table action layout`
+  - Commit: `130c9ca`
+  - Title: `fix(teaching-resources): expose review flow menus`
   - Summary:
-    - tombol `Tambah Dokumen` dipindahkan dari card filter ke area header halaman agar sejajar dengan judul
-    - tombol `Simpan Tabel` pada quick edit dipindahkan menjadi floating bottom-right seperti `Simpan Presensi`/`Simpan Nilai`
-    - judul section tabel seperti `Tabel Matrik Sebaran` dihapus dari render table view dan print preview agar output lebih bersih
+    - sisa toolbar kosong di quick edit table perangkat ajar dihapus saat dokumen tidak memiliki tab section
+    - menu `Review Perangkat Ajar` ditambahkan pada `WAKASEK KURIKULUM` dan langsung membuka tab `Review Kurikulum`
+    - menu `PERANGKAT AJAR > Persetujuan Perangkat Ajar` ditambahkan untuk Kepala Sekolah dan langsung membuka tab `Persetujuan Kepala Sekolah`
+    - route dan breadcrumb Principal untuk persetujuan perangkat ajar ditambahkan agar tidak masuk ke dashboard umum
 - Area/file disentuh:
+  - `frontend/src/App.tsx`
+  - `frontend/src/components/layout/Sidebar.tsx`
+  - `frontend/src/layouts/DashboardLayout.tsx`
   - `frontend/src/pages/teacher/learning-resources/LearningResourceGenerator.tsx`
+  - `frontend/src/pages/teacher/learning-resources/LearningResourceReviewSubmissionPage.tsx`
   - `docs/CODEX_CONTINUITY.md`
 - Verifikasi batch ini:
   - `git diff --check`
   - `cd frontend && npm run build`
   - `cd frontend && npm run deploy`
   - `curl -I -s https://siskgb2.id/ | head -n 1` -> `HTTP/1.1 200 OK`
+  - `curl -I -s 'https://siskgb2.id/teacher/learning-resources/review-submissions?view=curriculum' | head -n 1` -> `HTTP/1.1 200 OK`
+  - `curl -I -s 'https://siskgb2.id/principal/learning-resources/review-submissions?view=principal' | head -n 1` -> `HTTP/1.1 200 OK`
 - Publish/live status:
   - Web sudah deploy live
-  - Backend tidak berubah dan tidak direstart pada batch spacing UI ini
+  - Backend tidak berubah dan tidak direstart pada batch menu review ini
   - Tidak ada perubahan mobile pada batch ini
 - Remaining work:
-  - QA visual manual pada menu `PERANGKAT AJAR > CP` sampai `Matrik Sebaran` untuk memastikan tombol tambah, tombol simpan floating, dan print preview tidak lagi menampilkan judul section tabel.
   - QA manual end-to-end workflow paket review tetap direkomendasikan: guru kirim paket lengkap, Kurikulum setujui/ajukan, Kepala Sekolah setujui final, lalu print dokumen dan scan QR.
+  - QA visual manual pada quick edit table perangkat ajar untuk memastikan area kosong di atas tabel benar-benar hilang pada dokumen tanpa tab section.
 - Residual risk:
-  - Risiko rendah; perubahan hanya frontend layout generator halaman perangkat ajar, tidak menyentuh backend/API/data.
+  - Risiko rendah; perubahan hanya frontend route/menu/layout perangkat ajar, tidak menyentuh backend/API/data.
 
 ## Status Saat Ini
 
