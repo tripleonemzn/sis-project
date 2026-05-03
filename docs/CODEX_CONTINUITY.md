@@ -26,7 +26,7 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
-  - Commit: `pending`
+  - Commit: `2d7455d`
   - Title: `fix(teaching-resources): align program page headers`
   - Summary:
     - generator halaman perangkat ajar guru sekarang memakai header halaman terpisah di luar card
