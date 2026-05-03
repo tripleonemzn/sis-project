@@ -1009,10 +1009,10 @@ const normalizeTeacherReferenceSections = (
       if (!sourceProgramCode || !sourceFieldIdentity || sourceType !== 'MANUAL') return column;
       return {
         ...column,
-        sourceType: 'DOCUMENT_SNAPSHOT' as const,
-        valueSource: 'BOUND' as const,
-        readOnly: true,
-        teacherEditMode: 'SYSTEM_LOCKED' as const,
+        sourceType: 'DOCUMENT_REFERENCE' as const,
+        valueSource: 'MANUAL' as const,
+        readOnly: false,
+        teacherEditMode: 'TEACHER_EDITABLE' as const,
         binding: {
           ...(column.binding || {}),
           sourceProgramCode,
@@ -1020,7 +1020,6 @@ const normalizeTeacherReferenceSections = (
           sourceDocumentFieldIdentity: sourceFieldIdentity,
           selectionMode: column.binding?.selectionMode || 'PICK_SINGLE',
           syncMode: column.binding?.syncMode || 'SNAPSHOT_ON_SELECT',
-          allowManualOverride: column.binding?.allowManualOverride ?? false,
         },
       };
     });
@@ -4328,7 +4327,7 @@ export const LearningResourceGenerator = ({
       );
     }
 
-    if (isDocumentReferencePickerColumn(column) && !isSecondaryReferenceColumn(section, column)) {
+    if (isDocumentReferencePickerColumn(column)) {
       const selectionKey = buildReferenceSelectionLineKey(columnKey, lineIndex);
       const referenceSelection =
         row?.referenceSelections?.[selectionKey] || (lineIndex === 0 ? row?.referenceSelections?.[columnKey] : undefined);
@@ -4346,26 +4345,6 @@ export const LearningResourceGenerator = ({
         referenceOptions.find((option) => option.value === value)?.selectValue ||
         storedSelectionToken ||
         '';
-      const referenceSelectionValue = String(referenceSelection?.value || '').trim();
-      const effectiveReferenceValue =
-        value || splitEditableCellLines(referenceSelectionValue)[lineIndex] || '';
-      const shouldRenderReferenceAsCellValue =
-        !isMonthWeekReferenceCell &&
-        isMeaningfulReferenceValue(effectiveReferenceValue) &&
-        (splitCellLines(rawCellValue).length > 1 ||
-          splitCellLines(referenceSelectionValue).length > 1);
-      if (shouldRenderReferenceAsCellValue) {
-        return (
-          <div
-            className={`min-h-[42px] whitespace-pre-wrap rounded-md border border-blue-100 bg-blue-50 px-2 py-2 text-xs leading-relaxed text-slate-800 ${
-              centerAligned ? 'text-center' : 'text-left'
-            }`}
-            title="Nilai ini berasal dari referensi dokumen sumber. Ubah referensinya lewat Edit Lengkap jika diperlukan."
-          >
-            {effectiveReferenceValue || '-'}
-          </div>
-        );
-      }
       const sourceProgramLabel =
         String(programMetaByCode.get(sourceProgramCode)?.label || '').trim() || sourceProgramCode || 'dokumen sumber';
       const hasReferenceBinding = Boolean(sourceProgramCode && sourceFieldIdentity);
@@ -5033,7 +5012,7 @@ export const LearningResourceGenerator = ({
     } ${isCenterAlignedTableColumn(column) ? 'text-center' : ''}`;
     const selectClassName = `${inputClassName} ${readOnly ? 'cursor-not-allowed' : ''}`;
 
-    if (isDocumentReferencePickerColumn(column) && !isSecondaryReferenceColumn(section, column)) {
+    if (isDocumentReferencePickerColumn(column)) {
       return (
         <div className="space-y-1">
           {showReferenceSearch ? (
