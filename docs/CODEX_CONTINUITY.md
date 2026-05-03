@@ -5,12 +5,12 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-05-03 14:55 WIB
-- Current status: batch dropdown referensi dan penambahan menu perangkat ajar sudah live. Kolom perangkat ajar yang punya binding dokumen sumber kini kembali tampil sebagai dropdown referensi agar guru bisa memilih korelasi per kolom, bukan read-only snapshot yang membingungkan. Dua menu aktif tahun ajaran `2025/2026` juga sudah ditambahkan: `KKTP` dan `MATRIKS_SEBARAN`, dengan schema awal yang mengambil referensi dari dokumen sebelumnya.
+- Last updated: 2026-05-03 15:12 WIB
+- Current status: hotfix referensi grup perangkat ajar sudah live. Dropdown referensi guru dikembalikan ke pola utama-per-grup: hanya kolom referensi utama dalam satu sumber yang menjadi picker, sedangkan kolom korelasi turunan kembali diisi otomatis dari snapshot pilihan utama. Print table juga dipoles: garis tabel lebih tipis dan kolom `No` lebih lebar agar label tidak pecah.
 - Objective/task aktif:
   - Melanjutkan pengembangan perangkat ajar dinamis setelah polish tab remedial dan editor tabel guru.
 - Batch terakhir selesai:
-  - `Perangkat ajar follow-up - restore dropdown referensi, KKTP, dan Matrik Sebaran`
+  - `Perangkat ajar hotfix - reference group picker dan print line`
 - Progress fitur remedial keseluruhan:
   - `100%`
 - Progress presensi terpadu saat ini:
@@ -26,36 +26,30 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
-  - Commit: `2f30d12`
-  - Title: `fix(teaching-resources): restore references and add resource menus`
+  - Commit: `56246ac`
+  - Title: `fix(teaching-resources): restore grouped references`
   - Summary:
-    - kolom dengan binding dokumen sumber di sisi guru dinormalisasi sebagai `DOCUMENT_REFERENCE`, sehingga ATP/Prota/dokumen turunan kembali memakai dropdown referensi
-    - semua kolom `DOCUMENT_REFERENCE` dirender sebagai picker dropdown, termasuk kolom korelasi turunan seperti Tujuan Pembelajaran dan Dimensi Profil Lulusan
-    - schema default backend untuk `KKTP` diperbarui agar TP mengambil referensi dari `ATP.tujuan_pembelajaran` dan kolom kriteria memiliki header grup `Kriteria Penetapan KKTP`
-    - schema default backend untuk `MATRIKS_SEBARAN` diperbarui agar TP, JP, dan Semester mengambil referensi/snapshot dari `PROTA`, lalu menyediakan minggu ke-1 sampai ke-19
-    - konfigurasi aktif DB tahun ajaran `2025/2026` di-upsert untuk `KKTP` (`id=182`) dan `MATRIKS_SEBARAN` (`id=183`)
+    - hanya kolom referensi utama dalam grup yang dirender sebagai dropdown picker
+    - kolom referensi turunan seperti TP/Materi/Dimensi kembali memakai nilai hasil korelasi dari pilihan utama, bukan dropdown satu per satu
+    - request opsi referensi dipersempit hanya untuk picker utama agar UI tidak menampilkan daftar referensi yang salah di kolom turunan
+    - border tabel print diubah menjadi `0.5pt` dan kolom `No` print dilebarkan
 - Area/file disentuh:
   - `frontend/src/pages/teacher/learning-resources/LearningResourceGenerator.tsx`
-  - `backend/src/controllers/teachingResourceProgram.controller.ts`
   - `docs/CODEX_CONTINUITY.md`
 - Verifikasi batch ini:
   - `git diff --check`
-  - `cd backend && npm run build`
-  - `cd backend && npm run service:restart`
-  - `cd backend && npm run service:health`
   - `cd frontend && npm run build`
   - `cd frontend && npm run deploy`
   - `curl -I https://siskgb2.id/`
-  - sanity DB active year memastikan `CP`, `ATP`, `PROTA`, `PROMES`, `KKTP`, dan `MATRIKS_SEBARAN` aktif di tahun ajaran `2025/2026`
 - Publish/live status:
   - Web sudah deploy live
-  - Backend sudah build dan reload PM2, health check `Backend:200` dan `Backend API:200`
+  - Backend tidak diubah pada hotfix ini
   - Tidak ada perubahan mobile pada batch ini
 - Remaining work:
-  - QA manual pada akun `KGB2G071` untuk memastikan ATP existing sekarang menampilkan dropdown pada kolom referensi yang sebelumnya terlihat read-only.
+  - QA manual pada akun `KGB2G071`: pilih ulang `Elemen` pada ATP jika baris lama masih menyimpan state snapshot kosong; setelah dipilih, TP/Materi/Dimensi harus terisi satu grup sesuai elemen.
   - Jika user ingin output print KKTP/Matrik Sebaran dipoles lebih mirip contoh Excel sampai detail tipografi/merge, lakukan batch terpisah setelah menu dasar dan korelasi referensi diuji.
 - Residual risk:
-  - Perubahan ini tidak memigrasi isi dokumen guru existing. Nilai yang sudah tersimpan tetap aman, tetapi agar korelasi dropdown baru tersimpan ulang, guru mungkin perlu memilih ulang referensi pada baris lama jika sebelumnya sudah berubah menjadi snapshot/read-only.
+  - Perubahan ini frontend-only dan tidak memigrasi isi dokumen existing. Baris lama yang sudah sempat tersimpan saat UI salah mungkin perlu pilih ulang referensi utama sekali agar snapshot korelasinya tersimpan benar.
 
 ## Status Saat Ini
 
