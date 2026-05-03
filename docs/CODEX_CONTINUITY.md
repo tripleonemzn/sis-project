@@ -5,12 +5,12 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-05-03 12:21 WIB
-- Current status: batch lanjutan 1:1 Wakakur -> Guru sudah selesai secara source dan sedang dipublish. Schema perangkat ajar kini punya `displayMode` eksplisit (`STACK` / `TABS`), modal Wakakur punya pilihan `Tampilan Guru`, preview mengikuti pilihan tersebut, dan sisi guru membaca pilihan yang sama saat menampilkan tabel cepat. Blok pengesahan di Wakakur juga sudah punya editor user-friendly sehingga label seperti `pihak_1` tidak menjadi bahasa utama untuk user.
+- Last updated: 2026-05-03 12:33 WIB
+- Current status: batch visual builder Wakakur 1:1 sudah selesai secara source. Konfigurasi tabel sekarang punya blok `Urutan Tampilan Guru` yang memperlihatkan susunan kolom sesuai output guru, termasuk header gabungan dan bulan -> minggu. Wakakur bisa menambah grup bulan-minggu dari posisi tabel yang sama, mengatur jumlah minggu per bulan, dan menghapus grup bulan tanpa melihat kolom teknis seperti `juli_1`.
 - Objective/task aktif:
   - Melanjutkan pengembangan perangkat ajar dinamis setelah polish tab remedial dan editor tabel guru.
 - Batch terakhir selesai:
-  - `Perangkat ajar follow-up - mode tampilan eksplisit dan editor pengesahan`
+  - `Perangkat ajar follow-up - visual builder kolom dan bulan-minggu`
 - Progress fitur remedial keseluruhan:
   - `100%`
 - Progress presensi terpadu saat ini:
@@ -26,17 +26,15 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
-  - Commit: `1c37b1f`
-  - Title: `fix(teaching-resources): align wakakur display mode`
+  - Commit: `d5ccb5f`
+  - Title: `fix(teaching-resources): make wakakur builder visual`
   - Summary:
-    - schema `TeachingResourceProgramSchema` ditambah `displayMode` agar Wakakur bisa menentukan apakah guru melihat tabel sebagai satu halaman atau tab per tabel
-    - preview Wakakur sekarang punya dropdown `Tampilan Guru` dan indikatornya mengikuti mode yang dipilih
-    - quick table view guru membaca `displayMode`; mode `TABS` menampilkan tab, mode `STACK` menampilkan tabel berurutan dalam satu halaman
-    - blok pengesahan di modal Wakakur punya editor label siap pakai dan keterangan posisi, bukan hanya key teknis
+    - setiap tabel pada modal Wakakur kini punya blok `Urutan Tampilan Guru`
+    - grup bulan-minggu tampil sebagai komponen visual, bisa ditambah, dihapus, dan diatur jumlah minggu 1-6
+    - kolom biasa dan header gabungan tetap terlihat dalam urutan yang sama dengan preview/output guru
+    - label kecil pada form kolom dirapikan agar `fieldIdentity` tidak tampil sebagai istilah mentah, tetapi sebagai `Kode referensi`
 - Area/file disentuh:
   - `frontend/src/pages/teacher/wakasek/curriculum/TeachingResourceProgramManagementPage.tsx`
-  - `frontend/src/pages/teacher/learning-resources/LearningResourceGenerator.tsx`
-  - `frontend/src/services/teachingResourceProgram.service.ts`
   - `docs/CODEX_CONTINUITY.md`
 - Verifikasi batch ini:
   - `git diff --check`
@@ -48,9 +46,9 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - Backend tidak diubah pada batch ini
   - Tidak ada perubahan mobile pada batch ini
 - Remaining work:
-  - Setelah batch ini, sisa besar adalah polish konfigurasi kolom agar komponen bulan/minggu, header group, dan field pengesahan bisa terasa benar-benar seperti builder visual 1:1, bukan form teknis.
+  - Batch berikutnya: finishing sinkron sisi guru/print untuk mode builder baru, memastikan dokumen existing CP/ATP/Prota/Promes tetap tidak berubah formatnya, dan merapikan sisa wording teknis pada field integrasi.
 - Residual risk:
-  - Perubahan batch ini frontend-only dan menambah field schema optional. Risiko rendah; butuh uji manual di modal Wakakur dan sisi guru untuk memastikan pilihan `Satu halaman` / `Tab per tabel` tersimpan sesuai ekspektasi pada dokumen existing.
+  - Perubahan batch ini frontend-only pada konfigurasi Wakakur. Risiko rendah, tetapi tetap perlu uji manual pada tambah/edit program agar urutan kolom dan grup bulan-minggu terasa sesuai sebelum batch berikutnya memperluas polish ke sisi guru/print.
 
 ## Status Saat Ini
 
