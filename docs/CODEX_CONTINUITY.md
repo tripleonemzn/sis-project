@@ -5,12 +5,12 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-05-03 16:16 WIB
-- Current status: hotfix KKTP perangkat ajar sudah live. Dropdown TP pada program KKTP kini memakai opsi TP per baris agar `1.1` tidak lagi terbawa sebagai grup `1.1 s.d. 1.4`, kolom `Kurang Memadai` dan `Memadai` punya header induk `Kriteria Penetapan KKTP`, serta ceklis kriteria dipertahankan per subbaris IKTP.
+- Last updated: 2026-05-03 18:37 WIB
+- Current status: hotfix lanjutan KKTP perangkat ajar sudah live. Kolom TP di KKTP kini diperlakukan sebagai induk tunggal, sehingga saat guru menekan Enter pada IKTP, subbaris tetap berada di TP yang sama seperti `1.1`; kotak cari referensi inline pada KKTP juga dihapus dari tabel cepat/editor.
 - Objective/task aktif:
   - Melanjutkan pengembangan perangkat ajar dinamis setelah polish tab remedial dan editor tabel guru.
 - Batch terakhir selesai:
-  - `Perangkat ajar hotfix - KKTP grouped criteria`
+  - `Perangkat ajar hotfix - KKTP parent row stability`
 - Progress fitur remedial keseluruhan:
   - `100%`
 - Progress presensi terpadu saat ini:
@@ -26,12 +26,13 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
-  - Commit: `fe569d1`
-  - Title: `fix(teaching-resources): refine kktp grouped table`
+  - Commit: `81f02c9`
+  - Title: `fix(teaching-resources): keep kktp tp parent rows stable`
   - Summary:
-    - referensi TP pada program KKTP dipisah per line agar guru bisa memilih `1.1`, `1.2`, dst sebagai unit TP mandiri
-    - tabel quick edit dan print menampilkan header grup `Kriteria Penetapan KKTP` di atas `Kurang Memadai` dan `Memadai`
-    - ceklis `Kurang/Memadai` kini disimpan dan dihitung per subbaris IKTP, bukan dipaksa satu nilai untuk seluruh row
+    - nilai TP lama yang masih tersimpan sebagai agregat kini hanya dirender sebagai induk pertama pada KKTP
+    - Enter pada IKTP tidak lagi membuat visual TP turun menjadi `1.2/1.3/1.4` pada row yang sama
+    - kotak cari referensi inline disembunyikan pada KKTP agar tabel tetap ringkas dan sesuai instruksi user
+    - print KKTP juga memakai visual line yang sama agar TP induk tidak pecah saat IKTP punya subbaris
     - perubahan frontend-only, tidak mengubah backend atau data tersimpan
 - Area/file disentuh:
   - `frontend/src/pages/teacher/learning-resources/LearningResourceGenerator.tsx`
@@ -46,7 +47,7 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - Backend tidak diubah pada hotfix ini
   - Tidak ada perubahan mobile pada batch ini
 - Remaining work:
-  - QA manual pada akun `KGB2G071`: buka program KKTP, pilih ulang TP pada baris yang sebelumnya masih agregat jika ada data lama, lalu pastikan TP `1.1` bisa memiliki beberapa IKTP dan kriteria per IKTP.
+  - QA manual pada akun `KGB2G071`: buka program KKTP, tekan Enter pada IKTP di TP `1.1`, pastikan subbaris tambahan tetap di bawah TP `1.1` dan tidak menampilkan search box referensi.
   - Jika user ingin output print KKTP/Matrik Sebaran dipoles lebih mirip contoh Excel sampai detail tipografi/merge, lakukan batch terpisah setelah menu dasar dan korelasi referensi diuji.
 - Residual risk:
   - Perubahan ini frontend-only dan tidak memigrasi isi dokumen existing. Baris lama yang sudah sempat tersimpan saat UI salah mungkin tetap perlu pilih ulang referensi utama sekali agar snapshot korelasinya tersimpan benar.
