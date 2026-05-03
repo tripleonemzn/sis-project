@@ -5,12 +5,12 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-05-04 05:28 WIB
-- Current status: halaman perangkat ajar guru sudah menghapus sisa ruang kosong di atas quick edit table saat tidak ada tab section, dan alur review paket perangkat ajar sekarang diekspos jelas untuk Wakakur Kurikulum serta Kepala Sekolah melalui menu masing-masing. Link menu role reviewer langsung membuka tab yang tepat (`Review Kurikulum` atau `Persetujuan Kepala Sekolah`).
+- Last updated: 2026-05-04 06:42 WIB
+- Current status: alur review paket perangkat ajar sudah memiliki workspace/detail review. Kurikulum dan Kepala Sekolah tidak lagi hanya melihat tombol setujui/revisi di tabel; paket bisa dibuka, isi dokumen bisa dilihat per dokumen, Kurikulum bisa menyimpan komentar paket dan komentar per dokumen seperti pola review kisi-kisi/kartu soal, lalu keputusan review dilakukan dari modal detail.
 - Objective/task aktif:
   - Menjadikan review perangkat ajar sebagai alur paket: Guru kirim paket mapel lengkap ke Kurikulum, Kurikulum setujui/kembalikan, Kurikulum ajukan ke Kepala Sekolah, Kepala Sekolah setujui final, lalu print dokumen menampilkan QR tanda tangan guru dan kepala sekolah.
 - Batch terakhir selesai:
-  - `Teaching resource review menu exposure and quick edit spacing cleanup`
+  - `Teaching resource review detail workspace and comments`
 - Progress fitur remedial keseluruhan:
   - `100%`
 - Progress presensi terpadu saat ini:
@@ -26,36 +26,39 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
-  - Commit: `130c9ca`
-  - Title: `fix(teaching-resources): expose review flow menus`
+  - Commit: `aef16cc`
+  - Title: `feat(teaching-resources): add review detail comments`
   - Summary:
-    - sisa toolbar kosong di quick edit table perangkat ajar dihapus saat dokumen tidak memiliki tab section
-    - menu `Review Perangkat Ajar` ditambahkan pada `WAKASEK KURIKULUM` dan langsung membuka tab `Review Kurikulum`
-    - menu `PERANGKAT AJAR > Persetujuan Perangkat Ajar` ditambahkan untuk Kepala Sekolah dan langsung membuka tab `Persetujuan Kepala Sekolah`
-    - route dan breadcrumb Principal untuk persetujuan perangkat ajar ditambahkan agar tidak masuk ke dashboard umum
+    - endpoint detail paket review perangkat ajar ditambahkan agar paket bisa dibuka berdasarkan `entryIds`
+    - endpoint simpan feedback review ditambahkan untuk komentar paket dan komentar per dokumen oleh Kurikulum
+    - halaman `Pengajuan Review` sekarang punya modal detail berisi daftar dokumen, preview isi dokumen, komentar paket, komentar dokumen, dan aksi keputusan sesuai role
+    - tombol tabel reviewer diringkas menjadi `Review Detail`; keputusan `Minta Revisi`, `Setujui Paket`, `Ajukan ke Kepala Sekolah`, dan `Setujui Final` tersedia di modal detail
 - Area/file disentuh:
-  - `frontend/src/App.tsx`
-  - `frontend/src/components/layout/Sidebar.tsx`
-  - `frontend/src/layouts/DashboardLayout.tsx`
-  - `frontend/src/pages/teacher/learning-resources/LearningResourceGenerator.tsx`
+  - `backend/src/controllers/teachingResourceProgram.controller.ts`
+  - `backend/src/routes/teachingResourceProgram.routes.ts`
   - `frontend/src/pages/teacher/learning-resources/LearningResourceReviewSubmissionPage.tsx`
+  - `frontend/src/services/teachingResourceProgram.service.ts`
   - `docs/CODEX_CONTINUITY.md`
 - Verifikasi batch ini:
   - `git diff --check`
+  - `cd backend && npm run build`
+  - `cd backend && npm run service:restart`
+  - `cd backend && npm run service:health` -> `Backend:200`, `Backend API:200`
   - `cd frontend && npm run build`
   - `cd frontend && npm run deploy`
   - `curl -I -s https://siskgb2.id/ | head -n 1` -> `HTTP/1.1 200 OK`
+  - `curl -I -s https://siskgb2.id/teacher/learning-resources/review-submissions | head -n 1` -> `HTTP/1.1 200 OK`
   - `curl -I -s 'https://siskgb2.id/teacher/learning-resources/review-submissions?view=curriculum' | head -n 1` -> `HTTP/1.1 200 OK`
   - `curl -I -s 'https://siskgb2.id/principal/learning-resources/review-submissions?view=principal' | head -n 1` -> `HTTP/1.1 200 OK`
 - Publish/live status:
   - Web sudah deploy live
-  - Backend tidak berubah dan tidak direstart pada batch menu review ini
+  - Backend sudah reload dan health check sukses
   - Tidak ada perubahan mobile pada batch ini
 - Remaining work:
-  - QA manual end-to-end workflow paket review tetap direkomendasikan: guru kirim paket lengkap, Kurikulum setujui/ajukan, Kepala Sekolah setujui final, lalu print dokumen dan scan QR.
-  - QA visual manual pada quick edit table perangkat ajar untuk memastikan area kosong di atas tabel benar-benar hilang pada dokumen tanpa tab section.
+  - QA manual end-to-end workflow paket review tetap direkomendasikan: Kurikulum buka `Review Detail`, isi komentar paket/dokumen, minta revisi atau setujui, ajukan ke Kepala Sekolah, lalu Kepala Sekolah setujui final.
+  - QA manual print final setelah approval tetap direkomendasikan untuk memastikan QR tanda tangan guru dan kepala sekolah muncul sesuai status final.
 - Residual risk:
-  - Risiko rendah; perubahan hanya frontend route/menu/layout perangkat ajar, tidak menyentuh backend/API/data.
+  - Risiko rendah-sedang; perubahan menyentuh endpoint backend baru tetapi tanpa migration dan tanpa query besar. Detail paket dibatasi oleh daftar `entryIds` paket yang dikirim dari tabel review, dan komentar disimpan di JSON content entry yang sama agar blast radius kecil.
 
 ## Status Saat Ini
 
