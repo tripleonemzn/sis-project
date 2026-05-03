@@ -26,7 +26,7 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
-  - Commit: `pending`
+  - Commit: `01735aa`
   - Title: `fix(teaching-resources): polish table action layout`
   - Summary:
     - tombol `Tambah Dokumen` dipindahkan dari card filter ke area header halaman agar sejajar dengan judul
