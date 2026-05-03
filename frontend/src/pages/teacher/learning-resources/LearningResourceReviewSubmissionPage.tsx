@@ -1,5 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useLocation } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { CheckCircle2, ClipboardCheck, FileCheck2, Send, ShieldCheck, XCircle } from 'lucide-react';
 import UnderlineTabBar from '../../../components/navigation/UnderlineTabBar';
@@ -66,9 +67,18 @@ function ProgressText({ item }: { item: TeachingResourceReviewPackage }) {
 
 export default function LearningResourceReviewSubmissionPage() {
   const queryClient = useQueryClient();
-  const [activeView, setActiveView] = useState<ReviewView>('mine');
+  const location = useLocation();
+  const requestedView = useMemo<ReviewView>(() => {
+    const view = new URLSearchParams(location.search).get('view');
+    return view === 'curriculum' || view === 'principal' ? view : 'mine';
+  }, [location.search]);
+  const [activeView, setActiveView] = useState<ReviewView>(requestedView);
   const { data: activeYear } = useActiveAcademicYear();
   const academicYearId = Number(activeYear?.id || activeYear?.academicYearId || 0) || undefined;
+
+  useEffect(() => {
+    setActiveView(requestedView);
+  }, [requestedView]);
 
   const queryKey = ['teaching-resource-review-packages', academicYearId || 'active', activeView];
   const packagesQuery = useQuery({

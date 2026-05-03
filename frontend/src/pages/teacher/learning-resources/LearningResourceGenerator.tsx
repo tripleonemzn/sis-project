@@ -6947,8 +6947,8 @@ export const LearningResourceGenerator = ({
                           <tr className="border-b border-gray-100 bg-slate-50/60">
                             <td colSpan={6} className="px-3 py-3">
                               <div className="rounded-lg border border-slate-200 bg-white p-3">
-                                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200">
-                                  {shouldUseQuickSectionTabs ? (
+                                {shouldUseQuickSectionTabs ? (
+                                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200">
                                     <UnderlineTabBar
                                       items={quickSections.map((section) => ({
                                         id: section.id,
@@ -6962,10 +6962,8 @@ export const LearningResourceGenerator = ({
                                       textSizeClassName="text-xs"
                                       ariaLabel="Tab tabel perangkat ajar"
                                     />
-                                  ) : (
-                                    <div className="min-h-10 flex-1" />
-                                  )}
-                                </div>
+                                  </div>
+                                ) : null}
 
                                 <div className="space-y-4">
                                   {displayedQuickSections.map((quickSection) => {

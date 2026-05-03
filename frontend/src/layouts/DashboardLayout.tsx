@@ -1149,6 +1149,7 @@ const resolveTeacherCommitteeBreadcrumbGroup = (user: User | null): string => {
       'committee-approvals': { label: 'Persetujuan Panitia', group: 'MONITORING' },
       'academic/reports': { label: 'Rapor & Ranking' },
       'academic/attendance': { label: 'Rekap Absensi' },
+      'learning-resources/review-submissions': { label: 'Persetujuan Perangkat Ajar', group: 'PERANGKAT AJAR' },
       'finance/requests': { label: 'Pengajuan Anggaran' },
       'teachers': { label: 'Data Guru' },
       'students': { label: 'Data Siswa' },

@@ -546,6 +546,11 @@ function App() {
             <Route path="academic/*" element={<TeacherPlaceholderPage />} />
             <Route path="administration/*" element={<TeacherPlaceholderPage />} />
             </Route>
+            <Route path="principal/learning-resources/review-submissions" element={
+              <RoleRoute allowedRoles={['PRINCIPAL']}>
+                <LearningResourceReviewSubmissionPage />
+              </RoleRoute>
+            } />
             <Route path="principal/*" element={
               <RoleRoute allowedRoles={['PRINCIPAL']}>
                 <PrincipalDashboard />
