@@ -6297,8 +6297,7 @@ export const LearningResourceGenerator = ({
   const renderSectionPrintHtml = (section: EntrySectionForm): string => {
     const title = escapeHtml(section.title || 'Bagian');
     if (isTableSection(section)) {
-      const hasMonthWeekLayout = Boolean(buildMonthWeekColumnLayout(resolveSectionColumns(section)));
-      return `<section>${hasMonthWeekLayout ? '' : `<h3>${title}</h3>`}${renderSectionTableHtml(section)}</section>`;
+      return `<section>${renderSectionTableHtml(section)}</section>`;
     }
     return `<section><h3>${title}</h3><div class="text-block">${formatMultilineHtml(section.body || '-')}</div></section>`;
   };
@@ -6731,30 +6730,31 @@ export const LearningResourceGenerator = ({
     }
   };
 
+  const quickEditEntry = quickEditEntryId ? rows.find((entry) => Number(entry.id) === Number(quickEditEntryId)) || null : null;
+
   return (
     <div className="w-full space-y-6 pb-20">
       {!isPageEditor ? (
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">{effectiveTitle}</h1>
-          <p className="mt-1 text-sm text-gray-600">{effectiveDescription}</p>
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">{effectiveTitle}</h1>
+            <p className="mt-1 text-sm text-gray-600">{effectiveDescription}</p>
+          </div>
+          <button
+            type="button"
+            onClick={openCreate}
+            disabled={programConfigQuery.isLoading || assignmentsQuery.isLoading}
+            className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <Plus size={14} />
+            Tambah Dokumen
+          </button>
         </div>
       ) : null}
 
       {!isPageEditor ? (
         <div className="rounded-xl border border-gray-200 bg-white p-4">
-          <div className="flex justify-end">
-            <button
-              type="button"
-              onClick={openCreate}
-              disabled={programConfigQuery.isLoading || assignmentsQuery.isLoading}
-              className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <Plus size={14} />
-              Tambah Dokumen
-            </button>
-          </div>
-
-          <div className="mt-4 grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1.6fr)_minmax(240px,1fr)_minmax(240px,1fr)]">
+          <div className="grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1.6fr)_minmax(240px,1fr)_minmax(240px,1fr)]">
             <div>
             <label className="mb-1 block text-xs font-medium text-gray-500">Cari Dokumen</label>
             <div className="flex items-center gap-2">
@@ -6965,15 +6965,6 @@ export const LearningResourceGenerator = ({
                                   ) : (
                                     <div className="min-h-10 flex-1" />
                                   )}
-                                  <button
-                                    type="button"
-                                    onClick={() => quickEditMutation.mutate(entry)}
-                                    disabled={quickEditMutation.isPending}
-                                    className="mb-2 inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
-                                  >
-                                    <Save size={12} />
-                                    {quickEditMutation.isPending ? 'Menyimpan...' : 'Simpan Tabel'}
-                                  </button>
                                 </div>
 
                                 <div className="space-y-4">
@@ -6996,11 +6987,6 @@ export const LearningResourceGenerator = ({
                                     });
                                     return (
                                       <div key={`quick-section-table-${quickSection.id}`}>
-                                        {!shouldUseQuickSectionTabs && displayedQuickSections.length > 1 ? (
-                                          <div className="mb-2 text-sm font-semibold text-slate-900">
-                                            {quickSection.title || 'Tabel'}
-                                          </div>
-                                        ) : null}
                                         {buildMonthWeekColumnLayout(sectionColumns) ? (
                                           renderQuickEditMonthWeekTable(quickSection, sectionColumns, sectionRows)
                                         ) : (
@@ -7200,6 +7186,20 @@ export const LearningResourceGenerator = ({
               </button>
             </div>
           </div>
+        </div>
+      ) : null}
+
+      {quickEditEntry ? (
+        <div className="fixed bottom-6 right-6 z-10">
+          <button
+            type="button"
+            onClick={() => quickEditMutation.mutate(quickEditEntry)}
+            disabled={quickEditMutation.isPending}
+            className="flex items-center gap-2 rounded-full bg-blue-600 px-6 py-3 text-white shadow-lg transition-all hover:-translate-y-1 hover:bg-blue-700 hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-70"
+          >
+            <Save className="h-5 w-5" />
+            <span className="font-bold">{quickEditMutation.isPending ? 'Menyimpan...' : 'Simpan Tabel'}</span>
+          </button>
         </div>
       ) : null}
 

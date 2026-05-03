@@ -5,12 +5,12 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-05-04 04:41 WIB
-- Current status: halaman perangkat ajar guru dari CP sampai Matrik Sebaran sudah mengikuti pola header seperti `Pengajuan Review`: judul/deskripsi halaman berada di luar card, sementara card hanya berisi aksi, filter, statistik, dan tabel dokumen.
+- Last updated: 2026-05-04 04:53 WIB
+- Current status: halaman perangkat ajar guru sudah dirapikan lagi: tombol `Tambah Dokumen` sejajar dengan judul halaman, tombol `Simpan Tabel` menjadi floating seperti pola simpan presensi/nilai, dan judul/teks section di atas tabel tidak lagi tampil pada table view maupun print untuk section tabel.
 - Objective/task aktif:
   - Menjadikan review perangkat ajar sebagai alur paket: Guru kirim paket mapel lengkap ke Kurikulum, Kurikulum setujui/kembalikan, Kurikulum ajukan ke Kepala Sekolah, Kepala Sekolah setujui final, lalu print dokumen menampilkan QR tanda tangan guru dan kepala sekolah.
 - Batch terakhir selesai:
-  - `Teaching resource program page header layout alignment`
+  - `Teaching resource table action and section title cleanup`
 - Progress fitur remedial keseluruhan:
   - `100%`
 - Progress presensi terpadu saat ini:
@@ -26,12 +26,12 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
-  - Commit: `2d7455d`
-  - Title: `fix(teaching-resources): align program page headers`
+  - Commit: `pending`
+  - Title: `fix(teaching-resources): polish table action layout`
   - Summary:
-    - generator halaman perangkat ajar guru sekarang memakai header halaman terpisah di luar card
-    - judul/deskripsi CP, ATP, Modul Ajar, Prota, Promes, Alokasi Waktu, KKTP, dan Matrik Sebaran tidak lagi berada di dalam card filter
-    - card pertama pada halaman perangkat ajar kini fokus untuk tombol `Tambah Dokumen`, filter, dan statistik agar ritmenya konsisten dengan `Pengajuan Review`
+    - tombol `Tambah Dokumen` dipindahkan dari card filter ke area header halaman agar sejajar dengan judul
+    - tombol `Simpan Tabel` pada quick edit dipindahkan menjadi floating bottom-right seperti `Simpan Presensi`/`Simpan Nilai`
+    - judul section tabel seperti `Tabel Matrik Sebaran` dihapus dari render table view dan print preview agar output lebih bersih
 - Area/file disentuh:
   - `frontend/src/pages/teacher/learning-resources/LearningResourceGenerator.tsx`
   - `docs/CODEX_CONTINUITY.md`
@@ -45,7 +45,7 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - Backend tidak berubah dan tidak direstart pada batch spacing UI ini
   - Tidak ada perubahan mobile pada batch ini
 - Remaining work:
-  - QA visual manual pada menu `PERANGKAT AJAR > CP` sampai `Matrik Sebaran` untuk memastikan semua judul sudah terpisah dari card seperti contoh `Pengajuan Review`.
+  - QA visual manual pada menu `PERANGKAT AJAR > CP` sampai `Matrik Sebaran` untuk memastikan tombol tambah, tombol simpan floating, dan print preview tidak lagi menampilkan judul section tabel.
   - QA manual end-to-end workflow paket review tetap direkomendasikan: guru kirim paket lengkap, Kurikulum setujui/ajukan, Kepala Sekolah setujui final, lalu print dokumen dan scan QR.
 - Residual risk:
   - Risiko rendah; perubahan hanya frontend layout generator halaman perangkat ajar, tidak menyentuh backend/API/data.
