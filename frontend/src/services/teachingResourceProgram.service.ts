@@ -149,6 +149,9 @@ export interface TeachingResourceProgramColumnSchema {
   placeholder?: string;
   multiline?: boolean;
   dataType?: TeachingResourceColumnDataType;
+  headerGroupKey?: string;
+  headerGroupLabel?: string;
+  gridColumnCount?: number;
   semanticKey?: string;
   bindingKey?: string;
   valueSource?: TeachingResourceColumnValueSource;

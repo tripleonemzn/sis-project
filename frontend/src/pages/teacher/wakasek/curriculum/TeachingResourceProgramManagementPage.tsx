@@ -50,7 +50,6 @@ type CreateProgramDraft = {
   schema: TeachingResourceProgramSchema;
 };
 
-type ProgramBlueprintMode = 'GROUPED_ANALYSIS' | 'TIME_DISTRIBUTION' | 'MATRIX_GRID' | 'RICH_MIXED' | 'FREEFORM';
 type ColumnOperationalRole =
   | 'MANUAL_FIELD'
   | 'REFERENCE_SOURCE'
@@ -96,44 +95,6 @@ const TARGET_CLASS_OPTIONS = [
   { value: 'XII', label: 'XII' },
 ];
 
-const BLUEPRINT_MODE_OPTIONS: Array<{
-  value: ProgramBlueprintMode;
-  label: string;
-  description: string;
-  helper: string;
-}> = [
-  {
-    value: 'GROUPED_ANALYSIS',
-    label: 'Analisis / Pemetaan',
-    description: 'Untuk dokumen yang memetakan elemen, tujuan pembelajaran, materi, aktivitas, dan asesmen.',
-    helper: 'Pilih ini jika guru perlu mengisi tabel analisis pembelajaran yang cukup lengkap.',
-  },
-  {
-    value: 'TIME_DISTRIBUTION',
-    label: 'Distribusi Waktu',
-    description: 'Untuk dokumen yang mengatur semester, bulan, minggu, tujuan pembelajaran, dan alokasi JP.',
-    helper: 'Paling cocok untuk Prota, Promes, atau sebaran waktu mengajar.',
-  },
-  {
-    value: 'MATRIX_GRID',
-    label: 'Matriks Minggu',
-    description: 'Untuk dokumen yang menandai pelaksanaan pembelajaran pada minggu ke-1 sampai minggu ke-19.',
-    helper: 'Pilih ini jika guru cukup menandai minggu pelaksanaan pada grid.',
-  },
-  {
-    value: 'RICH_MIXED',
-    label: 'Narasi + Tabel',
-    description: 'Untuk dokumen yang berisi paragraf penjelasan dan tabel kerja.',
-    helper: 'Pilih ini jika guru perlu menulis narasi sekaligus mengisi tabel.',
-  },
-  {
-    value: 'FREEFORM',
-    label: 'Format Bebas',
-    description: 'Untuk format yang belum cocok dengan pilihan lain.',
-    helper: 'Gunakan jika bentuk dokumen masih eksperimen atau belum punya pola tetap.',
-  },
-];
-
 const DEFAULT_CUSTOM_DESCRIPTION = 'Program perangkat ajar tambahan sesuai kebijakan kurikulum.';
 const COLUMN_DATA_TYPE_OPTIONS: Array<{ value: TeachingResourceColumnDataType; label: string }> = [
   { value: 'TEXT', label: 'Teks Singkat' },
@@ -142,9 +103,9 @@ const COLUMN_DATA_TYPE_OPTIONS: Array<{ value: TeachingResourceColumnDataType; l
   { value: 'BOOLEAN', label: 'Ya / Tidak' },
   { value: 'SELECT', label: 'Pilihan' },
   { value: 'SEMESTER', label: 'Semester' },
-  { value: 'MONTH', label: 'Bulan' },
+  { value: 'MONTH', label: 'Bulan / Periode' },
   { value: 'WEEK', label: 'Minggu Ke-' },
-  { value: 'WEEK_GRID', label: 'Grid Minggu' },
+  { value: 'WEEK_GRID', label: 'Grid Minggu / Periode' },
   { value: 'READONLY_BOUND', label: 'Readonly Terikat' },
 ];
 const COLUMN_VALUE_SOURCE_OPTIONS: Array<{ value: TeachingResourceColumnValueSource; label: string }> = [
@@ -202,27 +163,6 @@ const FIELD_TEACHER_EDIT_MODE_OPTIONS: Array<{ value: TeachingResourceTeacherEdi
   { value: 'TEACHER_APPEND_ONLY', label: 'Guru Tambah Saja' },
 ];
 const SEMESTER_DOCUMENT_OPTIONS = ['Ganjil', 'Genap'];
-type MonthWeekSemesterScope = 'BOTH' | 'ODD' | 'EVEN';
-const MONTH_WEEK_SEMESTER_SCOPE_OPTIONS: Array<{ value: MonthWeekSemesterScope; label: string }> = [
-  { value: 'BOTH', label: 'Ganjil & Genap' },
-  { value: 'ODD', label: 'Ganjil saja' },
-  { value: 'EVEN', label: 'Genap saja' },
-];
-const MONTH_WEEK_TEMPLATE_COLUMNS: Record<'ODD' | 'EVEN', Array<{ key: string; label: string }>> = {
-  ODD: [
-    { key: 'juli_1', label: 'Juli-1' },
-    { key: 'juli_2', label: 'Juli-2' },
-  ],
-  EVEN: [
-    { key: 'januari_1', label: 'Januari-1' },
-    { key: 'januari_2', label: 'Januari-2' },
-  ],
-};
-const MONTH_WEEK_SOURCE_FIELD_FALLBACKS = {
-  number: ['no', 'nomor', 'nomor_urut'],
-  objective: ['tujuan_pembelajaran', 'tp', 'alur_tujuan_pembelajaran'],
-  allocation: ['alokasi_jp', 'alokasi_waktu', 'alokasi_waktu_jp', 'jp', 'jumlah_jam'],
-};
 const COLUMN_OPERATIONAL_ROLE_OPTIONS: Array<{
   value: ColumnOperationalRole;
   label: string;
@@ -392,11 +332,11 @@ function inferBlockType(section: Partial<TeachingResourceProgramSectionSchema>):
   const label = String(section.label || '')
     .trim()
     .toLowerCase();
-  if (section.editorType === 'TABLE') return 'TABLE';
   if (key.startsWith('ttd') || key.includes('pengesahan') || label.includes('pengesahan')) return 'SIGNATURE';
   if (key.includes('konteks') || label.includes('konteks')) return 'CONTEXT';
   if (key.includes('header') || label.includes('header')) return 'HEADER';
   if (key.includes('catatan') || label.includes('catatan')) return 'NOTE';
+  if (section.editorType === 'TABLE') return 'TABLE';
   return 'RICH_TEXT';
 }
 
@@ -941,244 +881,6 @@ function getReferenceSourceLabel(
   return `${sourceRow?.label || normalizedSourceProgramCode} -> ${fieldOption?.label || sourceFieldIdentity}`;
 }
 
-function isProgramSemesterLikeDraft(draft: Pick<ProgramFormRow, 'code' | 'label' | 'shortLabel' | 'schema'>): boolean {
-  const token = `${draft.code} ${draft.label} ${draft.shortLabel} ${draft.schema?.sourceSheet || ''} ${
-    draft.schema?.documentTitle || ''
-  } ${draft.schema?.documentShortTitle || ''}`.toLowerCase();
-  return token.includes('promes') || token.includes('prosem') || token.includes('program semester');
-}
-
-function resolveSourceFieldByAliases(
-  sourceProgram: Pick<TeachingResourceProgram, 'schema'> | null | undefined,
-  aliases: string[],
-): string {
-  const options = getProgramReferenceFieldOptions(sourceProgram);
-  if (options.length === 0) return '';
-  const normalizedAliases = aliases.map((item) => normalizeReferenceFieldAlias(item)).filter(Boolean);
-  const directMatch = options.find((option) => normalizedAliases.includes(normalizeReferenceFieldAlias(option.value)));
-  if (directMatch) return directMatch.value;
-  const labelMatch = options.find((option) => normalizedAliases.includes(normalizeReferenceFieldAlias(option.label)));
-  return labelMatch?.value || options[0]?.value || '';
-}
-
-function createMonthWeekReferenceBinding(
-  sourceProgramCode: string,
-  sourceFieldIdentity: string,
-): TeachingResourceFieldBinding {
-  const normalizedSourceField = normalizeSchemaKey(sourceFieldIdentity, '');
-  return {
-    sourceProgramCode: normalizeTeachingResourceProgramCode(sourceProgramCode),
-    sourceFieldIdentity: normalizedSourceField,
-    sourceDocumentFieldIdentity: normalizedSourceField,
-    filterByContext: true,
-    matchBySubject: true,
-    matchByClassLevel: true,
-    matchByMajor: true,
-    matchByActiveSemester: false,
-    selectionMode: 'PICK_SINGLE',
-    syncMode: 'SNAPSHOT_ON_SELECT',
-    allowManualOverride: false,
-  };
-}
-
-function createMonthWeekSnapshotColumn(
-  key: string,
-  label: string,
-  sourceProgramCode: string,
-  sourceFieldIdentity: string,
-  fallback: Partial<TeachingResourceProgramColumnSchema> = {},
-): TeachingResourceProgramColumnSchema {
-  return {
-    key,
-    label,
-    fieldIdentity: key,
-    semanticKey: key,
-    sourceType: 'DOCUMENT_SNAPSHOT',
-    valueSource: 'BOUND',
-    readOnly: true,
-    teacherEditMode: 'SYSTEM_LOCKED',
-    exposeAsReference: fallback.exposeAsReference ?? true,
-    binding: createMonthWeekReferenceBinding(sourceProgramCode, sourceFieldIdentity),
-    ...fallback,
-  };
-}
-
-function createPromesMonthWeekSection(
-  semester: 'ODD' | 'EVEN',
-  sourceProgramCode: string,
-  fields: {
-    numberField?: string;
-    objectiveField: string;
-    allocationField: string;
-  },
-): TeachingResourceProgramSectionSchema {
-  const semesterLabel = semester === 'ODD' ? 'Ganjil' : 'Genap';
-  const weekColumns = MONTH_WEEK_TEMPLATE_COLUMNS[semester].map<TeachingResourceProgramColumnSchema>((column) => ({
-    key: column.key,
-    label: column.label,
-    fieldIdentity: column.key,
-    semanticKey: column.key,
-    dataType: 'TEXT',
-    sourceType: 'MANUAL',
-    valueSource: 'MANUAL',
-    teacherEditMode: 'TEACHER_EDITABLE',
-  }));
-
-  return {
-    key: `tabel_promes_semester_${semester === 'ODD' ? 'ganjil' : 'genap'}`,
-    label: `Tabel Promes Semester ${semesterLabel}`,
-    description: `Matriks bulan dan minggu semester ${semesterLabel.toLowerCase()} mengikuti kalender tahun ajaran aktif.`,
-    repeatable: false,
-    defaultRows: 1,
-    editorType: 'TABLE',
-    sectionTitleEditable: false,
-    teacherRules: {
-      allowAddRow: true,
-      allowDeleteRow: true,
-      allowAddCustomColumn: false,
-      allowEditBinding: false,
-    },
-    columns: [
-      fields.numberField
-        ? createMonthWeekSnapshotColumn('no', 'No', sourceProgramCode, fields.numberField, {
-            dataType: 'NUMBER',
-            exposeAsReference: false,
-          })
-        : {
-            key: 'no',
-            label: 'No',
-            fieldIdentity: 'no',
-            semanticKey: 'no',
-            dataType: 'NUMBER',
-            sourceType: 'MANUAL',
-            valueSource: 'MANUAL',
-            teacherEditMode: 'TEACHER_EDITABLE',
-          },
-      {
-        key: 'tujuan_pembelajaran',
-        label: 'Tujuan Pembelajaran',
-        fieldIdentity: 'tujuan_pembelajaran',
-        semanticKey: 'tujuan_pembelajaran',
-        multiline: true,
-        sourceType: 'DOCUMENT_REFERENCE',
-        valueSource: 'MANUAL',
-        teacherEditMode: 'TEACHER_EDITABLE',
-        exposeAsReference: true,
-        binding: createMonthWeekReferenceBinding(sourceProgramCode, fields.objectiveField),
-      },
-      createMonthWeekSnapshotColumn('alokasi_jp', 'Alokasi Waktu (JP)', sourceProgramCode, fields.allocationField, {
-        dataType: 'NUMBER',
-        semanticKey: 'alokasi_jp',
-      }),
-      ...weekColumns,
-    ],
-  };
-}
-
-function inferMonthWeekSemesterScope(schema?: TeachingResourceProgramSchema): MonthWeekSemesterScope {
-  const sections = Array.isArray(schema?.sections) ? schema.sections : [];
-  const hasOdd = sections.some((section) => {
-    const token = `${section.key || ''} ${section.label || ''}`.toLowerCase();
-    return token.includes('ganjil') || token.includes('odd') || token.includes('semester_1');
-  });
-  const hasEven = sections.some((section) => {
-    const token = `${section.key || ''} ${section.label || ''}`.toLowerCase();
-    return token.includes('genap') || token.includes('even') || token.includes('semester_2');
-  });
-  if (hasOdd && hasEven) return 'BOTH';
-  if (hasEven) return 'EVEN';
-  return 'ODD';
-}
-
-function inferMonthWeekSimpleSetup(
-  draft: Pick<ProgramFormRow, 'code' | 'label' | 'shortLabel' | 'schema'>,
-  rows: ProgramFormRow[],
-) {
-  const tableSections = (draft.schema?.sections || []).filter(
-    (section) => (section.editorType || 'TABLE') === 'TABLE' && inferBlockType(section) === 'TABLE',
-  );
-  const tableColumns = tableSections.flatMap((section) => section.columns || []);
-  const referenceColumn =
-    tableColumns.find((column) => inferFieldSourceType(column) === 'DOCUMENT_REFERENCE') ||
-    tableColumns.find((column) => normalizeTeachingResourceProgramCode(column.binding?.sourceProgramCode));
-  const sourceProgramCode = normalizeTeachingResourceProgramCode(referenceColumn?.binding?.sourceProgramCode || '');
-  const sourceRow = rows.find((row) => normalizeTeachingResourceProgramCode(row.code) === sourceProgramCode);
-  const sourceProgram = sourceRow ? ({ schema: sourceRow.schema } as Pick<TeachingResourceProgram, 'schema'>) : null;
-  const objectiveColumn =
-    tableColumns.find((column) =>
-      [column.key, column.fieldIdentity, column.semanticKey, column.label]
-        .map(normalizeReferenceFieldAlias)
-        .includes('tujuan_pembelajaran'),
-    ) || referenceColumn;
-  const allocationColumn = tableColumns.find((column) =>
-    [column.key, column.fieldIdentity, column.semanticKey, column.label]
-      .map(normalizeReferenceFieldAlias)
-      .includes('alokasi_jp'),
-  );
-  const numberColumn = tableColumns.find((column) =>
-    [column.key, column.fieldIdentity, column.semanticKey, column.label]
-      .map((item) => normalizeSchemaKey(item, ''))
-      .some((item) => MONTH_WEEK_SOURCE_FIELD_FALLBACKS.number.includes(item)),
-  );
-
-  return {
-    semesterScope: inferMonthWeekSemesterScope(draft.schema),
-    sourceProgramCode,
-    objectiveField:
-      normalizeSchemaKey(objectiveColumn?.binding?.sourceFieldIdentity || objectiveColumn?.binding?.sourceDocumentFieldIdentity, '') ||
-      resolveSourceFieldByAliases(sourceProgram, MONTH_WEEK_SOURCE_FIELD_FALLBACKS.objective),
-    allocationField:
-      normalizeSchemaKey(allocationColumn?.binding?.sourceFieldIdentity || allocationColumn?.binding?.sourceDocumentFieldIdentity, '') ||
-      resolveSourceFieldByAliases(sourceProgram, MONTH_WEEK_SOURCE_FIELD_FALLBACKS.allocation),
-    numberField:
-      normalizeSchemaKey(numberColumn?.binding?.sourceFieldIdentity || numberColumn?.binding?.sourceDocumentFieldIdentity, '') ||
-      resolveSourceFieldByAliases(sourceProgram, MONTH_WEEK_SOURCE_FIELD_FALLBACKS.number),
-  };
-}
-
-function createMonthWeekPromesSchema(
-  previousSchema: TeachingResourceProgramSchema | undefined,
-  code: string,
-  label: string,
-  config: {
-    semesterScope: MonthWeekSemesterScope;
-    sourceProgramCode: string;
-    objectiveField: string;
-    allocationField: string;
-    numberField?: string;
-  },
-): TeachingResourceProgramSchema {
-  const normalizedCode = normalizeTeachingResourceProgramCode(code || label || 'PROMES');
-  const displayLabel = label || normalizedCode;
-  const semesters: Array<'ODD' | 'EVEN'> =
-    config.semesterScope === 'BOTH' ? ['ODD', 'EVEN'] : [config.semesterScope === 'EVEN' ? 'EVEN' : 'ODD'];
-  return {
-    version: 2,
-    sourceSheet: normalizedCode,
-    schemaMode: 'BLOCKS_V1',
-    intro:
-      previousSchema?.intro ||
-      `${displayLabel} disusun sebagai matriks bulan dan minggu berdasarkan referensi dokumen sebelumnya.`,
-    titleHint: previousSchema?.titleHint || `${displayLabel} - [Mapel] - [Tahun Ajaran]`,
-    summaryHint: previousSchema?.summaryHint || 'Ringkasan program semester.',
-    documentTitle: previousSchema?.documentTitle || displayLabel,
-    documentShortTitle: previousSchema?.documentShortTitle || displayLabel,
-    teacherRules: previousSchema?.teacherRules,
-    printRules: previousSchema?.printRules,
-    sections: [
-      createContextSection(),
-      ...semesters.map((semester) =>
-        createPromesMonthWeekSection(semester, config.sourceProgramCode, {
-          numberField: config.numberField,
-          objectiveField: config.objectiveField,
-          allocationField: config.allocationField,
-        }),
-      ),
-      createSignatureSection(),
-    ],
-  };
-}
-
 function createColumnFromQuickPreset(
   columnIndex: number,
   preset: ColumnQuickPreset | null,
@@ -1542,6 +1244,44 @@ function createEmptyColumn(index = 0): TeachingResourceProgramColumnSchema {
   };
 }
 
+function createExpandedWeekGridColumns(
+  baseColumn: TeachingResourceProgramColumnSchema,
+  count: number,
+): TeachingResourceProgramColumnSchema[] {
+  const safeCount = Math.min(40, Math.max(1, Math.round(Number(count) || 19)));
+  const groupLabel = String(baseColumn.headerGroupLabel || baseColumn.label || 'Pelaksanaan Minggu Ke-').trim();
+  const groupKey = normalizeSchemaKey(baseColumn.headerGroupKey || groupLabel, 'pelaksanaan_minggu');
+  const baseKey = normalizeSchemaKey(baseColumn.key || groupKey, groupKey);
+
+  return Array.from({ length: safeCount }, (_, index) => {
+    const weekNumber = index + 1;
+    const key = normalizeSchemaKey(`${baseKey}_${weekNumber}`, `minggu_${weekNumber}`);
+    return {
+      ...baseColumn,
+      key,
+      label: String(weekNumber),
+      placeholder: '',
+      multiline: false,
+      dataType: 'BOOLEAN',
+      headerGroupKey: groupKey,
+      headerGroupLabel: groupLabel,
+      gridColumnCount: undefined,
+      semanticKey: key,
+      fieldId: key,
+      fieldIdentity: key,
+      sourceType: 'MANUAL',
+      valueSource: 'MANUAL',
+      readOnly: false,
+      required: false,
+      teacherEditMode: 'TEACHER_EDITABLE',
+      exposeAsReference: false,
+      binding: {
+        selectionMode: 'AUTO',
+      },
+    };
+  });
+}
+
 function createEmptySection(index = 0, editorType: 'TEXT' | 'TABLE' = 'TABLE'): TeachingResourceProgramSectionSchema {
   const key = `bagian_${index + 1}`;
   return {
@@ -1633,217 +1373,6 @@ function createSignatureSection(): TeachingResourceProgramSectionSchema {
       { key: 'tempat_tanggal', label: 'Tempat, Tanggal', valueSource: 'SYSTEM_PLACE_DATE' },
       { key: 'guru_mapel', label: 'Guru Mata Pelajaran', valueSource: 'SYSTEM_TEACHER_NAME' },
       { key: 'catatan_pengesahan', label: 'Catatan Pengesahan', multiline: true },
-    ],
-  };
-}
-
-function createSchemaPreset(
-  mode: ProgramBlueprintMode,
-  code: string,
-  label: string,
-): TeachingResourceProgramSchema {
-  const normalizedCode = normalizeTeachingResourceProgramCode(code || label || 'CUSTOM_PROGRAM');
-  const displayLabel = label || normalizedCode;
-  const base = {
-    sourceSheet: normalizedCode,
-    titleHint: `${displayLabel} - [Mapel] - [Kelas]`,
-    summaryHint: `Ringkasan ${displayLabel}.`,
-  };
-
-  if (mode === 'GROUPED_ANALYSIS') {
-    return {
-      version: 2,
-      ...base,
-      intro: `${displayLabel} disusun sebagai analisis bertingkat dari konteks utama ke rincian pembelajaran.`,
-      sections: [
-        createContextSection(),
-        {
-          key: 'analisis_bertahap',
-          label: 'Analisis Bertahap',
-          description: 'Gunakan section ini untuk memecah elemen besar menjadi tujuan, materi, aktivitas, dan asesmen.',
-          repeatable: true,
-          defaultRows: 3,
-          editorType: 'TABLE',
-          sectionTitleEditable: true,
-          columns: [
-            { key: 'no', label: 'No', placeholder: '1' },
-            { key: 'elemen', label: 'Elemen / Unit', semanticKey: 'elemen', multiline: true },
-            { key: 'tujuan_pembelajaran', label: 'Tujuan Pembelajaran', semanticKey: 'tujuan_pembelajaran', multiline: true },
-            { key: 'materi_pokok', label: 'Materi Pokok', semanticKey: 'materi_pokok', multiline: true },
-            { key: 'aktivitas_pembelajaran', label: 'Aktivitas Pembelajaran', multiline: true },
-            { key: 'asesmen', label: 'Asesmen', semanticKey: 'asesmen', multiline: true },
-            { key: 'catatan', label: 'Catatan', multiline: true },
-          ],
-        },
-        createSignatureSection(),
-      ],
-    };
-  }
-
-  if (mode === 'TIME_DISTRIBUTION') {
-    return {
-      version: 2,
-      ...base,
-      intro: `${displayLabel} memetakan distribusi waktu pembelajaran per semester, bulan, minggu, dan alokasi JP.`,
-      titleHint: `${displayLabel} - [Mapel] - [Tahun Ajaran]`,
-      summaryHint: 'Ringkasan distribusi waktu dan alokasi JP.',
-      sections: [
-        createContextSection(),
-        {
-          key: 'distribusi_waktu',
-          label: 'Distribusi Waktu',
-          description: 'Susun sebaran TP dan JP berdasarkan semester, bulan, serta minggu pelaksanaan.',
-          repeatable: false,
-          defaultRows: 6,
-          editorType: 'TABLE',
-          sectionTitleEditable: false,
-          columns: [
-            {
-              key: 'semester',
-              label: 'Semester',
-              dataType: 'SEMESTER',
-              valueSource: 'MANUAL',
-              sourceType: 'STATIC_OPTION',
-              options: SEMESTER_DOCUMENT_OPTIONS,
-              exposeAsReference: true,
-              teacherEditMode: 'TEACHER_EDITABLE',
-            },
-            { key: 'bulan', label: 'Bulan', dataType: 'MONTH', semanticKey: 'bulan' },
-            { key: 'minggu_ke', label: 'Minggu Ke-', dataType: 'WEEK', semanticKey: 'minggu_ke' },
-            { key: 'tujuan_pembelajaran', label: 'Tujuan Pembelajaran', semanticKey: 'tujuan_pembelajaran', multiline: true },
-            {
-              key: 'alokasi_jp',
-              label: 'Alokasi JP',
-              dataType: 'NUMBER',
-              semanticKey: 'alokasi_jp',
-              valueSource: 'SYSTEM_WEEKLY_CLASS_HOURS',
-              sourceType: 'SYSTEM',
-              teacherEditMode: 'TEACHER_EDITABLE',
-              binding: {
-                systemKey: 'weekly_class_hours',
-                syncMode: 'SYSTEM_DYNAMIC',
-                allowManualOverride: true,
-              },
-            },
-            { key: 'keterangan', label: 'Keterangan', multiline: true },
-          ],
-        },
-        createSignatureSection(),
-      ],
-    };
-  }
-
-  if (mode === 'MATRIX_GRID') {
-    return {
-      version: 2,
-      ...base,
-      intro: `${displayLabel} disusun sebagai matriks ringkas untuk membaca sebaran tujuan pembelajaran terhadap periode pelaksanaan.`,
-      titleHint: `${displayLabel} - Matriks [Mapel]`,
-      summaryHint: 'Ringkasan matriks sebaran pembelajaran.',
-      sections: [
-        createContextSection(),
-        {
-          key: 'matriks_sebaran',
-          label: 'Matriks Sebaran',
-          description: 'Gunakan grid minggu untuk menandai periode pelaksanaan tiap tujuan pembelajaran.',
-          repeatable: false,
-          defaultRows: 5,
-          editorType: 'TABLE',
-          sectionTitleEditable: false,
-          columns: [
-            { key: 'no', label: 'No', placeholder: '1' },
-            { key: 'tujuan_pembelajaran', label: 'Tujuan Pembelajaran', semanticKey: 'tujuan_pembelajaran', multiline: true },
-            {
-              key: 'alokasi_jp',
-              label: 'Alokasi JP',
-              dataType: 'NUMBER',
-              semanticKey: 'alokasi_jp',
-              valueSource: 'SYSTEM_WEEKLY_CLASS_HOURS',
-              sourceType: 'SYSTEM',
-              teacherEditMode: 'TEACHER_EDITABLE',
-              binding: {
-                systemKey: 'weekly_class_hours',
-                syncMode: 'SYSTEM_DYNAMIC',
-                allowManualOverride: true,
-              },
-            },
-            { key: 'grid_minggu', label: 'Grid Minggu', dataType: 'WEEK_GRID', semanticKey: 'grid_minggu' },
-            { key: 'keterangan', label: 'Keterangan', multiline: true },
-          ],
-        },
-        createSignatureSection(),
-      ],
-    };
-  }
-
-  if (mode === 'RICH_MIXED') {
-    return {
-      version: 2,
-      ...base,
-      intro: `${displayLabel} menggabungkan narasi pembuka, tabel kerja, dan catatan reflektif.`,
-      sections: [
-        createContextSection(),
-        {
-          key: 'narasi_awal',
-          label: 'Narasi Awal',
-          description: 'Bagian naratif untuk tujuan, rasional, atau gambaran umum dokumen.',
-          repeatable: false,
-          defaultRows: 1,
-          editorType: 'TEXT',
-          sectionTitleEditable: true,
-          titlePlaceholder: 'Judul narasi',
-          bodyPlaceholder: 'Tuliskan narasi pembuka dokumen...',
-        },
-        {
-          key: 'tabel_kerja',
-          label: 'Tabel Kerja',
-          description: 'Tabel inti untuk rincian kegiatan, materi, asesmen, dan tindak lanjut.',
-          repeatable: true,
-          defaultRows: 3,
-          editorType: 'TABLE',
-          sectionTitleEditable: true,
-          columns: [
-            { key: 'no', label: 'No', placeholder: '1' },
-            { key: 'fokus', label: 'Fokus', semanticKey: 'fokus', multiline: true },
-            { key: 'uraian', label: 'Uraian', multiline: true },
-            { key: 'bukti_dukung', label: 'Bukti Dukung', multiline: true },
-            { key: 'tindak_lanjut', label: 'Tindak Lanjut', multiline: true },
-          ],
-        },
-        {
-          key: 'catatan_akhir',
-          label: 'Catatan Akhir',
-          description: 'Ruang catatan tambahan sebelum pengesahan.',
-          repeatable: false,
-          defaultRows: 1,
-          editorType: 'TEXT',
-          sectionTitleEditable: true,
-          titlePlaceholder: 'Catatan akhir',
-          bodyPlaceholder: 'Tuliskan catatan akhir dokumen...',
-        },
-        createSignatureSection(),
-      ],
-    };
-  }
-
-  return {
-    version: 2,
-    ...base,
-    intro: `${displayLabel} memakai struktur fleksibel yang bisa disesuaikan Wakakur dan guru.`,
-    sections: [
-      createContextSection(),
-      {
-        key: 'bagian_fleksibel',
-        label: 'Bagian Fleksibel',
-        description: 'Blok isi bebas untuk format yang belum punya struktur baku.',
-        repeatable: true,
-        defaultRows: 1,
-        editorType: 'TEXT',
-        sectionTitleEditable: true,
-        titlePlaceholder: 'Judul bagian',
-        bodyPlaceholder: 'Isi bagian dokumen...',
-      },
-      createSignatureSection(),
     ],
   };
 }
@@ -1966,33 +1495,6 @@ function isMonthWeekSchemaColumnKey(key: unknown): boolean {
   if (!match) return false;
   const weekNumber = Number(match[2]);
   return MONTH_WEEK_SCHEMA_MONTH_KEYS.has(match[1]) && Number.isInteger(weekNumber) && weekNumber >= 1 && weekNumber <= 6;
-}
-
-function hasMonthWeekScheduleComponent(schema?: TeachingResourceProgramSchema): boolean {
-  return (schema?.sections || []).some((section) =>
-    (section.columns || []).some((column) => isMonthWeekSchemaColumnKey(column.key)),
-  );
-}
-
-function inferBlueprintMode(schema?: TeachingResourceProgramSchema): ProgramBlueprintMode {
-  const sections = Array.isArray(schema?.sections) ? schema?.sections : [];
-  if (sections.length === 0) return 'FREEFORM';
-
-  const tableSections = sections.filter((section) => (section.editorType || 'TABLE') === 'TABLE');
-  const hasTextSection = sections.some((section) => section.editorType === 'TEXT');
-  const allColumns = tableSections.flatMap((section) => section.columns || []);
-  const dataTypes = new Set(allColumns.map((column) => column.dataType || 'TEXT'));
-  const sourceSheet = normalizeTeachingResourceProgramCode(schema?.sourceSheet || '');
-  const hasMonthWeekColumns = allColumns.some((column) => isMonthWeekSchemaColumnKey(column.key));
-
-  if (dataTypes.has('WEEK_GRID')) return 'MATRIX_GRID';
-  if (sourceSheet === 'PROMES' || sourceSheet === 'PROSEM' || hasMonthWeekColumns) return 'TIME_DISTRIBUTION';
-  if (dataTypes.has('MONTH') || dataTypes.has('WEEK') || dataTypes.has('SEMESTER')) return 'TIME_DISTRIBUTION';
-  if (hasTextSection && tableSections.length > 0) return 'RICH_MIXED';
-  if (tableSections.some((section) => section.repeatable) || tableSections.some((section) => (section.columns || []).length >= 5)) {
-    return 'GROUPED_ANALYSIS';
-  }
-  return 'FREEFORM';
 }
 
 function validateProgramDraftSchema(draft: CreateProgramDraft): DraftSchemaIssue[] {
@@ -2213,75 +1715,6 @@ export default function TeachingResourceProgramManagementPage() {
       ...prev,
       schema: applySchemaFoundationDefaults(updater(cloneProgramSchema(prev.schema, prev.code, prev.label)), prev.code, prev.label),
     }));
-  };
-
-  const handleApplyBlueprintPreset = (mode: ProgramBlueprintMode) => {
-    setCreateDraft((prev) => ({
-      ...prev,
-      schema: applySchemaFoundationDefaults(
-        mode === 'TIME_DISTRIBUTION'
-          ? createMonthWeekPromesSchema(prev.schema, prev.code, prev.label, inferMonthWeekSimpleSetup(prev, rows))
-          : createSchemaPreset(mode, prev.code, prev.label),
-        prev.code,
-        prev.label,
-      ),
-    }));
-    const selectedPreset = BLUEPRINT_MODE_OPTIONS.find((option) => option.value === mode);
-    toast.success(
-      mode === 'TIME_DISTRIBUTION'
-        ? 'Komponen bulan & minggu ditambahkan ke draft.'
-        : `Starter ${selectedPreset?.label || 'struktur'} diterapkan ke draft.`,
-    );
-  };
-
-  const handleMonthWeekSimpleSetupChange = (
-    patch: Partial<{
-      semesterScope: MonthWeekSemesterScope;
-      sourceProgramCode: string;
-      objectiveField: string;
-      allocationField: string;
-      numberField: string;
-    }>,
-  ) => {
-    setCreateDraft((prev) => {
-      const current = inferMonthWeekSimpleSetup(prev, rows);
-      const nextSourceProgramCode = normalizeTeachingResourceProgramCode(
-        patch.sourceProgramCode ?? current.sourceProgramCode,
-      );
-      const sourceChanged =
-        patch.sourceProgramCode !== undefined &&
-        normalizeTeachingResourceProgramCode(patch.sourceProgramCode) !== current.sourceProgramCode;
-      const sourceRow = rows.find((row) => normalizeTeachingResourceProgramCode(row.code) === nextSourceProgramCode);
-      const sourceProgram = sourceRow ? ({ schema: sourceRow.schema } as Pick<TeachingResourceProgram, 'schema'>) : null;
-      const nextConfig = {
-        semesterScope: patch.semesterScope ?? current.semesterScope,
-        sourceProgramCode: nextSourceProgramCode,
-        objectiveField:
-          patch.objectiveField ??
-          (sourceChanged || !current.objectiveField
-            ? resolveSourceFieldByAliases(sourceProgram, MONTH_WEEK_SOURCE_FIELD_FALLBACKS.objective)
-            : current.objectiveField),
-        allocationField:
-          patch.allocationField ??
-          (sourceChanged || !current.allocationField
-            ? resolveSourceFieldByAliases(sourceProgram, MONTH_WEEK_SOURCE_FIELD_FALLBACKS.allocation)
-            : current.allocationField),
-        numberField:
-          patch.numberField ??
-          (sourceChanged || !current.numberField
-            ? resolveSourceFieldByAliases(sourceProgram, MONTH_WEEK_SOURCE_FIELD_FALLBACKS.number)
-            : current.numberField),
-      };
-
-      return {
-        ...prev,
-        schema: applySchemaFoundationDefaults(
-          createMonthWeekPromesSchema(prev.schema, prev.code, prev.label, nextConfig),
-          prev.code,
-          prev.label,
-        ),
-      };
-    });
   };
 
   const handleSchemaMetaChange = (
@@ -2626,6 +2059,25 @@ export default function TeachingResourceProgramManagementPage() {
     }));
   };
 
+  const handleExpandWeekGridColumn = (sectionIndex: number, columnIndex: number) => {
+    const sourceColumn = createDraft.schema.sections[sectionIndex]?.columns?.[columnIndex];
+    if (!sourceColumn) return;
+    const expandedColumns = createExpandedWeekGridColumns(sourceColumn, sourceColumn.gridColumnCount || 19);
+    updateDraftSchema((schema) => ({
+      ...schema,
+      sections: schema.sections.map((section, index) => {
+        if (index !== sectionIndex) return section;
+        const columns = [...(section.columns || [])];
+        columns.splice(columnIndex, 1, ...expandedColumns);
+        return {
+          ...section,
+          columns,
+        };
+      }),
+    }));
+    toast.success(`${expandedColumns.length} subkolom minggu ditambahkan.`);
+  };
+
   const handleCreateProgram = async () => {
     const seed = rows.length + 1;
     const label = createDraft.label.trim();
@@ -2811,24 +2263,9 @@ export default function TeachingResourceProgramManagementPage() {
   };
 
   const isLoading = isActiveYearLoading || (Boolean(selectedAcademicYearId) && programsQuery.isLoading);
-  const draftBlueprintMode = inferBlueprintMode(createDraft.schema);
   const draftSchemaIssues = validateProgramDraftSchema(createDraft);
   const draftSchemaErrorCount = draftSchemaIssues.filter((issue) => issue.severity === 'error').length;
   const showAdvancedEditor = false;
-  const hasMonthWeekComponent =
-    hasMonthWeekScheduleComponent(createDraft.schema) ||
-    (draftBlueprintMode === 'TIME_DISTRIBUTION' && isProgramSemesterLikeDraft(createDraft));
-  const monthWeekSimpleSetup = inferMonthWeekSimpleSetup(createDraft, rows);
-  const monthWeekSourceRows = rows.filter(
-    (row) => normalizeTeachingResourceProgramCode(row.code) !== normalizeTeachingResourceProgramCode(createDraft.code),
-  );
-  const selectedMonthWeekSourceRow =
-    monthWeekSourceRows.find(
-      (row) => normalizeTeachingResourceProgramCode(row.code) === monthWeekSimpleSetup.sourceProgramCode,
-    ) || null;
-  const selectedMonthWeekSourceFieldOptions = getProgramReferenceFieldOptions(
-    selectedMonthWeekSourceRow ? ({ schema: selectedMonthWeekSourceRow.schema } as Pick<TeachingResourceProgram, 'schema'>) : null,
-  );
 
   return (
     <div className="space-y-6 w-full pb-28">
@@ -2967,7 +2404,9 @@ export default function TeachingResourceProgramManagementPage() {
                 <h2 className="text-lg font-semibold text-gray-900">
                   {editingRowId ? 'Edit Program Perangkat Ajar' : 'Tambah Program Perangkat Ajar'}
                 </h2>
-                <p className="text-sm text-gray-500">Atur nama menu, kode, target kelas, lalu pilih bentuk dokumen yang paling sesuai.</p>
+                <p className="text-sm text-gray-500">
+                  Atur nama menu, kode, target kelas, lalu susun struktur dokumen yang akan dipakai guru.
+                </p>
               </div>
               <button
                 type="button"
@@ -3085,158 +2524,18 @@ export default function TeachingResourceProgramManagementPage() {
                 <div className="mb-3">
                   <h3 className="text-sm font-semibold text-gray-900">Struktur Dokumen Universal</h3>
                   <p className="mt-1 text-xs leading-5 text-gray-500">
-                    Susun dokumen dari komponen yang sama: kolom manual, kolom sistem, referensi dokumen, dan jadwal
-                    bulan-minggu bila diperlukan. Jadi CP, ATP, Prota, atau Promes tetap memakai alur konfigurasi yang sama.
+                    Susun tabel dari kolom yang dibutuhkan. Jika perlu header gabungan seperti KKTP atau grid minggu,
+                    atur langsung pada baris kolomnya agar posisi kolom tetap jelas.
                   </p>
                 </div>
-
-                <div className="mb-4 rounded-xl border border-blue-200 bg-blue-50 p-4">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <div className="text-sm font-semibold text-blue-900">Cara kerja konfigurasi</div>
-                      <p className="mt-1 text-xs leading-5 text-blue-800">
-                        Buat kolom sesuai kebutuhan dokumen. Jika kolom harus membaca dokumen sebelumnya, ubah cara isi
-                        menjadi referensi atau otomatis dari pilihan referensi. Untuk Promes, aktifkan komponen bulan-minggu
-                        lalu pilih sumber TP dan JP.
-                      </p>
-                    </div>
-                    {!hasMonthWeekComponent ? (
-                      <button
-                        type="button"
-                        onClick={() => handleApplyBlueprintPreset('TIME_DISTRIBUTION')}
-                        className="inline-flex items-center gap-2 rounded-lg border border-blue-300 bg-white px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100"
-                      >
-                        <Plus size={14} />
-                        Tambah Bulan & Minggu
-                      </button>
-                    ) : null}
-                  </div>
-                </div>
-
-	                {hasMonthWeekComponent ? (
-	                  <div className="mb-4 rounded-xl border border-blue-200 bg-blue-50/60 p-4">
-	                    <div className="mb-4">
-	                      <h3 className="text-sm font-semibold text-gray-900">Komponen Bulan & Minggu</h3>
-	                      <p className="mt-1 text-xs leading-5 text-gray-600">
-	                        Dipakai untuk dokumen seperti Program Semester. Wakakur cukup memilih sumber TP dan JP, lalu sistem
-	                        membuat tabel No, TP, Alokasi JP, serta bulan-minggu otomatis.
-	                      </p>
-	                    </div>
-	                    <div className="mb-4 grid grid-cols-1 gap-2 md:grid-cols-3">
-	                      <div className="rounded-lg border border-blue-100 bg-white px-3 py-2">
-	                        <p className="text-[11px] font-semibold uppercase tracking-wide text-blue-700">No</p>
-	                        <p className="mt-1 text-xs leading-5 text-gray-600">Diurutkan otomatis dari baris TP, jadi tidak perlu dipilih.</p>
-	                      </div>
-	                      <div className="rounded-lg border border-blue-100 bg-white px-3 py-2">
-	                        <p className="text-[11px] font-semibold uppercase tracking-wide text-blue-700">Tujuan Pembelajaran</p>
-	                        <p className="mt-1 text-xs leading-5 text-gray-600">Pilih kolom TP dari dokumen sumber, biasanya Prota/ATP.</p>
-	                      </div>
-	                      <div className="rounded-lg border border-blue-100 bg-white px-3 py-2">
-	                        <p className="text-[11px] font-semibold uppercase tracking-wide text-blue-700">Alokasi JP</p>
-	                        <p className="mt-1 text-xs leading-5 text-gray-600">Pilih kolom JP dari dokumen sumber agar ikut terbaca.</p>
-	                      </div>
-	                    </div>
-	                    <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-	                      <div>
-	                        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
-	                          Semester yang dibuat
-	                        </label>
-	                        <select
-	                          value={monthWeekSimpleSetup.semesterScope}
-	                          onChange={(event) =>
-	                            handleMonthWeekSimpleSetupChange({
-	                              semesterScope: event.target.value as MonthWeekSemesterScope,
-	                            })
-	                          }
-	                          className="w-full rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-	                        >
-	                          {MONTH_WEEK_SEMESTER_SCOPE_OPTIONS.map((option) => (
-	                            <option key={option.value} value={option.value}>
-	                              {option.label}
-	                            </option>
-	                          ))}
-	                        </select>
-	                      </div>
-	                      <div>
-	                        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
-	                          Dokumen sumber TP & JP
-	                        </label>
-	                        <select
-	                          value={monthWeekSimpleSetup.sourceProgramCode}
-	                          onChange={(event) =>
-	                            handleMonthWeekSimpleSetupChange({
-	                              sourceProgramCode: event.target.value,
-	                            })
-	                          }
-	                          className="w-full rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-	                        >
-	                          <option value="">Pilih dokumen sumber</option>
-	                          {monthWeekSourceRows.map((row) => (
-	                            <option key={`month-week-source-${row.rowId}`} value={normalizeTeachingResourceProgramCode(row.code)}>
-	                              {row.label}
-	                            </option>
-	                          ))}
-	                        </select>
-	                      </div>
-	                      <div>
-	                        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
-	                          Kolom TP yang menjadi baris
-	                        </label>
-	                        <select
-	                          value={monthWeekSimpleSetup.objectiveField}
-	                          disabled={!monthWeekSimpleSetup.sourceProgramCode}
-	                          onChange={(event) =>
-	                            handleMonthWeekSimpleSetupChange({
-	                              objectiveField: event.target.value,
-	                            })
-	                          }
-	                          className="w-full rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none disabled:bg-gray-50 disabled:text-gray-400"
-	                        >
-	                          <option value="">Pilih kolom TP</option>
-	                          {selectedMonthWeekSourceFieldOptions.map((option) => (
-	                            <option key={`month-week-tp-${option.value}`} value={option.value}>
-	                              {option.label} ({option.sectionLabel})
-	                            </option>
-	                          ))}
-	                        </select>
-	                      </div>
-	                      <div>
-	                        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
-	                          Kolom JP / Alokasi waktu
-	                        </label>
-	                        <select
-	                          value={monthWeekSimpleSetup.allocationField}
-	                          disabled={!monthWeekSimpleSetup.sourceProgramCode}
-	                          onChange={(event) =>
-	                            handleMonthWeekSimpleSetupChange({
-	                              allocationField: event.target.value,
-	                            })
-	                          }
-	                          className="w-full rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none disabled:bg-gray-50 disabled:text-gray-400"
-	                        >
-	                          <option value="">Pilih kolom JP</option>
-	                          {selectedMonthWeekSourceFieldOptions.map((option) => (
-	                            <option key={`month-week-jp-${option.value}`} value={option.value}>
-	                              {option.label} ({option.sectionLabel})
-	                            </option>
-	                          ))}
-	                        </select>
-	                      </div>
-	                    </div>
-	                    <div className="mt-4 rounded-lg border border-blue-100 bg-white px-3 py-2 text-xs leading-5 text-blue-800">
-	                      Bulan dan jumlah minggu mengikuti tahun ajaran aktif saat guru membuat dokumen. Guru kemudian cukup memilih minggu
-	                      pelaksanaan atau memberi keterangan libur/kegiatan pada kotak minggu.
-	                    </div>
-	                  </div>
-	                ) : null}
 
 	                <div className="rounded-xl border border-gray-200 bg-white p-4">
 	                  <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
 	                    <div>
 	                      <h3 className="text-sm font-semibold text-gray-900">Struktur & Integrasi Dokumen</h3>
 	                      <p className="mt-1 text-xs leading-5 text-gray-500">
-	                        Atur kolom yang diisi guru. Jika kolom perlu mengambil data dari dokumen sebelumnya, pilih sumber program dan sumber kolomnya di sini.
-	                        Kolom bulan-minggu teknis disembunyikan dari daftar ini agar setup tetap ringkas.
+                        Atur posisi kolom yang akan tampil di tabel guru. Jika kolom perlu mengambil data dari dokumen sebelumnya,
+                        pilih sumber program dan sumber kolomnya di sini. Bagian konteks, catatan, dan pengesahan tidak dicampur ke tabel utama.
 	                      </p>
 	                    </div>
 	                    {createDraft.schema.sections.some(
@@ -3374,6 +2673,55 @@ export default function TeachingResourceProgramManagementPage() {
 	                                              </option>
 	                                            ))}
 	                                          </select>
+	                                        </div>
+	                                        <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-2">
+	                                          <input
+	                                            type="text"
+	                                            value={column.headerGroupLabel || ''}
+	                                            onChange={(event) => {
+	                                              const nextLabel = event.target.value;
+	                                              handleColumnChange(sectionIndex, columnIndex, 'headerGroupLabel', nextLabel || undefined);
+	                                              handleColumnChange(
+	                                                sectionIndex,
+	                                                columnIndex,
+	                                                'headerGroupKey',
+	                                                nextLabel ? normalizeSchemaKey(nextLabel, '') : undefined,
+	                                              );
+	                                            }}
+	                                            className="w-full rounded-lg border border-gray-200 px-3 py-1.5 text-xs focus:border-blue-500 focus:outline-none"
+	                                            placeholder="Header induk (opsional)"
+	                                          />
+	                                          {column.dataType === 'WEEK_GRID' ? (
+	                                            <div className="flex gap-2">
+	                                              <input
+	                                                type="number"
+	                                                min={1}
+	                                                max={40}
+	                                                value={column.gridColumnCount || 19}
+	                                                onChange={(event) =>
+	                                                  handleColumnChange(
+	                                                    sectionIndex,
+	                                                    columnIndex,
+	                                                    'gridColumnCount',
+	                                                    Math.min(40, Math.max(1, Number(event.target.value || 19))),
+	                                                  )
+	                                                }
+	                                                className="w-24 rounded-lg border border-gray-200 px-3 py-1.5 text-xs focus:border-blue-500 focus:outline-none"
+	                                                title="Jumlah subkolom"
+	                                              />
+	                                              <button
+	                                                type="button"
+	                                                onClick={() => handleExpandWeekGridColumn(sectionIndex, columnIndex)}
+	                                                className="inline-flex flex-1 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100"
+	                                              >
+	                                                Buat Subkolom
+	                                              </button>
+	                                            </div>
+	                                          ) : (
+	                                            <div className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-1.5 text-[11px] leading-5 text-gray-500">
+	                                              Isi jika kolom ini berada di bawah header gabungan.
+	                                            </div>
+	                                          )}
 	                                        </div>
 	                                        <label className="mt-2 inline-flex items-center gap-2 text-xs text-gray-600">
 	                                          <input
@@ -4558,7 +3906,7 @@ export default function TeachingResourceProgramManagementPage() {
                 {isSaving
                   ? 'Menyimpan...'
                   : draftSchemaErrorCount > 0
-                    ? `Perbaiki ${draftSchemaErrorCount} error dulu`
+                    ? `Perbaiki ${draftSchemaErrorCount} masalah dulu`
                     : editingRowId
                       ? 'Simpan Edit Program'
                       : 'Tambah Program'}

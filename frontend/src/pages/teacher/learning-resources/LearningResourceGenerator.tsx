@@ -63,6 +63,9 @@ type EntrySectionColumnForm = {
   placeholder?: string;
   multiline?: boolean;
   dataType?: TeachingResourceColumnDataType;
+  headerGroupKey?: string;
+  headerGroupLabel?: string;
+  gridColumnCount?: number;
   semanticKey?: string;
   bindingKey?: string;
   valueSource?: TeachingResourceColumnValueSource;
@@ -118,6 +121,20 @@ type MonthWeekColumnLayout<TColumn> = {
   weekGroups: Array<MonthWeekColumnGroup<TColumn>>;
   trailingColumns: TColumn[];
 };
+
+type HeaderGroupColumn = {
+  key?: unknown;
+  label?: unknown;
+  headerGroupKey?: unknown;
+  headerGroupLabel?: unknown;
+};
+
+type HeaderGroupLayout<TColumn extends HeaderGroupColumn> = Array<{
+  key: string;
+  label: string;
+  columns: TColumn[];
+  grouped: boolean;
+}>;
 
 type AcademicYearDateLike = {
   semester?: string;
@@ -353,6 +370,9 @@ const sanitizeSectionColumns = (value: unknown): EntrySectionColumnForm[] => {
       placeholder?: unknown;
       multiline?: unknown;
       dataType?: unknown;
+      headerGroupKey?: unknown;
+      headerGroupLabel?: unknown;
+      gridColumnCount?: unknown;
       semanticKey?: unknown;
       bindingKey?: unknown;
       valueSource?: unknown;
@@ -384,6 +404,9 @@ const sanitizeSectionColumns = (value: unknown): EntrySectionColumnForm[] => {
       placeholder: placeholder || undefined,
       multiline: Boolean(column.multiline),
       dataType: String(column.dataType || '').trim().toUpperCase() as TeachingResourceColumnDataType,
+      headerGroupKey: String(column.headerGroupKey || '').trim() || undefined,
+      headerGroupLabel: String(column.headerGroupLabel || '').trim() || undefined,
+      gridColumnCount: Number.isFinite(Number(column.gridColumnCount)) ? Number(column.gridColumnCount) : undefined,
       semanticKey: String(column.semanticKey || '').trim() || undefined,
       bindingKey: String(column.bindingKey || '').trim() || undefined,
       valueSource: String(column.valueSource || '').trim().toUpperCase() as TeachingResourceColumnValueSource,
@@ -1560,6 +1583,51 @@ const buildMonthWeekColumnLayout = <TColumn extends { key?: unknown }>(
   const weekColumnCount = weekGroups.reduce((total, group) => total + group.columns.length, 0);
   if (weekGroups.length === 0 || weekColumnCount < 2) return null;
   return { leadingColumns, weekGroups, trailingColumns };
+};
+
+const normalizeHeaderGroupKey = (value: unknown, fallback: unknown): string => {
+  const source = String(value || fallback || '').trim().toLowerCase();
+  return (
+    source
+      .replace(/[^a-z0-9_]+/g, '_')
+      .replace(/_+/g, '_')
+      .replace(/^_+|_+$/g, '') || 'group'
+  );
+};
+
+const buildHeaderGroupLayout = <TColumn extends HeaderGroupColumn>(
+  columns: TColumn[],
+): HeaderGroupLayout<TColumn> | null => {
+  const hasGroupedColumn = columns.some((column) => String(column.headerGroupLabel || '').trim());
+  if (!hasGroupedColumn) return null;
+
+  return columns.reduce<HeaderGroupLayout<TColumn>>((groups, column, index) => {
+    const groupLabel = String(column.headerGroupLabel || '').trim();
+    if (!groupLabel) {
+      groups.push({
+        key: `standalone_${String(column.key || index)}`,
+        label: String(column.label || column.key || '').trim(),
+        columns: [column],
+        grouped: false,
+      });
+      return groups;
+    }
+
+    const groupKey = normalizeHeaderGroupKey(column.headerGroupKey, groupLabel);
+    const previousGroup = groups[groups.length - 1];
+    if (previousGroup?.grouped && previousGroup.key === groupKey) {
+      previousGroup.columns.push(column);
+      return groups;
+    }
+
+    groups.push({
+      key: groupKey,
+      label: groupLabel,
+      columns: [column],
+      grouped: true,
+    });
+    return groups;
+  }, []);
 };
 
 const PROMES_MONTH_WEEK_HIDDEN_COLUMN_KEYS = new Set(['keterangan', 'ket', 'catatan']);
@@ -5720,12 +5788,33 @@ export const LearningResourceGenerator = ({
       return `<div class="table-wrap month-week-table-wrap"><table class="print-month-week-table">${colgroup}<thead>${firstHeaderRow}${secondHeaderRow}</thead><tbody>${tbody}</tbody></table></div>`;
     }
 
-    const thead = `<tr>${headers
-      .map((header) => {
-        const classAttribute = renderPrintClassAttribute(getPrintColumnClassName(header.column));
-        return `<th${classAttribute}>${escapeHtml(header.label)}</th>`;
-      })
-      .join('')}</tr>`;
+    const headerGroupLayout = buildHeaderGroupLayout(headers);
+    const thead = headerGroupLayout
+      ? `<tr>${headerGroupLayout
+          .map((group) => {
+            if (group.grouped) {
+              return `<th colspan="${group.columns.length}">${escapeHtml(group.label)}</th>`;
+            }
+            const header = group.columns[0];
+            const classAttribute = renderPrintClassAttribute(getPrintColumnClassName(header?.column));
+            return `<th${classAttribute} rowspan="2">${escapeHtml(group.label)}</th>`;
+          })
+          .join('')}</tr><tr>${headerGroupLayout
+          .flatMap((group) =>
+            group.grouped
+              ? group.columns.map((header) => {
+                  const classAttribute = renderPrintClassAttribute(getPrintColumnClassName(header.column));
+                  return `<th${classAttribute}>${escapeHtml(header.label)}</th>`;
+                })
+              : [],
+          )
+          .join('')}</tr>`
+      : `<tr>${headers
+          .map((header) => {
+            const classAttribute = renderPrintClassAttribute(getPrintColumnClassName(header.column));
+            return `<th${classAttribute}>${escapeHtml(header.label)}</th>`;
+          })
+          .join('')}</tr>`;
     const tbody = rows
       .map((row) => {
         const lineGroups = headers.map((header) => splitCellLines(row.values?.[header.key]));
@@ -6660,6 +6749,8 @@ export const LearningResourceGenerator = ({
                         const tableMode = isTableSection(section);
                         const sectionColumns = resolveSectionColumns(section);
                         const visibleSectionColumns = getVisibleSectionColumns(section);
+                        const monthWeekColumnLayout = buildMonthWeekColumnLayout(visibleSectionColumns);
+                        const headerGroupLayout = buildHeaderGroupLayout(visibleSectionColumns);
                         const minRowCount = getMinimumRowCount(section);
                         return (
                           <>
@@ -6691,7 +6782,7 @@ export const LearningResourceGenerator = ({
                             {usesSheetTemplate &&
                             tableMode &&
                             visibleSectionColumns.length > 0 &&
-                            !buildMonthWeekColumnLayout(visibleSectionColumns) ? (
+                            !monthWeekColumnLayout ? (
                               <div className="mb-2 rounded-md border border-gray-200 bg-gray-50 p-2">
                                 <p className="mb-1 text-[11px] font-medium text-gray-500">
                                   Struktur kolom (editable seperti lembar kerja)
@@ -6758,25 +6849,71 @@ export const LearningResourceGenerator = ({
                                 </div>
                               ) : (
                                 <div className="space-y-2">
-                                  {buildMonthWeekColumnLayout(visibleSectionColumns) ? (
+                                  {monthWeekColumnLayout ? (
                                     renderSectionMonthWeekTable(section, visibleSectionColumns, minRowCount)
                                   ) : (
                                     <div className="overflow-x-auto rounded-md border border-gray-200">
                                       <table className="min-w-max text-xs">
                                         <thead className="bg-gray-50">
+                                          {headerGroupLayout ? (
+                                            <>
+                                              <tr>
+                                                {headerGroupLayout.map((group) =>
+                                                  group.grouped ? (
+                                                    <th
+                                                      key={`group-${group.key}`}
+                                                      colSpan={group.columns.length}
+                                                      className="whitespace-nowrap border-b border-gray-200 px-2 py-1.5 text-center font-semibold text-gray-600"
+                                                    >
+                                                      {group.label}
+                                                    </th>
+                                                  ) : (
+                                                    <th
+                                                      key={`standalone-${group.key}`}
+                                                      rowSpan={2}
+                                                      className={`whitespace-nowrap border-b border-gray-200 px-2 py-1.5 text-center font-semibold text-gray-600 ${getColumnWidthClass(group.columns[0]?.key, Boolean(group.columns[0]?.multiline), group.columns[0]?.dataType)}`}
+                                                    >
+                                                      {group.label}
+                                                    </th>
+                                                  ),
+                                                )}
+                                                <th
+                                                  rowSpan={2}
+                                                  className="sticky right-0 whitespace-nowrap border-b border-gray-200 bg-gray-50 px-2 py-1.5 text-right font-semibold text-gray-600"
+                                                >
+                                                  Aksi
+                                                </th>
+                                              </tr>
+                                              <tr>
+                                                {headerGroupLayout.flatMap((group) =>
+                                                  group.grouped
+                                                    ? group.columns.map((column) => (
+                                                        <th
+                                                          key={`group-child-${group.key}-${column.key}`}
+                                                          className={`whitespace-nowrap border-b border-gray-200 px-2 py-1.5 text-center font-semibold text-gray-600 ${getColumnWidthClass(column.key, Boolean(column.multiline), column.dataType)}`}
+                                                        >
+                                                          {column.label}
+                                                        </th>
+                                                      ))
+                                                    : [],
+                                                )}
+                                              </tr>
+                                            </>
+                                          ) : (
                                             <tr>
-                                            {visibleSectionColumns.map((column) => (
-                                              <th
-                                                key={column.key}
-                                                className={`whitespace-nowrap border-b border-gray-200 px-2 py-1.5 text-center font-semibold text-gray-600 ${getColumnWidthClass(column.key, Boolean(column.multiline), column.dataType)}`}
-                                              >
-                                                {column.label}
+                                              {visibleSectionColumns.map((column) => (
+                                                <th
+                                                  key={column.key}
+                                                  className={`whitespace-nowrap border-b border-gray-200 px-2 py-1.5 text-center font-semibold text-gray-600 ${getColumnWidthClass(column.key, Boolean(column.multiline), column.dataType)}`}
+                                                >
+                                                  {column.label}
+                                                </th>
+                                              ))}
+                                              <th className="sticky right-0 whitespace-nowrap border-b border-gray-200 bg-gray-50 px-2 py-1.5 text-right font-semibold text-gray-600">
+                                                Aksi
                                               </th>
-                                            ))}
-                                            <th className="sticky right-0 whitespace-nowrap border-b border-gray-200 bg-gray-50 px-2 py-1.5 text-right font-semibold text-gray-600">
-                                              Aksi
-                                            </th>
-                                          </tr>
+                                            </tr>
+                                          )}
                                         </thead>
                                         <tbody>
                                           {section.rows.map((row, rowIndex) => (
