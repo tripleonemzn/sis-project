@@ -227,7 +227,7 @@ export default function LearningResourceReviewSubmissionPage() {
   };
 
   return (
-    <div className="space-y-5 p-6">
+    <div className="w-full space-y-6 pb-20">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Pengajuan Review Perangkat Ajar</h1>
         <p className="mt-1 text-sm text-gray-600">
@@ -235,15 +235,15 @@ export default function LearningResourceReviewSubmissionPage() {
         </p>
       </div>
 
-      <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
+      <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
         <UnderlineTabBar
           items={tabs}
           activeId={activeView}
           onChange={(id) => setActiveView(id as ReviewView)}
-          innerClassName="px-4"
+          className="mb-4"
         />
 
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto rounded-xl border border-gray-200">
           <table className="min-w-full divide-y divide-gray-200 text-sm">
             <thead className="bg-gray-50 text-xs uppercase tracking-wide text-gray-500">
               <tr>

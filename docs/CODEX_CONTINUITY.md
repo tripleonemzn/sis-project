@@ -5,12 +5,12 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-05-03 20:59 WIB
-- Current status: workflow baru `Pengajuan Review Perangkat Ajar` sudah live. Review tidak lagi dikirim per dokumen dari tiap halaman perangkat ajar, tetapi melalui paket mapel di menu khusus `PERANGKAT AJAR > Pengajuan Review`.
+- Last updated: 2026-05-03 21:14 WIB
+- Current status: workflow baru `Pengajuan Review Perangkat Ajar` sudah live dan spacing/layout halaman pengajuan review sudah distandarkan mengikuti padding global `DashboardLayout` serta ritme card/table seperti halaman operasional standar.
 - Objective/task aktif:
   - Menjadikan review perangkat ajar sebagai alur paket: Guru kirim paket mapel lengkap ke Kurikulum, Kurikulum setujui/kembalikan, Kurikulum ajukan ke Kepala Sekolah, Kepala Sekolah setujui final, lalu print dokumen menampilkan QR tanda tangan guru dan kepala sekolah.
 - Batch terakhir selesai:
-  - `Teaching resource package review workflow`
+  - `Teaching resource review submission UI spacing polish`
 - Progress fitur remedial keseluruhan:
   - `100%`
 - Progress presensi terpadu saat ini:
@@ -26,46 +26,29 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
-  - Commit: `41ed1e2`
-  - Title: `feat(teaching-resources): add package review workflow`
+  - Commit: `pending`
+  - Title: `fix(teaching-resources): align review submission layout`
   - Summary:
-    - backend menambah endpoint paket review perangkat ajar tanpa migration baru; metadata paket disimpan aman di `content.reviewPackage`
-    - menu web baru `Pengajuan Review` ditambahkan di sidebar Perangkat Ajar dan breadcrumb
-    - guru melihat paket mapel, kelengkapan dokumen wajib, lalu hanya bisa kirim paket jika lengkap
-    - Kurikulum dapat menyetujui/mengembalikan paket dan mengajukan paket yang disetujui ke Kepala Sekolah
-    - Kepala Sekolah dapat menyetujui final atau mengembalikan paket
-    - print perangkat ajar mengambil QR tanda tangan guru dan kepala sekolah setelah status paket `PRINCIPAL_APPROVED`
-    - halaman publik `/verify/teaching-resource/:token` tersedia untuk scan QR
-    - tombol `Kirim Review` dan aksi review per dokumen disembunyikan dari tabel dokumen agar workflow tidak bercabang
+    - root page `Pengajuan Review Perangkat Ajar` tidak lagi memakai padding internal `p-6` agar tidak dobel dengan padding global layout
+    - card utama diberi padding internal standar dan tab `UnderlineTabBar` disejajarkan dengan konten card
+    - table section diberi wrapper border/radius agar jarak kanan-kiri dan ritme visual sama dengan halaman operasional lain
 - Area/file disentuh:
-  - `backend/src/controllers/teachingResourceProgram.controller.ts`
-  - `backend/src/routes/teachingResourceProgram.routes.ts`
-  - `backend/src/routes/public.routes.ts`
   - `frontend/src/pages/teacher/learning-resources/LearningResourceReviewSubmissionPage.tsx`
-  - `frontend/src/pages/teacher/learning-resources/LearningResourceGenerator.tsx`
-  - `frontend/src/pages/public/TeachingResourceVerificationPage.tsx`
-  - `frontend/src/services/teachingResourceProgram.service.ts`
-  - `frontend/src/components/layout/Sidebar.tsx`
-  - `frontend/src/layouts/DashboardLayout.tsx`
-  - `frontend/src/App.tsx`
   - `docs/CODEX_CONTINUITY.md`
 - Verifikasi batch ini:
-  - `cd backend && npm run build`
   - `cd frontend && npm run build`
-  - `cd backend && npm run service:restart`
-  - `cd backend && npm run service:health`
-  - `cd frontend && npm run build`
+  - `git diff --check`
   - `cd frontend && npm run deploy`
+  - `curl -I -s https://siskgb2.id/ | head -n 1` -> `HTTP/1.1 200 OK`
 - Publish/live status:
   - Web sudah deploy live
-  - Backend sudah build, restart via PM2 reload, dan health check `Backend:200`, `Backend API:200`
+  - Backend tidak berubah dan tidak direstart pada batch spacing UI ini
   - Tidak ada perubahan mobile pada batch ini
 - Remaining work:
-  - QA manual end-to-end dengan akun guru, kurikulum, dan kepala sekolah: buat paket lengkap, kirim ke Kurikulum, setujui Kurikulum, ajukan ke Kepala Sekolah, setujui final, lalu print salah satu dokumen dan scan QR.
-  - Jika user ingin alur notifikasi realtime untuk setiap tahap, tambahkan batch terpisah dengan scope notifikasi yang kecil dan terarah.
+  - QA visual manual pada menu `PERANGKAT AJAR > Pengajuan Review` untuk memastikan jarak kiri-kanan card, tab, dan tabel sudah terasa sama dengan halaman standar di layar tester.
+  - QA manual end-to-end workflow paket review tetap direkomendasikan: guru kirim paket lengkap, Kurikulum setujui/ajukan, Kepala Sekolah setujui final, lalu print dokumen dan scan QR.
 - Residual risk:
-  - Tidak ada tabel baru; workflow paket menggunakan metadata JSON pada dokumen perangkat ajar existing. Ini minim risiko migration, tetapi QA manual lintas role tetap diperlukan untuk memastikan mapping paket sesuai data guru/mapel aktual.
-  - Endpoint daftar paket membatasi pembacaan maksimal 2000 dokumen aktif per request sebagai guardrail agar tidak menjadi query tidak terbatas.
+  - Risiko rendah; perubahan hanya frontend layout halaman review submission, tidak menyentuh backend/API/data.
 
 ## Status Saat Ini
 
