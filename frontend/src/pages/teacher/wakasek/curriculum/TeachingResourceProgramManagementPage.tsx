@@ -1294,6 +1294,34 @@ function createExpandedWeekGridColumns(
   });
 }
 
+function createMonthWeekSchemaColumn(monthKey: string, weekNumber: number): TeachingResourceProgramColumnSchema {
+  const normalizedMonthKey = normalizeSchemaKey(monthKey, 'bulan');
+  const normalizedWeekNumber = Math.min(6, Math.max(1, Math.round(Number(weekNumber) || 1)));
+  const key = `${normalizedMonthKey}_${normalizedWeekNumber}`;
+  const monthLabel = MONTH_WEEK_SCHEMA_MONTH_LABELS[normalizedMonthKey] || normalizedMonthKey;
+  return {
+    key,
+    label: String(normalizedWeekNumber),
+    placeholder: '',
+    multiline: false,
+    dataType: 'BOOLEAN',
+    headerGroupKey: normalizedMonthKey,
+    headerGroupLabel: monthLabel,
+    semanticKey: key,
+    fieldId: key,
+    fieldIdentity: key,
+    sourceType: 'MANUAL',
+    valueSource: 'MANUAL',
+    readOnly: false,
+    required: false,
+    teacherEditMode: 'TEACHER_EDITABLE',
+    exposeAsReference: false,
+    binding: {
+      selectionMode: 'AUTO',
+    },
+  };
+}
+
 function createEmptySection(index = 0, editorType: 'TEXT' | 'TABLE' = 'TABLE'): TeachingResourceProgramSectionSchema {
   const key = `bagian_${index + 1}`;
   return {
@@ -1498,6 +1526,21 @@ const MONTH_WEEK_SCHEMA_MONTH_KEYS = new Set([
   'nopember',
   'desember',
 ]);
+
+const MONTH_WEEK_SCHEMA_MONTH_OPTIONS = [
+  { value: 'januari', label: 'Januari' },
+  { value: 'februari', label: 'Februari' },
+  { value: 'maret', label: 'Maret' },
+  { value: 'april', label: 'April' },
+  { value: 'mei', label: 'Mei' },
+  { value: 'juni', label: 'Juni' },
+  { value: 'juli', label: 'Juli' },
+  { value: 'agustus', label: 'Agustus' },
+  { value: 'september', label: 'September' },
+  { value: 'oktober', label: 'Oktober' },
+  { value: 'november', label: 'November' },
+  { value: 'desember', label: 'Desember' },
+];
 
 const MONTH_WEEK_SCHEMA_MONTH_LABELS: Record<string, string> = {
   januari: 'Januari',
@@ -2204,6 +2247,76 @@ export default function TeachingResourceProgramManagementPage() {
       }),
     }));
     toast.success(`${expandedColumns.length} subkolom minggu ditambahkan.`);
+  };
+
+  const handleAddMonthWeekGroup = (sectionIndex: number, monthKey: string, weekCount = 4) => {
+    const normalizedMonthKey = normalizeSchemaKey(monthKey, '');
+    if (!MONTH_WEEK_SCHEMA_MONTH_KEYS.has(normalizedMonthKey)) return;
+    const safeWeekCount = Math.min(6, Math.max(1, Math.round(Number(weekCount) || 4)));
+    updateDraftSchema((schema) => ({
+      ...schema,
+      sections: schema.sections.map((section, index) => {
+        if (index !== sectionIndex) return section;
+        const existingColumns = section.columns || [];
+        const hasMonth = existingColumns.some((column) => parseMonthWeekSchemaColumn(column.key)?.monthKey === normalizedMonthKey);
+        if (hasMonth) return section;
+        return {
+          ...section,
+          columns: [
+            ...existingColumns,
+            ...Array.from({ length: safeWeekCount }, (_, weekIndex) =>
+              createMonthWeekSchemaColumn(normalizedMonthKey, weekIndex + 1),
+            ),
+          ],
+        };
+      }),
+    }));
+  };
+
+  const handleSetMonthWeekGroupCount = (sectionIndex: number, monthKey: string, weekCount: number) => {
+    const normalizedMonthKey = normalizeSchemaKey(monthKey, '');
+    if (!MONTH_WEEK_SCHEMA_MONTH_KEYS.has(normalizedMonthKey)) return;
+    const safeWeekCount = Math.min(6, Math.max(1, Math.round(Number(weekCount) || 1)));
+    updateDraftSchema((schema) => ({
+      ...schema,
+      sections: schema.sections.map((section, index) => {
+        if (index !== sectionIndex) return section;
+        const columns = [...(section.columns || [])];
+        const firstIndex = columns.findIndex((column) => parseMonthWeekSchemaColumn(column.key)?.monthKey === normalizedMonthKey);
+        if (firstIndex < 0) return section;
+        const withoutMonthColumns = columns.filter(
+          (column) => parseMonthWeekSchemaColumn(column.key)?.monthKey !== normalizedMonthKey,
+        );
+        withoutMonthColumns.splice(
+          firstIndex,
+          0,
+          ...Array.from({ length: safeWeekCount }, (_, weekIndex) =>
+            createMonthWeekSchemaColumn(normalizedMonthKey, weekIndex + 1),
+          ),
+        );
+        return {
+          ...section,
+          columns: withoutMonthColumns,
+        };
+      }),
+    }));
+  };
+
+  const handleRemoveMonthWeekGroup = (sectionIndex: number, monthKey: string) => {
+    const normalizedMonthKey = normalizeSchemaKey(monthKey, '');
+    updateDraftSchema((schema) => ({
+      ...schema,
+      sections: schema.sections.map((section, index) =>
+        index === sectionIndex
+          ? {
+              ...section,
+              columns: (section.columns || []).filter(
+                (column) => parseMonthWeekSchemaColumn(column.key)?.monthKey !== normalizedMonthKey,
+              ),
+            }
+          : section,
+      ),
+    }));
   };
 
   const handleCreateProgram = async () => {
@@ -3000,6 +3113,119 @@ export default function TeachingResourceProgramManagementPage() {
 	                            </label>
 	                          </div>
 
+                            {(() => {
+                              const headerGroups = buildVisualHeaderGroups(section.columns || []);
+                              const usedMonthKeys = new Set(
+                                headerGroups
+                                  .filter((group) => group.source === 'month-week')
+                                  .map((group) => parseMonthWeekSchemaColumn(group.columns[0]?.key)?.monthKey)
+                                  .filter(Boolean) as string[],
+                              );
+                              const availableMonths = MONTH_WEEK_SCHEMA_MONTH_OPTIONS.filter(
+                                (option) => !usedMonthKeys.has(option.value),
+                              );
+                              return (
+                                <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50/60 p-3">
+                                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                                    <div>
+                                      <h4 className="text-xs font-semibold uppercase tracking-wide text-blue-900">
+                                        Urutan Tampilan Guru
+                                      </h4>
+                                      <p className="mt-1 text-[11px] leading-5 text-blue-700">
+                                        Ini adalah susunan yang akan terlihat di tabel guru. Bulan dan minggu tampil sebagai
+                                        header bertingkat, bukan kolom teknis terpisah.
+                                      </p>
+                                    </div>
+                                    <select
+                                      value=""
+                                      onChange={(event) => {
+                                        const nextMonth = event.target.value;
+                                        if (!nextMonth) return;
+                                        handleAddMonthWeekGroup(sectionIndex, nextMonth, 4);
+                                        event.currentTarget.value = '';
+                                      }}
+                                      className="rounded-lg border border-blue-200 bg-white px-3 py-2 text-xs font-semibold text-blue-700 focus:border-blue-500 focus:outline-none disabled:opacity-50"
+                                      disabled={availableMonths.length === 0}
+                                    >
+                                      <option value="">+ Tambah Bulan & Minggu</option>
+                                      {availableMonths.map((option) => (
+                                        <option key={`month-add-${section.key}-${option.value}`} value={option.value}>
+                                          {option.label}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                  <div className="flex flex-wrap gap-2">
+                                    {headerGroups.map((group, groupIndex) => {
+                                      const monthWeek = parseMonthWeekSchemaColumn(group.columns[0]?.key);
+                                      if (group.source === 'month-week' && monthWeek) {
+                                        return (
+                                          <div
+                                            key={`visual-order-${section.key}-${group.key}`}
+                                            className="min-w-[190px] rounded-lg border border-blue-200 bg-white p-3"
+                                          >
+                                            <div className="flex items-start justify-between gap-2">
+                                              <div>
+                                                <div className="text-sm font-semibold text-blue-950">{group.label}</div>
+                                                <div className="mt-1 text-[11px] text-blue-700">Bulan dengan subkolom minggu</div>
+                                              </div>
+                                              <button
+                                                type="button"
+                                                onClick={() => handleRemoveMonthWeekGroup(sectionIndex, monthWeek.monthKey)}
+                                                title="Hapus bulan"
+                                                aria-label="Hapus bulan"
+                                                className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-red-200 bg-red-50 text-red-600 hover:bg-red-100"
+                                              >
+                                                <Trash2 size={12} />
+                                              </button>
+                                            </div>
+                                            <label className="mt-3 block text-[11px] font-semibold uppercase tracking-wide text-blue-700">
+                                              Jumlah Minggu
+                                            </label>
+                                            <select
+                                              value={group.columns.length}
+                                              onChange={(event) =>
+                                                handleSetMonthWeekGroupCount(
+                                                  sectionIndex,
+                                                  monthWeek.monthKey,
+                                                  Number(event.target.value || group.columns.length),
+                                                )
+                                              }
+                                              className="mt-1 w-full rounded-lg border border-blue-200 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                                            >
+                                              {[1, 2, 3, 4, 5, 6].map((weekCount) => (
+                                                <option key={`week-count-${section.key}-${monthWeek.monthKey}-${weekCount}`} value={weekCount}>
+                                                  {weekCount} minggu
+                                                </option>
+                                              ))}
+                                            </select>
+                                          </div>
+                                        );
+                                      }
+                                      return (
+                                        <div
+                                          key={`visual-order-${section.key}-${group.key}-${groupIndex}`}
+                                          className="min-w-[170px] rounded-lg border border-gray-200 bg-white p-3"
+                                        >
+                                          <div className="text-sm font-semibold text-gray-900">{group.label}</div>
+                                          <div className="mt-1 text-[11px] leading-5 text-gray-500">
+                                            {group.source === 'header-group'
+                                              ? `Header gabungan untuk ${group.columns.length} kolom`
+                                              : 'Kolom biasa'}
+                                          </div>
+                                          {group.columns.length > 1 ? (
+                                            <div className="mt-2 text-[11px] leading-5 text-gray-600">
+                                              {group.columns.map((column) => column.label).join(', ')}
+                                            </div>
+                                          ) : null}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              );
+                            })()}
+
 	                          <div className="mt-4 overflow-x-auto rounded-xl border border-gray-200 bg-white">
 	                            <table className="w-full min-w-[960px] text-left text-sm">
 	                              <thead className="bg-gray-50 text-xs uppercase tracking-wide text-gray-500">
@@ -3037,6 +3263,9 @@ export default function TeachingResourceProgramManagementPage() {
 	                                  return (
 	                                    <tr key={`ready-column-${section.key}-${column.key}-${columnIndex}`} className="border-t border-gray-100 align-top">
 	                                      <td className="px-3 py-3">
+                                          <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                                            Nama kolom
+                                          </label>
 	                                        <input
 	                                          type="text"
 	                                          value={column.label}
@@ -3045,60 +3274,75 @@ export default function TeachingResourceProgramManagementPage() {
 	                                          placeholder={`Kolom ${columnIndex + 1}`}
 	                                        />
 	                                        <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-2">
-	                                          <input
-	                                            type="text"
-	                                            value={column.fieldIdentity || ''}
-	                                            onChange={(event) =>
-	                                              handleColumnChange(
-	                                                sectionIndex,
-	                                                columnIndex,
-	                                                'fieldIdentity',
-	                                                normalizeSchemaKey(event.target.value, ''),
-	                                              )
-	                                            }
-	                                            className="w-full rounded-lg border border-gray-200 px-3 py-1.5 text-xs focus:border-blue-500 focus:outline-none"
-	                                            placeholder="identity kolom"
-	                                          />
-	                                          <select
-	                                            value={column.dataType || 'TEXT'}
-	                                            onChange={(event) =>
-	                                              handleColumnChange(
-	                                                sectionIndex,
-	                                                columnIndex,
-	                                                'dataType',
-	                                                event.target.value as TeachingResourceColumnDataType,
-	                                              )
-	                                            }
-	                                            className="w-full rounded-lg border border-gray-200 px-3 py-1.5 text-xs focus:border-blue-500 focus:outline-none"
-	                                          >
-	                                            {COLUMN_DATA_TYPE_OPTIONS.filter((option) =>
-	                                              ['TEXT', 'TEXTAREA', 'NUMBER', 'BOOLEAN', 'SELECT', 'SEMESTER', 'MONTH', 'WEEK', 'WEEK_GRID'].includes(
-	                                                option.value,
-	                                              ),
-	                                            ).map((option) => (
-	                                              <option key={`ready-${section.key}-${column.key}-${option.value}`} value={option.value}>
-	                                                {option.label}
-	                                              </option>
-	                                            ))}
-	                                          </select>
+                                            <div>
+                                              <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                                                Kode referensi
+                                              </label>
+	                                            <input
+	                                              type="text"
+	                                              value={column.fieldIdentity || ''}
+	                                              onChange={(event) =>
+	                                                handleColumnChange(
+	                                                  sectionIndex,
+	                                                  columnIndex,
+	                                                  'fieldIdentity',
+	                                                  normalizeSchemaKey(event.target.value, ''),
+	                                                )
+	                                              }
+	                                              className="w-full rounded-lg border border-gray-200 px-3 py-1.5 text-xs focus:border-blue-500 focus:outline-none"
+	                                              placeholder="kode otomatis"
+	                                            />
+                                            </div>
+                                            <div>
+                                              <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                                                Tipe isi
+                                              </label>
+	                                            <select
+	                                              value={column.dataType || 'TEXT'}
+	                                              onChange={(event) =>
+	                                                handleColumnChange(
+	                                                  sectionIndex,
+	                                                  columnIndex,
+	                                                  'dataType',
+	                                                  event.target.value as TeachingResourceColumnDataType,
+	                                                )
+	                                              }
+	                                              className="w-full rounded-lg border border-gray-200 px-3 py-1.5 text-xs focus:border-blue-500 focus:outline-none"
+	                                            >
+	                                              {COLUMN_DATA_TYPE_OPTIONS.filter((option) =>
+	                                                ['TEXT', 'TEXTAREA', 'NUMBER', 'BOOLEAN', 'SELECT', 'SEMESTER', 'MONTH', 'WEEK', 'WEEK_GRID'].includes(
+	                                                  option.value,
+	                                                ),
+	                                              ).map((option) => (
+	                                                <option key={`ready-${section.key}-${column.key}-${option.value}`} value={option.value}>
+	                                                  {option.label}
+	                                                </option>
+	                                              ))}
+	                                            </select>
+                                            </div>
 	                                        </div>
 	                                        <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-2">
-	                                          <input
-	                                            type="text"
-	                                            value={column.headerGroupLabel || ''}
-	                                            onChange={(event) => {
-	                                              const nextLabel = event.target.value;
-	                                              handleColumnChange(sectionIndex, columnIndex, 'headerGroupLabel', nextLabel || undefined);
-	                                              handleColumnChange(
-	                                                sectionIndex,
-	                                                columnIndex,
-	                                                'headerGroupKey',
-	                                                nextLabel ? normalizeSchemaKey(nextLabel, '') : undefined,
-	                                              );
-	                                            }}
-	                                            className="w-full rounded-lg border border-gray-200 px-3 py-1.5 text-xs focus:border-blue-500 focus:outline-none"
-	                                            placeholder="Header induk (opsional)"
-	                                          />
+                                            <div>
+                                              <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                                                Header gabungan
+                                              </label>
+	                                            <input
+	                                              type="text"
+	                                              value={column.headerGroupLabel || ''}
+	                                              onChange={(event) => {
+	                                                const nextLabel = event.target.value;
+	                                                handleColumnChange(sectionIndex, columnIndex, 'headerGroupLabel', nextLabel || undefined);
+	                                                handleColumnChange(
+	                                                  sectionIndex,
+	                                                  columnIndex,
+	                                                  'headerGroupKey',
+	                                                  nextLabel ? normalizeSchemaKey(nextLabel, '') : undefined,
+	                                                );
+	                                              }}
+	                                              className="w-full rounded-lg border border-gray-200 px-3 py-1.5 text-xs focus:border-blue-500 focus:outline-none"
+	                                              placeholder="Kosongkan jika tidak ada"
+	                                            />
+                                            </div>
 	                                          {column.dataType === 'WEEK_GRID' ? (
 	                                            <div className="flex gap-2">
 	                                              <input
