@@ -2613,6 +2613,13 @@ function readReviewPackageMeta(content: Prisma.JsonValue | null | undefined): Re
   return { ...(raw as Record<string, unknown>) };
 }
 
+function readTeachingResourceReviewFeedback(content: Prisma.JsonValue | null | undefined): Record<string, unknown> {
+  const payload = readEntryContentObject(content);
+  const raw = payload.reviewFeedback;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  return { ...(raw as Record<string, unknown>) };
+}
+
 function writeReviewPackageMeta(content: Prisma.JsonValue | null | undefined, meta: Record<string, unknown>) {
   const payload = readEntryContentObject(content);
   return toJsonValue({
@@ -2621,6 +2628,35 @@ function writeReviewPackageMeta(content: Prisma.JsonValue | null | undefined, me
       ...readReviewPackageMeta(content),
       ...meta,
     },
+  });
+}
+
+function writeTeachingResourceReviewContent(
+  content: Prisma.JsonValue | null | undefined,
+  updates: {
+    packageMeta?: Record<string, unknown>;
+    reviewFeedback?: Record<string, unknown>;
+  },
+) {
+  const payload = readEntryContentObject(content);
+  return toJsonValue({
+    ...payload,
+    ...(updates.packageMeta
+      ? {
+          reviewPackage: {
+            ...readReviewPackageMeta(content),
+            ...updates.packageMeta,
+          },
+        }
+      : {}),
+    ...(updates.reviewFeedback
+      ? {
+          reviewFeedback: {
+            ...readTeachingResourceReviewFeedback(content),
+            ...updates.reviewFeedback,
+          },
+        }
+      : {}),
   });
 }
 
@@ -3796,6 +3832,16 @@ type TeachingResourcePackageEntryRow = {
   teacher?: { id: number; name: string; username: string | null } | null;
 };
 
+function parseReviewPackageEntryIds(raw: unknown) {
+  const values = Array.isArray(raw)
+    ? raw
+    : String(raw || '')
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean);
+  return Array.from(new Set(values.map((item) => Number(item || 0)).filter((id) => Number.isFinite(id) && id > 0)));
+}
+
 function serializeTeachingResourcePackages(
   rows: TeachingResourcePackageEntryRow[],
   programs: TeachingResourceProgramPayload[],
@@ -4016,6 +4062,192 @@ export const getTeachingResourceReviewPackages = asyncHandler(async (req: Reques
         packages,
       },
       'Paket pengajuan review perangkat ajar berhasil dimuat.',
+    ),
+  );
+});
+
+function serializeTeachingResourceReviewFeedback(content: Prisma.JsonValue | null | undefined) {
+  const feedback = readTeachingResourceReviewFeedback(content);
+  const reviewerRaw = feedback.reviewer;
+  const reviewer =
+    reviewerRaw && typeof reviewerRaw === 'object' && !Array.isArray(reviewerRaw)
+      ? {
+          id: Number((reviewerRaw as Record<string, unknown>).id || 0) || null,
+          name: String((reviewerRaw as Record<string, unknown>).name || '').trim(),
+          role: String((reviewerRaw as Record<string, unknown>).role || '').trim() || null,
+        }
+      : null;
+
+  return {
+    documentComment: String(feedback.documentComment || '').trim() || null,
+    reviewedAt: typeof feedback.reviewedAt === 'string' ? feedback.reviewedAt : null,
+    reviewer,
+  };
+}
+
+function serializeTeachingResourceReviewPackageDetailEntries(
+  rows: TeachingResourcePackageEntryRow[],
+  programs: TeachingResourceProgramPayload[],
+) {
+  const programByCode = new Map(programs.map((program) => [normalizeProgramCode(program.code), program]));
+  const latestByProgram = new Map<string, TeachingResourcePackageEntryRow>();
+  rows.forEach((entry) => {
+    const code = normalizeProgramCode(entry.programCode);
+    const current = latestByProgram.get(code);
+    if (!current || Number(entry.updatedAt) > Number(current.updatedAt)) {
+      latestByProgram.set(code, entry);
+    }
+  });
+
+  return Array.from(latestByProgram.values())
+    .sort((a, b) => {
+      const programA = programByCode.get(normalizeProgramCode(a.programCode));
+      const programB = programByCode.get(normalizeProgramCode(b.programCode));
+      return Number(programA?.order || 0) - Number(programB?.order || 0);
+    })
+    .map((entry) => {
+      const program = programByCode.get(normalizeProgramCode(entry.programCode));
+      return {
+        id: entry.id,
+        programCode: normalizeProgramCode(entry.programCode),
+        programLabel: program?.label || entry.programCode,
+        programShortLabel: program?.shortLabel || program?.label || entry.programCode,
+        title: entry.title,
+        summary: entry.summary,
+        content: entry.content,
+        status: entry.status,
+        reviewNote: entry.reviewNote,
+        reviewFeedback: serializeTeachingResourceReviewFeedback(entry.content),
+        updatedAt: entry.updatedAt,
+      };
+    });
+}
+
+async function assertCanAccessTeachingResourceReviewPackage(params: {
+  user: { id: number; role: string };
+  rows: TeachingResourcePackageEntryRow[];
+  view: string;
+}) {
+  const roleUpper = String(params.user.role).toUpperCase();
+  const isOwner = params.rows.every((entry) => Number(entry.teacherId) === Number(params.user.id));
+  const canCurriculumReview = await isCurriculumReviewer({ id: Number(params.user.id), role: params.user.role });
+  const canPrincipalReview = roleUpper === 'PRINCIPAL' || roleUpper === 'ADMIN';
+
+  if (params.view === 'curriculum' && !canCurriculumReview) {
+    throw new ApiError(403, 'Akses detail review Kurikulum ditolak.');
+  }
+  if (params.view === 'principal' && !canPrincipalReview) {
+    throw new ApiError(403, 'Akses detail persetujuan Kepala Sekolah ditolak.');
+  }
+  if (!isOwner && !canCurriculumReview && !canPrincipalReview) {
+    throw new ApiError(403, 'Akses detail paket perangkat ajar ditolak.');
+  }
+
+  return { canCurriculumReview, canPrincipalReview, isOwner };
+}
+
+export const getTeachingResourceReviewPackageDetail = asyncHandler(async (req: Request, res: Response) => {
+  const user = (req as Request & { user?: { id?: number; role?: string } }).user;
+  if (!user?.id || !user?.role) throw new ApiError(401, 'Tidak memiliki otorisasi.');
+
+  const entryIds = parseReviewPackageEntryIds(req.query?.entryIds);
+  const view = String(req.query?.view || 'mine').trim().toLowerCase();
+  const rows = await loadPackageRowsFromEntryIds(entryIds);
+  await assertCanAccessTeachingResourceReviewPackage({
+    user: { id: Number(user.id), role: String(user.role) },
+    rows,
+    view,
+  });
+
+  const programs = await loadPrograms(Number(rows[0]?.academicYearId || 0));
+  const [pkg] = serializeTeachingResourcePackages(rows, programs);
+  if (!pkg) throw new ApiError(404, 'Paket perangkat ajar tidak ditemukan.');
+
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        package: pkg,
+        entries: serializeTeachingResourceReviewPackageDetailEntries(rows, programs),
+      },
+      'Detail paket perangkat ajar berhasil dimuat.',
+    ),
+  );
+});
+
+export const saveTeachingResourceReviewPackageFeedback = asyncHandler(async (req: Request, res: Response) => {
+  const user = (req as Request & { user?: { id?: number; role?: string } }).user;
+  if (!user?.id || !user?.role) throw new ApiError(401, 'Tidak memiliki otorisasi.');
+  if (!(await isCurriculumReviewer({ id: Number(user.id), role: String(user.role) }))) {
+    throw new ApiError(403, 'Hanya Kurikulum yang dapat menyimpan komentar review perangkat ajar.');
+  }
+
+  const rows = await loadPackageRowsFromEntryIds(parseReviewPackageEntryIds(req.body?.entryIds));
+  const hasPackageComment = Object.prototype.hasOwnProperty.call(req.body || {}, 'packageComment');
+  const packageComment = String(req.body?.packageComment || '').trim();
+  const rawDocumentComments: unknown[] = Array.isArray(req.body?.documentComments) ? req.body.documentComments : [];
+  const commentByEntryId = new Map<number, string>();
+  rawDocumentComments.forEach((item) => {
+    if (!item || typeof item !== 'object') return;
+    const entryId = Number((item as Record<string, unknown>).entryId || 0);
+    if (!Number.isFinite(entryId) || entryId <= 0) return;
+    commentByEntryId.set(entryId, String((item as Record<string, unknown>).comment || '').trim());
+  });
+
+  if (!hasPackageComment && commentByEntryId.size === 0) {
+    throw new ApiError(400, 'Komentar paket atau komentar dokumen wajib dikirim.');
+  }
+
+  const actor = await prisma.user.findUnique({
+    where: { id: Number(user.id) },
+    select: { id: true, name: true, role: true },
+  });
+  const now = new Date();
+  const reviewer = {
+    id: Number(actor?.id || user.id),
+    name: String(actor?.name || 'Kurikulum').trim(),
+    role: String(actor?.role || user.role).trim(),
+  };
+
+  await prisma.$transaction(
+    rows.map((entry) => {
+      const hasDocumentComment = commentByEntryId.has(Number(entry.id));
+      const documentComment = hasDocumentComment ? String(commentByEntryId.get(Number(entry.id)) || '').trim() : '';
+      const content = writeTeachingResourceReviewContent(entry.content, {
+        packageMeta: hasPackageComment
+          ? {
+              reviewNote: packageComment || null,
+              reviewFeedbackUpdatedAt: now.toISOString(),
+              reviewFeedbackBy: reviewer.id,
+            }
+          : undefined,
+        reviewFeedback: hasDocumentComment
+          ? {
+              documentComment: documentComment || null,
+              reviewedAt: now.toISOString(),
+              reviewer,
+            }
+          : undefined,
+      });
+      const data: Prisma.TeachingResourceEntryUpdateInput = { content };
+      if (hasDocumentComment) data.reviewNote = documentComment || packageComment || null;
+      else if (hasPackageComment) data.reviewNote = packageComment || null;
+      return prisma.teachingResourceEntry.update({ where: { id: entry.id }, data });
+    }),
+  );
+
+  const updatedRows = await loadPackageRowsFromEntryIds(rows.map((entry) => entry.id));
+  const programs = await loadPrograms(Number(rows[0]?.academicYearId || 0));
+  const [pkg] = serializeTeachingResourcePackages(updatedRows, programs);
+
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        package: pkg,
+        entries: serializeTeachingResourceReviewPackageDetailEntries(updatedRows, programs),
+      },
+      'Komentar review perangkat ajar berhasil disimpan.',
     ),
   );
 });

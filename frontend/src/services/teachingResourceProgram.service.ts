@@ -316,6 +316,35 @@ export interface TeachingResourceReviewPackage {
   updatedAt?: string | null;
 }
 
+export interface TeachingResourceReviewFeedback {
+  documentComment?: string | null;
+  reviewedAt?: string | null;
+  reviewer?: {
+    id?: number | null;
+    name?: string | null;
+    role?: string | null;
+  } | null;
+}
+
+export interface TeachingResourceReviewPackageDetailEntry {
+  id: number;
+  programCode: string;
+  programLabel: string;
+  programShortLabel?: string | null;
+  title: string;
+  summary?: string | null;
+  content: TeachingResourceEntry['content'];
+  status: TeachingResourceEntryStatus;
+  reviewNote?: string | null;
+  reviewFeedback?: TeachingResourceReviewFeedback | null;
+  updatedAt?: string | null;
+}
+
+export interface TeachingResourceReviewPackageDetail {
+  package: TeachingResourceReviewPackage;
+  entries: TeachingResourceReviewPackageDetailEntry[];
+}
+
 export interface TeachingResourcePackageSignatureQr {
   approved: boolean;
   teacherUrl?: string | null;
@@ -569,6 +598,36 @@ export const teachingResourceProgramService = {
         canPrincipalReview: boolean;
         packages: TeachingResourceReviewPackage[];
       };
+    };
+  },
+  getReviewPackageDetail: async (params: {
+    entryIds: number[];
+    view?: 'mine' | 'curriculum' | 'principal';
+  }) => {
+    const response = await api.get('/teaching-resources/review-packages/detail', {
+      params: {
+        entryIds: params.entryIds.join(','),
+        view: params.view,
+      },
+    });
+    return response.data as {
+      statusCode: number;
+      success: boolean;
+      message: string;
+      data: TeachingResourceReviewPackageDetail;
+    };
+  },
+  saveReviewPackageFeedback: async (payload: {
+    entryIds: number[];
+    packageComment?: string;
+    documentComments?: Array<{ entryId: number; comment: string }>;
+  }) => {
+    const response = await api.post('/teaching-resources/review-packages/feedback', payload);
+    return response.data as {
+      statusCode: number;
+      success: boolean;
+      message: string;
+      data: TeachingResourceReviewPackageDetail;
     };
   },
   submitReviewPackage: async (payload: { entryIds: number[] }) => {

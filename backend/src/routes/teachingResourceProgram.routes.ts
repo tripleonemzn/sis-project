@@ -11,10 +11,12 @@ import {
   getTeachingResourceReferenceEntries,
   getTeachingResourceEntriesSummary,
   getTeachingResourcePackageSignatureQr,
+  getTeachingResourceReviewPackageDetail,
   getTeachingResourceReviewPackages,
   reviewTeachingResourceEntry,
   reviewTeachingResourcePackageByCurriculum,
   reviewTeachingResourcePackageByPrincipal,
+  saveTeachingResourceReviewPackageFeedback,
   submitTeachingResourcePackageToPrincipal,
   submitTeachingResourceEntry,
   submitTeachingResourceReviewPackage,
@@ -35,6 +37,8 @@ router.get('/entries', roleMiddleware(['TEACHER', 'ADMIN', 'PRINCIPAL']), getTea
 router.get('/entries/references', roleMiddleware(['TEACHER', 'ADMIN', 'PRINCIPAL']), getTeachingResourceReferenceEntries);
 router.get('/entries-summary', roleMiddleware(['TEACHER', 'ADMIN', 'PRINCIPAL']), getTeachingResourceEntriesSummary);
 router.get('/review-packages', roleMiddleware(['TEACHER', 'ADMIN', 'PRINCIPAL']), getTeachingResourceReviewPackages);
+router.get('/review-packages/detail', roleMiddleware(['TEACHER', 'ADMIN', 'PRINCIPAL']), getTeachingResourceReviewPackageDetail);
+router.post('/review-packages/feedback', roleMiddleware(['TEACHER', 'ADMIN']), saveTeachingResourceReviewPackageFeedback);
 router.post('/review-packages/submit', roleMiddleware(['TEACHER', 'ADMIN', 'PRINCIPAL']), submitTeachingResourceReviewPackage);
 router.post('/review-packages/review-curriculum', roleMiddleware(['TEACHER', 'ADMIN']), reviewTeachingResourcePackageByCurriculum);
 router.post('/review-packages/submit-principal', roleMiddleware(['TEACHER', 'ADMIN']), submitTeachingResourcePackageToPrincipal);
