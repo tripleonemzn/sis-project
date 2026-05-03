@@ -5,12 +5,12 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-05-03 15:31 WIB
-- Current status: hotfix label opsi referensi grup perangkat ajar sudah live. Opsi dropdown agregat sekarang menampilkan rentang subbaris seperti `1.1 ... s.d. 1.4 ... (4 baris)` agar guru paham bahwa satu pilihan membawa seluruh baris turunan yang tergabung.
+- Last updated: 2026-05-03 15:53 WIB
+- Current status: hotfix perilaku referensi grup perangkat ajar sudah live. Saat guru memilih dropdown induk TP/kolom referensi yang berisi beberapa subbaris, subbaris di bawahnya sekarang tampil otomatis sebagai hasil terkunci dari grup tersebut, bukan dropdown kosong yang harus dipilih satu per satu.
 - Objective/task aktif:
   - Melanjutkan pengembangan perangkat ajar dinamis setelah polish tab remedial dan editor tabel guru.
 - Batch terakhir selesai:
-  - `Perangkat ajar hotfix - grouped reference option labels`
+  - `Perangkat ajar hotfix - grouped reference subrows`
 - Progress fitur remedial keseluruhan:
   - `100%`
 - Progress presensi terpadu saat ini:
@@ -26,12 +26,12 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
-  - Commit: `62b193f`
-  - Title: `fix(teaching-resources): clarify grouped reference options`
+  - Commit: `9fcfae5`
+  - Title: `fix(teaching-resources): render grouped reference subrows`
   - Summary:
-    - label opsi referensi agregat tidak lagi diringkas menjadi baris pertama saja
-    - dropdown Prota/KKTP/dokumen turunannya kini memperlihatkan rentang subbaris yang ikut terbawa, misalnya TP `1.1` sampai `1.4`
-    - perilaku selection tetap memakai snapshot grup yang sama, sehingga kolom turunan tetap mengikuti pilihan induk
+    - subbaris dari pilihan referensi agregat kini dirender sebagai hasil terkunci dari pilihan induk
+    - setelah memilih opsi seperti TP `1.1 s.d. 1.4`, baris visual di bawahnya menampilkan `1.2`, `1.3`, `1.4` otomatis tanpa dropdown kosong
+    - fallback label referensi lama juga memakai format grup agar tidak kembali terlihat sebagai satu baris pertama saja
     - perubahan frontend-only, tidak mengubah backend atau data tersimpan
 - Area/file disentuh:
   - `frontend/src/pages/teacher/learning-resources/LearningResourceGenerator.tsx`
@@ -46,7 +46,7 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - Backend tidak diubah pada hotfix ini
   - Tidak ada perubahan mobile pada batch ini
 - Remaining work:
-  - QA manual pada akun `KGB2G071`: buka Program Tahunan/KKTP dan pastikan dropdown TP menampilkan opsi grup dengan rentang subbaris, lalu pilih satu opsi untuk memastikan baris turunannya ikut terisi.
+  - QA manual pada akun `KGB2G071`: buka Program Tahunan/KKTP, pilih ulang opsi TP grup pada baris induk, dan pastikan subbaris turunannya otomatis tampil tanpa dropdown kosong.
   - Jika user ingin output print KKTP/Matrik Sebaran dipoles lebih mirip contoh Excel sampai detail tipografi/merge, lakukan batch terpisah setelah menu dasar dan korelasi referensi diuji.
 - Residual risk:
   - Perubahan ini frontend-only dan tidak memigrasi isi dokumen existing. Baris lama yang sudah sempat tersimpan saat UI salah mungkin tetap perlu pilih ulang referensi utama sekali agar snapshot korelasinya tersimpan benar.
