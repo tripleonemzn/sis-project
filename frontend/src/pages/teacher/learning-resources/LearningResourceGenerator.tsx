@@ -4438,6 +4438,19 @@ export const LearningResourceGenerator = ({
       );
     }
 
+    if (isSecondaryReferenceColumn(section, column)) {
+      return (
+        <div
+          className={`min-h-[34px] whitespace-pre-wrap rounded-md border border-slate-200 bg-slate-50 px-2 py-2 text-xs leading-relaxed text-slate-800 ${
+            centerAligned ? 'text-center' : ''
+          }`}
+          title="Nilai mengikuti referensi induk pada grup ini."
+        >
+          {value || '-'}
+        </div>
+      );
+    }
+
     if (readOnly && !isWeekColumnKey(columnKey) && dataType !== 'BOOLEAN' && dataType !== 'WEEK_GRID') {
       return (
         <div
@@ -5056,6 +5069,19 @@ export const LearningResourceGenerator = ({
           ) : referenceLimitHelperText ? (
             <p className="text-[11px] text-gray-500">{referenceLimitHelperText}</p>
           ) : null}
+        </div>
+      );
+    }
+
+    if (isSecondaryReferenceColumn(section, column)) {
+      return (
+        <div
+          className={`min-h-[34px] whitespace-pre-wrap rounded-md border border-gray-200 bg-gray-50 px-2 py-2 text-xs leading-relaxed text-gray-700 ${
+            isCenterAlignedTableColumn(column) ? 'text-center' : ''
+          }`}
+          title="Nilai mengikuti referensi induk pada grup ini."
+        >
+          {value || '-'}
         </div>
       );
     }
