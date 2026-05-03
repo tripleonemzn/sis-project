@@ -26,8 +26,8 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
-  - Commit: pending commit batch ini
-  - Title: pending
+  - Commit: `1c37b1f`
+  - Title: `fix(teaching-resources): align wakakur display mode`
   - Summary:
     - schema `TeachingResourceProgramSchema` ditambah `displayMode` agar Wakakur bisa menentukan apakah guru melihat tabel sebagai satu halaman atau tab per tabel
     - preview Wakakur sekarang punya dropdown `Tampilan Guru` dan indikatornya mengikuti mode yang dipilih
@@ -41,8 +41,8 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 - Verifikasi batch ini:
   - `git diff --check`
   - `cd frontend && npm run build`
-  - `cd frontend && npm run deploy` (akan dijalankan sebelum final)
-  - `curl -I https://siskgb2.id/` (akan dijalankan sebelum final)
+  - `cd frontend && npm run deploy`
+  - `curl -I https://siskgb2.id/`
 - Publish/live status:
   - Web sudah deploy live
   - Backend tidak diubah pada batch ini
