@@ -4367,6 +4367,23 @@ export const LearningResourceGenerator = ({
       const selectionKey = buildReferenceSelectionLineKey(columnKey, lineIndex);
       const referenceSelection =
         row?.referenceSelections?.[selectionKey] || (lineIndex === 0 ? row?.referenceSelections?.[columnKey] : undefined);
+      const aggregateReferenceSelection = row?.referenceSelections?.[columnKey];
+      const aggregateReferenceLines = splitCellLines(aggregateReferenceSelection?.value)
+        .map((line) => line.trim())
+        .filter(isMeaningfulReferenceValue);
+      const aggregateLineValue = aggregateReferenceLines[lineIndex] || value;
+      if (lineIndex > 0 && aggregateReferenceLines.length > lineIndex && aggregateLineValue) {
+        return (
+          <div
+            className={`min-h-[42px] whitespace-pre-wrap rounded-md border border-slate-200 bg-slate-50 px-2 py-2 text-xs leading-relaxed text-slate-800 ${
+              centerAligned ? 'text-center' : 'text-left'
+            }`}
+            title="Baris ini mengikuti pilihan referensi induk pada baris pertama grup."
+          >
+            {aggregateLineValue}
+          </div>
+        );
+      }
       const referenceOptions =
         referenceOptionsByColumnKey.get(`${String(section.schemaKey || '').trim()}::${columnKey}`) || [];
       const sourceProgramCode = normalizeTeachingResourceProgramCode(column.binding?.sourceProgramCode);
@@ -4390,7 +4407,7 @@ export const LearningResourceGenerator = ({
           ? {
               selectValue: referenceSelectValue,
               value: String(referenceSelection?.value || value || '').trim(),
-              label: formatReferenceOptionLabel(referenceSelection?.value || value || referenceSelection?.label),
+              label: formatGroupedReferenceOptionLabel(referenceSelection?.value || value, referenceSelection?.label),
               sourceProgramCode: sourceProgramCode || String(referenceSelection?.sourceProgramCode || '').trim(),
               sourceEntryId: Number(referenceSelection?.sourceEntryId || 0),
               sourceEntryTitle: String(referenceSelection?.sourceEntryTitle || '').trim() || undefined,
@@ -5016,7 +5033,7 @@ export const LearningResourceGenerator = ({
         ? {
             selectValue: referenceSelectValue,
             value: String(referenceSelection?.value || value || '').trim(),
-            label: formatReferenceOptionLabel(referenceSelection?.value || value || referenceSelection?.label),
+            label: formatGroupedReferenceOptionLabel(referenceSelection?.value || value, referenceSelection?.label),
             sourceProgramCode: sourceProgramCode || String(referenceSelection?.sourceProgramCode || '').trim(),
             sourceEntryId: Number(referenceSelection?.sourceEntryId || 0),
             sourceEntryTitle: String(referenceSelection?.sourceEntryTitle || '').trim() || undefined,
