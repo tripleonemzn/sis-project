@@ -6732,14 +6732,17 @@ export const LearningResourceGenerator = ({
   };
 
   return (
-    <div className="space-y-4">
+    <div className="w-full space-y-6 pb-20">
+      {!isPageEditor ? (
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">{effectiveTitle}</h1>
+          <p className="mt-1 text-sm text-gray-600">{effectiveDescription}</p>
+        </div>
+      ) : null}
+
       {!isPageEditor ? (
         <div className="rounded-xl border border-gray-200 bg-white p-4">
-          <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
-            <div>
-              <h2 className="text-lg font-semibold text-gray-900">{effectiveTitle}</h2>
-              <p className="text-sm text-gray-500">{effectiveDescription}</p>
-            </div>
+          <div className="flex justify-end">
             <button
               type="button"
               onClick={openCreate}

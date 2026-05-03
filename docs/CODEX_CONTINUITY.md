@@ -5,12 +5,12 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-05-03 21:14 WIB
-- Current status: workflow baru `Pengajuan Review Perangkat Ajar` sudah live dan spacing/layout halaman pengajuan review sudah distandarkan mengikuti padding global `DashboardLayout` serta ritme card/table seperti halaman operasional standar.
+- Last updated: 2026-05-04 04:41 WIB
+- Current status: halaman perangkat ajar guru dari CP sampai Matrik Sebaran sudah mengikuti pola header seperti `Pengajuan Review`: judul/deskripsi halaman berada di luar card, sementara card hanya berisi aksi, filter, statistik, dan tabel dokumen.
 - Objective/task aktif:
   - Menjadikan review perangkat ajar sebagai alur paket: Guru kirim paket mapel lengkap ke Kurikulum, Kurikulum setujui/kembalikan, Kurikulum ajukan ke Kepala Sekolah, Kepala Sekolah setujui final, lalu print dokumen menampilkan QR tanda tangan guru dan kepala sekolah.
 - Batch terakhir selesai:
-  - `Teaching resource review submission UI spacing polish`
+  - `Teaching resource program page header layout alignment`
 - Progress fitur remedial keseluruhan:
   - `100%`
 - Progress presensi terpadu saat ini:
@@ -26,18 +26,18 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
-  - Commit: `022bf59`
-  - Title: `fix(teaching-resources): align review submission layout`
+  - Commit: `pending`
+  - Title: `fix(teaching-resources): align program page headers`
   - Summary:
-    - root page `Pengajuan Review Perangkat Ajar` tidak lagi memakai padding internal `p-6` agar tidak dobel dengan padding global layout
-    - card utama diberi padding internal standar dan tab `UnderlineTabBar` disejajarkan dengan konten card
-    - table section diberi wrapper border/radius agar jarak kanan-kiri dan ritme visual sama dengan halaman operasional lain
+    - generator halaman perangkat ajar guru sekarang memakai header halaman terpisah di luar card
+    - judul/deskripsi CP, ATP, Modul Ajar, Prota, Promes, Alokasi Waktu, KKTP, dan Matrik Sebaran tidak lagi berada di dalam card filter
+    - card pertama pada halaman perangkat ajar kini fokus untuk tombol `Tambah Dokumen`, filter, dan statistik agar ritmenya konsisten dengan `Pengajuan Review`
 - Area/file disentuh:
-  - `frontend/src/pages/teacher/learning-resources/LearningResourceReviewSubmissionPage.tsx`
+  - `frontend/src/pages/teacher/learning-resources/LearningResourceGenerator.tsx`
   - `docs/CODEX_CONTINUITY.md`
 - Verifikasi batch ini:
-  - `cd frontend && npm run build`
   - `git diff --check`
+  - `cd frontend && npm run build`
   - `cd frontend && npm run deploy`
   - `curl -I -s https://siskgb2.id/ | head -n 1` -> `HTTP/1.1 200 OK`
 - Publish/live status:
@@ -45,10 +45,10 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - Backend tidak berubah dan tidak direstart pada batch spacing UI ini
   - Tidak ada perubahan mobile pada batch ini
 - Remaining work:
-  - QA visual manual pada menu `PERANGKAT AJAR > Pengajuan Review` untuk memastikan jarak kiri-kanan card, tab, dan tabel sudah terasa sama dengan halaman standar di layar tester.
+  - QA visual manual pada menu `PERANGKAT AJAR > CP` sampai `Matrik Sebaran` untuk memastikan semua judul sudah terpisah dari card seperti contoh `Pengajuan Review`.
   - QA manual end-to-end workflow paket review tetap direkomendasikan: guru kirim paket lengkap, Kurikulum setujui/ajukan, Kepala Sekolah setujui final, lalu print dokumen dan scan QR.
 - Residual risk:
-  - Risiko rendah; perubahan hanya frontend layout halaman review submission, tidak menyentuh backend/API/data.
+  - Risiko rendah; perubahan hanya frontend layout generator halaman perangkat ajar, tidak menyentuh backend/API/data.
 
 ## Status Saat Ini
 
