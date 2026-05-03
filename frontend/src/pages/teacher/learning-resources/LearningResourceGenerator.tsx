@@ -1783,6 +1783,21 @@ const normalizeMonthWeekCellValue = (value: unknown): string => {
   return lines.join('\n');
 };
 
+const normalizeKktpCriteriaCellValue = (value: unknown): string => {
+  const lines = String(value ?? '')
+    .replace(/\r\n/g, '\n')
+    .split('\n')
+    .map((line) => (isTruthyMark(String(line || '')) ? MARK_VALUE : ''));
+  while (lines.length > 1 && !lines[lines.length - 1]) lines.pop();
+  return lines.join('\n');
+};
+
+const countTruthyCriteriaMarks = (value: unknown): number =>
+  String(value ?? '')
+    .replace(/\r\n/g, '\n')
+    .split('\n')
+    .filter((line) => isTruthyMark(String(line || ''))).length;
+
 const getMergedMonthWeekNote = (value: unknown): { note: string; lineIndex: number } | null => {
   const lines = splitEditableCellLines(value);
   const noteIndex = lines.findIndex((line) => {
@@ -1998,8 +2013,12 @@ const applyDerivedSheetSections = (
           values[columnKey] = normalizeMonthWeekCellValue(values[columnKey]);
           return;
         }
-        if (isWeekColumnKey(columnKey) || isKktpCriteriaColumnKey(columnKey)) {
+        if (isWeekColumnKey(columnKey)) {
           values[columnKey] = isTruthyMark(values[columnKey] || '') ? MARK_VALUE : '';
+          return;
+        }
+        if (isKktpCriteriaColumnKey(columnKey)) {
+          values[columnKey] = normalizeKktpCriteriaCellValue(values[columnKey]);
         }
       });
 
@@ -2018,8 +2037,8 @@ const applyDerivedSheetSections = (
     if (sectionKey === 'tabel_kktp') {
       hasKktp = true;
       section.rows.forEach((row) => {
-        if (isTruthyMark(row.values.kurang_memadai || '')) totalKurangMemadai += 1;
-        if (isTruthyMark(row.values.memadai || '')) totalMemadai += 1;
+        totalKurangMemadai += countTruthyCriteriaMarks(row.values.kurang_memadai);
+        totalMemadai += countTruthyCriteriaMarks(row.values.memadai);
       });
     }
   });
@@ -2420,6 +2439,19 @@ export const LearningResourceGenerator = ({
     activeProgramMeta?.shortLabel,
     programCode,
   ]);
+  const isActiveProgramKktp = useMemo(() => {
+    const token = `${programCode} ${activeProgramMeta?.code || ''} ${activeProgramMeta?.label || ''} ${
+      activeProgramMeta?.shortLabel || ''
+    } ${activeProgramMeta?.schema?.sourceSheet || ''} ${activeProgramMeta?.schema?.documentTitle || ''}`.toLowerCase();
+    return token.includes('kktp') || token.includes('kriteria ketercapaian');
+  }, [
+    activeProgramMeta?.code,
+    activeProgramMeta?.label,
+    activeProgramMeta?.schema?.documentTitle,
+    activeProgramMeta?.schema?.sourceSheet,
+    activeProgramMeta?.shortLabel,
+    programCode,
+  ]);
 
   const effectiveTitle = useMemo(() => {
     const fromConfig = String(activeProgramMeta?.label || '').trim();
@@ -2697,6 +2729,15 @@ export const LearningResourceGenerator = ({
       (column) => !isPromesMonthWeekHiddenColumn(column),
     );
   };
+  const applyDerivedTableColumnMetadata = (columns: EntrySectionColumnForm[]): EntrySectionColumnForm[] =>
+    columns.map((column) => {
+      if (!isKktpCriteriaColumnKey(column.key)) return column;
+      return {
+        ...column,
+        headerGroupKey: column.headerGroupKey || 'kriteria_penetapan_kktp',
+        headerGroupLabel: column.headerGroupLabel || 'Kriteria Penetapan KKTP',
+      };
+    });
   const referenceProjectionRequests = useMemo<TeachingResourceReferenceProjectionRequest[]>(() => {
     const requests: TeachingResourceReferenceProjectionRequest[] = [];
     activeProgramSchemaSections.forEach((section) => {
@@ -2984,10 +3025,10 @@ export const LearningResourceGenerator = ({
       ensureArray<EntrySectionColumnForm>(section.columns).forEach((column) => {
         if (!isDocumentReferencePickerColumn(column)) return;
         const requestKey = `${String(section.key || '').trim()}::${String(column.key || '').trim()}`;
+        const columnIdentityCandidates = getColumnIdentityCandidates(column);
         const shouldSplitLineOptions =
-          isActiveProgramMonthWeekPromes &&
-          sectionHasMonthWeekLayout &&
-          getColumnIdentityCandidates(column).includes('tujuan_pembelajaran');
+          columnIdentityCandidates.includes('tujuan_pembelajaran') &&
+          ((isActiveProgramMonthWeekPromes && sectionHasMonthWeekLayout) || isActiveProgramKktp);
         const projectedOptions = projectedOptionsByRequestKey.get(requestKey);
         if (projectedOptions) {
           const scopedOptions = projectedOptions.filter((option) =>
@@ -3024,6 +3065,7 @@ export const LearningResourceGenerator = ({
     activeProgramSchemaSections,
     activeAcademicYear?.semester,
     activeSemesterLabel,
+    isActiveProgramKktp,
     programMetaByCode,
     programCode,
     referenceEntriesQuery.data,
@@ -3706,9 +3748,11 @@ export const LearningResourceGenerator = ({
 
   const resolveSectionColumns = (section: EntrySectionForm): EntrySectionColumnForm[] => {
     const customColumns = sanitizeSectionColumns(section.columns);
-    if (customColumns.length > 0) return applyMonthWeekCalendarColumns(section, customColumns);
+    if (customColumns.length > 0) {
+      return applyDerivedTableColumnMetadata(applyMonthWeekCalendarColumns(section, customColumns));
+    }
     const schema = resolveSectionSchema(section);
-    return applyMonthWeekCalendarColumns(section, sanitizeSectionColumns(schema?.columns));
+    return applyDerivedTableColumnMetadata(applyMonthWeekCalendarColumns(section, sanitizeSectionColumns(schema?.columns)));
   };
 
   const getVisibleSectionColumns = (section: EntrySectionForm): EntrySectionColumnForm[] =>
@@ -4167,6 +4211,7 @@ export const LearningResourceGenerator = ({
     sectionId: string,
     rowId: string,
     columnKey: 'kurang_memadai' | 'memadai',
+    lineIndex = 0,
   ) => {
     const oppositeKey = columnKey === 'kurang_memadai' ? 'memadai' : 'kurang_memadai';
     setQuickEditSectionsWithDerived((prev) =>
@@ -4176,13 +4221,16 @@ export const LearningResourceGenerator = ({
           ...item,
           rows: item.rows.map((row) => {
             if (row.id !== rowId) return row;
-            const activeNow = isTruthyMark(String(row.values[columnKey] || ''));
+            const safeLineIndex = Math.max(0, Number(lineIndex) || 0);
+            const activeNow = isTruthyMark(splitEditableCellLines(row.values[columnKey])[safeLineIndex] || '');
             return {
               ...row,
               values: {
                 ...row.values,
-                [columnKey]: activeNow ? '' : MARK_VALUE,
-                [oppositeKey]: activeNow ? String(row.values[oppositeKey] || '') : '',
+                [columnKey]: setCellLineValue(row.values[columnKey], safeLineIndex, activeNow ? '' : MARK_VALUE),
+                [oppositeKey]: activeNow
+                  ? String(row.values[oppositeKey] || '')
+                  : setCellLineValue(row.values[oppositeKey], safeLineIndex, ''),
               },
             };
           }),
@@ -4525,7 +4573,7 @@ export const LearningResourceGenerator = ({
           type="button"
           disabled={readOnly || !row?.id}
           onClick={() =>
-            row?.id ? toggleQuickEditKktpCriteria(section.id, row.id, columnKey as 'kurang_memadai' | 'memadai') : null
+            row?.id ? toggleQuickEditKktpCriteria(section.id, row.id, columnKey as 'kurang_memadai' | 'memadai', lineIndex) : null
           }
           className={`inline-flex h-8 w-full items-center justify-center rounded-md border text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
             isChecked
@@ -5908,11 +5956,13 @@ export const LearningResourceGenerator = ({
             const cells = headers
               .map((header, headerIndex) => {
                 const lines = lineGroups[headerIndex] || [''];
-                if (lines.length <= 1 && lineIndex > 0) return '';
+                const shouldRenderPerVisualLine = isKktpCriteriaColumnKey(header.key) && maxLineCount > 1;
+                if (lines.length <= 1 && lineIndex > 0 && !shouldRenderPerVisualLine) return '';
                 const classAttribute = renderPrintClassAttribute(getPrintColumnClassName(header.column));
-                const rowSpanAttribute = lines.length <= 1 && maxLineCount > 1 ? ` rowspan="${maxLineCount}"` : '';
+                const rowSpanAttribute =
+                  !shouldRenderPerVisualLine && lines.length <= 1 && maxLineCount > 1 ? ` rowspan="${maxLineCount}"` : '';
                 const valignAttribute = rowSpanAttribute ? ' style="vertical-align: middle;"' : '';
-                const lineValue = lines[Math.min(lineIndex, lines.length - 1)];
+                const lineValue = shouldRenderPerVisualLine ? (lines[lineIndex] ?? '') : lines[Math.min(lineIndex, lines.length - 1)];
                 const content =
                   lines.length > 1 && lineIndex >= lines.length
                     ? ''
@@ -6593,6 +6643,7 @@ export const LearningResourceGenerator = ({
                                   {displayedQuickSections.map((quickSection) => {
                                     const sectionColumns = getVisibleSectionColumns(quickSection);
                                     const sectionRows = quickSection.rows;
+                                    const headerGroupLayout = buildHeaderGroupLayout(sectionColumns);
                                     return (
                                       <div key={`quick-section-table-${quickSection.id}`}>
                                         {!shouldUseQuickSectionTabs && displayedQuickSections.length > 1 ? (
@@ -6606,17 +6657,59 @@ export const LearningResourceGenerator = ({
                                           <div className="mt-3 rounded-lg border border-slate-300">
                                             <table className="w-full table-fixed border-collapse text-xs">
                                               <thead className="bg-slate-100">
-                                                <tr>
-                                                  {sectionColumns.map((column) => (
-                                                    <th
-                                                      key={`quick-head-${quickSection.id}-${column.key}`}
-                                                      style={getQuickColumnStyle(column, sectionColumns)}
-                                                      className="border border-slate-300 px-2 py-2 text-center text-[11px] font-semibold uppercase leading-snug text-slate-700"
-                                                    >
-                                                      {column.label}
-                                                    </th>
-                                                  ))}
-                                                </tr>
+                                                {headerGroupLayout ? (
+                                                  <>
+                                                    <tr>
+                                                      {headerGroupLayout.map((group) =>
+                                                        group.grouped ? (
+                                                          <th
+                                                            key={`quick-head-group-${quickSection.id}-${group.key}`}
+                                                            colSpan={group.columns.length}
+                                                            className="border border-slate-300 px-2 py-2 text-center text-[11px] font-semibold uppercase leading-snug text-slate-700"
+                                                          >
+                                                            {group.label}
+                                                          </th>
+                                                        ) : (
+                                                          <th
+                                                            key={`quick-head-standalone-${quickSection.id}-${group.key}`}
+                                                            rowSpan={2}
+                                                            style={getQuickColumnStyle(group.columns[0], sectionColumns)}
+                                                            className="border border-slate-300 px-2 py-2 text-center text-[11px] font-semibold uppercase leading-snug text-slate-700"
+                                                          >
+                                                            {group.label}
+                                                          </th>
+                                                        ),
+                                                      )}
+                                                    </tr>
+                                                    <tr>
+                                                      {headerGroupLayout.flatMap((group) =>
+                                                        group.grouped
+                                                          ? group.columns.map((column) => (
+                                                              <th
+                                                                key={`quick-head-group-child-${quickSection.id}-${group.key}-${column.key}`}
+                                                                style={getQuickColumnStyle(column, sectionColumns)}
+                                                                className="border border-slate-300 px-2 py-2 text-center text-[11px] font-semibold uppercase leading-snug text-slate-700"
+                                                              >
+                                                                {column.label}
+                                                              </th>
+                                                            ))
+                                                          : [],
+                                                      )}
+                                                    </tr>
+                                                  </>
+                                                ) : (
+                                                  <tr>
+                                                    {sectionColumns.map((column) => (
+                                                      <th
+                                                        key={`quick-head-${quickSection.id}-${column.key}`}
+                                                        style={getQuickColumnStyle(column, sectionColumns)}
+                                                        className="border border-slate-300 px-2 py-2 text-center text-[11px] font-semibold uppercase leading-snug text-slate-700"
+                                                      >
+                                                        {column.label}
+                                                      </th>
+                                                    ))}
+                                                  </tr>
+                                                )}
                                               </thead>
                                               <tbody>
                                                 {sectionRows.map((row) => {
@@ -6632,8 +6725,16 @@ export const LearningResourceGenerator = ({
                                                       {sectionColumns.map((column) => {
                                                         const columnKey = String(column.key || '').trim();
                                                         const cellLines = splitEditableCellLines(row.values[columnKey]);
-                                                        if (cellLines.length <= 1 && lineIndex > 0) return null;
-                                                        if (cellLines.length > 1 && lineIndex >= cellLines.length) {
+                                                        const shouldRenderPerVisualLine =
+                                                          isKktpCriteriaColumnKey(columnKey) && maxLineCount > 1;
+                                                        if (cellLines.length <= 1 && lineIndex > 0 && !shouldRenderPerVisualLine) {
+                                                          return null;
+                                                        }
+                                                        if (
+                                                          cellLines.length > 1 &&
+                                                          lineIndex >= cellLines.length &&
+                                                          !shouldRenderPerVisualLine
+                                                        ) {
                                                           return (
                                                             <td
                                                               key={`quick-cell-${row.id}-${column.key}-${lineIndex}`}
@@ -6647,10 +6748,14 @@ export const LearningResourceGenerator = ({
                                                         return (
                                                           <td
                                                             key={`quick-cell-${row.id}-${column.key}-${lineIndex}`}
-                                                            rowSpan={cellLines.length <= 1 ? maxLineCount : undefined}
+                                                            rowSpan={
+                                                              !shouldRenderPerVisualLine && cellLines.length <= 1
+                                                                ? maxLineCount
+                                                                : undefined
+                                                            }
                                                             style={getQuickColumnStyle(column, sectionColumns)}
                                                             className={`border border-slate-300 bg-white p-1 ${
-                                                              cellLines.length <= 1 && maxLineCount > 1
+                                                              !shouldRenderPerVisualLine && cellLines.length <= 1 && maxLineCount > 1
                                                                 ? 'align-middle'
                                                                 : 'align-top'
                                                             } ${isCenterAlignedTableColumn(column) ? 'text-center' : ''}`}
