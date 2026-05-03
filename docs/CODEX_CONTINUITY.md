@@ -5,12 +5,12 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-05-03 15:20 WIB
-- Current status: hotfix keamanan input referensi perangkat ajar sudah live. Dropdown induk tetap menjadi satu-satunya titik pilihan referensi per grup, sedangkan kolom turunan seperti TP/Materi/Dimensi ditampilkan sebagai hasil korelasi terkunci tanpa textarea/manual edit agar mengurangi human error.
+- Last updated: 2026-05-03 15:31 WIB
+- Current status: hotfix label opsi referensi grup perangkat ajar sudah live. Opsi dropdown agregat sekarang menampilkan rentang subbaris seperti `1.1 ... s.d. 1.4 ... (4 baris)` agar guru paham bahwa satu pilihan membawa seluruh baris turunan yang tergabung.
 - Objective/task aktif:
   - Melanjutkan pengembangan perangkat ajar dinamis setelah polish tab remedial dan editor tabel guru.
 - Batch terakhir selesai:
-  - `Perangkat ajar hotfix - lock secondary reference cells`
+  - `Perangkat ajar hotfix - grouped reference option labels`
 - Progress fitur remedial keseluruhan:
   - `100%`
 - Progress presensi terpadu saat ini:
@@ -26,11 +26,12 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
-  - Commit: `9d7520b`
-  - Title: `fix(teaching-resources): lock derived reference cells`
+  - Commit: `62b193f`
+  - Title: `fix(teaching-resources): clarify grouped reference options`
   - Summary:
-    - kolom referensi turunan tidak lagi memakai textarea/manual input di tabel view maupun editor lengkap
-    - kolom turunan sekarang tampil sebagai kotak hasil korelasi terkunci yang mengikuti dropdown induk
+    - label opsi referensi agregat tidak lagi diringkas menjadi baris pertama saja
+    - dropdown Prota/KKTP/dokumen turunannya kini memperlihatkan rentang subbaris yang ikut terbawa, misalnya TP `1.1` sampai `1.4`
+    - perilaku selection tetap memakai snapshot grup yang sama, sehingga kolom turunan tetap mengikuti pilihan induk
     - perubahan frontend-only, tidak mengubah backend atau data tersimpan
 - Area/file disentuh:
   - `frontend/src/pages/teacher/learning-resources/LearningResourceGenerator.tsx`
@@ -45,10 +46,10 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - Backend tidak diubah pada hotfix ini
   - Tidak ada perubahan mobile pada batch ini
 - Remaining work:
-  - QA manual pada akun `KGB2G071`: pilih ulang `Elemen` pada ATP jika baris lama masih menyimpan state snapshot kosong; setelah dipilih, TP/Materi/Dimensi harus terisi satu grup sesuai elemen.
+  - QA manual pada akun `KGB2G071`: buka Program Tahunan/KKTP dan pastikan dropdown TP menampilkan opsi grup dengan rentang subbaris, lalu pilih satu opsi untuk memastikan baris turunannya ikut terisi.
   - Jika user ingin output print KKTP/Matrik Sebaran dipoles lebih mirip contoh Excel sampai detail tipografi/merge, lakukan batch terpisah setelah menu dasar dan korelasi referensi diuji.
 - Residual risk:
-  - Perubahan ini frontend-only dan tidak memigrasi isi dokumen existing. Baris lama yang sudah sempat tersimpan saat UI salah mungkin perlu pilih ulang referensi utama sekali agar snapshot korelasinya tersimpan benar.
+  - Perubahan ini frontend-only dan tidak memigrasi isi dokumen existing. Baris lama yang sudah sempat tersimpan saat UI salah mungkin tetap perlu pilih ulang referensi utama sekali agar snapshot korelasinya tersimpan benar.
 
 ## Status Saat Ini
 
