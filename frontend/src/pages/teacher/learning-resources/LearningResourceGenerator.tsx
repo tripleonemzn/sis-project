@@ -1831,10 +1831,28 @@ const MONTH_OPTIONS = [
 ];
 const WEEK_OPTIONS = Array.from({ length: 19 }, (_, index) => String(index + 1));
 const SEMESTER_OPTIONS = ['Ganjil', 'Genap'];
+const MATRIKS_SEBARAN_WEEK_GROUP_KEY = 'pelaksanaan_minggu_ke';
+const MATRIKS_SEBARAN_WEEK_GROUP_LABEL = 'Pelaksanaan Minggu Ke-';
 
 const isKktpCriteriaColumnKey = (columnKey: string): boolean => {
   const key = String(columnKey || '').trim().toLowerCase();
   return key === 'kurang_memadai' || key === 'memadai';
+};
+
+const isMatriksSebaranWeekColumnKey = (columnKey: unknown): boolean => {
+  const key = String(columnKey || '').trim().toLowerCase();
+  const normalized = key.replace(/^minggu(?:_ke)?[-_\s]*/i, '');
+  if (!/^\d{1,2}$/.test(normalized)) return false;
+  const numeric = Number(normalized);
+  return Number.isInteger(numeric) && numeric >= 1 && numeric <= WEEK_OPTIONS.length;
+};
+
+const isMatriksSebaranGroupedWeekColumn = (
+  column?: Partial<HeaderGroupColumn> | null,
+): boolean => {
+  const groupKey = String(column?.headerGroupKey || '').trim().toLowerCase();
+  const groupLabel = String(column?.headerGroupLabel || '').trim().toLowerCase();
+  return groupKey === MATRIKS_SEBARAN_WEEK_GROUP_KEY || groupLabel.includes('pelaksanaan minggu');
 };
 
 const getColumnDataType = (column?: Pick<EntrySectionColumnForm, 'dataType'> | null): string =>
@@ -1886,6 +1904,7 @@ const isCenterAlignedTableColumn = (column?: Partial<EntrySectionColumnForm> | n
   const dataType = getColumnDataType(column);
   const identityCandidates = getColumnIdentityCandidates(column);
   if (identityCandidates.some((candidate) => LEFT_ALIGNED_REFERENCE_IDENTITIES.has(candidate))) return false;
+  if (isMatriksSebaranGroupedWeekColumn(column)) return true;
   if (isWeekColumnKey(String(column?.key || ''))) return true;
   if (['NUMBER', 'BOOLEAN', 'WEEK', 'SEMESTER', 'MONTH', 'WEEK_GRID'].includes(dataType)) return true;
   return identityCandidates.some((candidate) => CENTER_ALIGNED_REFERENCE_IDENTITIES.has(candidate));
@@ -1943,6 +1962,7 @@ const formatOptionalNumericValue = (value: number): string => {
 const getPrintColumnClassName = (column?: EntrySectionColumnForm): string => {
   const dataType = getColumnDataType(column);
   const classes: string[] = [];
+  if (isMatriksSebaranGroupedWeekColumn(column)) classes.push('print-matrix-week-column');
   if (dataType === 'WEEK_GRID') classes.push('print-week-grid-column');
   if (['no', 'nomor'].includes(String(column?.key || '').trim().toLowerCase())) classes.push('print-no-column');
   if (isWeekColumnKey(String(column?.key || ''))) classes.push('print-month-week-column');
@@ -2457,6 +2477,19 @@ export const LearningResourceGenerator = ({
     activeProgramMeta?.shortLabel,
     programCode,
   ]);
+  const isActiveProgramMatriksSebaran = useMemo(() => {
+    const token = `${programCode} ${activeProgramMeta?.code || ''} ${activeProgramMeta?.label || ''} ${
+      activeProgramMeta?.shortLabel || ''
+    } ${activeProgramMeta?.schema?.sourceSheet || ''} ${activeProgramMeta?.schema?.documentTitle || ''}`.toLowerCase();
+    return token.includes('matrik') || token.includes('matriks') || token.includes('matrix') || token.includes('sebaran');
+  }, [
+    activeProgramMeta?.code,
+    activeProgramMeta?.label,
+    activeProgramMeta?.schema?.documentTitle,
+    activeProgramMeta?.schema?.sourceSheet,
+    activeProgramMeta?.shortLabel,
+    programCode,
+  ]);
 
   const effectiveTitle = useMemo(() => {
     const fromConfig = String(activeProgramMeta?.label || '').trim();
@@ -2736,12 +2769,21 @@ export const LearningResourceGenerator = ({
   };
   const applyDerivedTableColumnMetadata = (columns: EntrySectionColumnForm[]): EntrySectionColumnForm[] =>
     columns.map((column) => {
-      if (!isKktpCriteriaColumnKey(column.key)) return column;
-      return {
-        ...column,
-        headerGroupKey: column.headerGroupKey || 'kriteria_penetapan_kktp',
-        headerGroupLabel: column.headerGroupLabel || 'Kriteria Penetapan KKTP',
-      };
+      if (isKktpCriteriaColumnKey(column.key)) {
+        return {
+          ...column,
+          headerGroupKey: column.headerGroupKey || 'kriteria_penetapan_kktp',
+          headerGroupLabel: column.headerGroupLabel || 'Kriteria Penetapan KKTP',
+        };
+      }
+      if (isActiveProgramMatriksSebaran && isMatriksSebaranWeekColumnKey(column.key)) {
+        return {
+          ...column,
+          headerGroupKey: column.headerGroupKey || MATRIKS_SEBARAN_WEEK_GROUP_KEY,
+          headerGroupLabel: column.headerGroupLabel || MATRIKS_SEBARAN_WEEK_GROUP_LABEL,
+        };
+      }
+      return column;
     });
   const referenceProjectionRequests = useMemo<TeachingResourceReferenceProjectionRequest[]>(() => {
     const requests: TeachingResourceReferenceProjectionRequest[] = [];
@@ -3840,6 +3882,15 @@ export const LearningResourceGenerator = ({
   const getColumnWidthClass = (columnKey: string, multiline = false, dataType = 'TEXT'): string => {
     const key = String(columnKey || '').toLowerCase();
     const normalizedDataType = String(dataType || 'TEXT').toUpperCase();
+    if (isActiveProgramMatriksSebaran) {
+      if (isMatriksSebaranWeekColumnKey(key)) return 'w-10 min-w-[40px]';
+      if (['no', 'nomor'].includes(key)) return 'w-14 min-w-[52px]';
+      if (key.includes('tujuan') || key.includes('pembelajaran')) return 'w-[380px] min-w-[340px]';
+      if (key.includes('alokasi') || key.includes('jp') || key.includes('jam') || key.includes('waktu')) {
+        return 'w-20 min-w-[76px]';
+      }
+      if (key.includes('semester')) return 'w-24 min-w-[88px]';
+    }
     if (normalizedDataType === 'WEEK_GRID') return 'w-[320px] min-w-[300px]';
     if (parseMonthWeekColumnKey(key)) return 'w-8 min-w-[30px]';
     if (['no', 'nomor'].includes(key)) return 'w-14 min-w-[48px]';
@@ -3875,6 +3926,35 @@ export const LearningResourceGenerator = ({
     allColumns: EntrySectionColumnForm[],
   ): CSSProperties => {
     const key = String(column.key || '').trim().toLowerCase();
+    const identityCandidates = getColumnIdentityCandidates(column);
+    const isMatriksSebaranTable =
+      isActiveProgramMatriksSebaran &&
+      allColumns.some(
+        (item) => isMatriksSebaranGroupedWeekColumn(item) || isMatriksSebaranWeekColumnKey(item.key),
+      );
+    if (isMatriksSebaranTable) {
+      if (['no', 'nomor', 'number'].includes(key)) return { width: '56px', minWidth: '56px' };
+      if (
+        identityCandidates.includes('tujuan_pembelajaran') ||
+        key.includes('tujuan') ||
+        key.includes('pembelajaran')
+      ) {
+        return { width: '380px', minWidth: '340px' };
+      }
+      if (
+        identityCandidates.includes('alokasi_jp') ||
+        key.includes('alokasi') ||
+        key.includes('jp') ||
+        key.includes('jam') ||
+        key.includes('waktu')
+      ) {
+        return { width: '88px', minWidth: '80px' };
+      }
+      if (identityCandidates.includes('semester') || key.includes('semester')) return { width: '96px', minWidth: '88px' };
+      if (isMatriksSebaranGroupedWeekColumn(column) || isMatriksSebaranWeekColumnKey(key)) {
+        return { width: '44px', minWidth: '40px' };
+      }
+    }
     const columnCount = Math.max(1, allColumns.length);
     if (['no', 'nomor', 'number'].includes(key)) return { width: '6%' };
     if (columnCount <= 1) return { width: '100%' };
@@ -5964,6 +6044,79 @@ export const LearningResourceGenerator = ({
     }
 
     const headerGroupLayout = buildHeaderGroupLayout(headers);
+    const hasMatriksSebaranPrintLayout = headers.some((header) =>
+      isMatriksSebaranGroupedWeekColumn(header.column),
+    );
+    const getGenericPrintColumnClassName = (header: {
+      key: string;
+      label: string;
+      column?: EntrySectionColumnForm;
+    }): string => {
+      const classes = getPrintColumnClassName(header.column)
+        .split(/\s+/)
+        .map((item) => item.trim())
+        .filter(Boolean);
+      if (hasMatriksSebaranPrintLayout) {
+        const key = String(header.key || '').trim().toLowerCase();
+        const identityCandidates = getColumnIdentityCandidates(header.column);
+        if (['no', 'nomor', 'number'].includes(key)) classes.push('print-matrix-no-column');
+        if (
+          identityCandidates.includes('tujuan_pembelajaran') ||
+          key.includes('tujuan') ||
+          key.includes('pembelajaran')
+        ) {
+          classes.push('print-matrix-tp-column');
+        }
+        if (
+          identityCandidates.includes('alokasi_jp') ||
+          key.includes('alokasi') ||
+          key.includes('jp') ||
+          key.includes('jam') ||
+          key.includes('waktu')
+        ) {
+          classes.push('print-matrix-jp-column');
+        }
+        if (identityCandidates.includes('semester') || key.includes('semester')) {
+          classes.push('print-matrix-semester-column');
+        }
+        if (isMatriksSebaranGroupedWeekColumn(header.column)) classes.push('print-matrix-week-column');
+      }
+      return Array.from(new Set(classes)).join(' ');
+    };
+    const getGenericPrintColumnWidth = (header: {
+      key: string;
+      label: string;
+      column?: EntrySectionColumnForm;
+    }): string => {
+      if (!hasMatriksSebaranPrintLayout) return '';
+      const key = String(header.key || '').trim().toLowerCase();
+      const identityCandidates = getColumnIdentityCandidates(header.column);
+      if (isMatriksSebaranGroupedWeekColumn(header.column)) return '5mm';
+      if (['no', 'nomor', 'number'].includes(key)) return '9mm';
+      if (
+        identityCandidates.includes('tujuan_pembelajaran') ||
+        key.includes('tujuan') ||
+        key.includes('pembelajaran')
+      ) {
+        return '96mm';
+      }
+      if (
+        identityCandidates.includes('alokasi_jp') ||
+        key.includes('alokasi') ||
+        key.includes('jp') ||
+        key.includes('jam') ||
+        key.includes('waktu')
+      ) {
+        return '16mm';
+      }
+      if (identityCandidates.includes('semester') || key.includes('semester')) return '16mm';
+      return '18mm';
+    };
+    const genericColgroup = hasMatriksSebaranPrintLayout
+      ? `<colgroup>${headers
+          .map((header) => `<col style="width:${getGenericPrintColumnWidth(header)};" />`)
+          .join('')}</colgroup>`
+      : '';
     const thead = headerGroupLayout
       ? `<tr>${headerGroupLayout
           .map((group) => {
@@ -5971,14 +6124,14 @@ export const LearningResourceGenerator = ({
               return `<th colspan="${group.columns.length}">${escapeHtml(group.label)}</th>`;
             }
             const header = group.columns[0];
-            const classAttribute = renderPrintClassAttribute(getPrintColumnClassName(header?.column));
+            const classAttribute = header ? renderPrintClassAttribute(getGenericPrintColumnClassName(header)) : '';
             return `<th${classAttribute} rowspan="2">${escapeHtml(group.label)}</th>`;
           })
           .join('')}</tr><tr>${headerGroupLayout
           .flatMap((group) =>
             group.grouped
               ? group.columns.map((header) => {
-                  const classAttribute = renderPrintClassAttribute(getPrintColumnClassName(header.column));
+                  const classAttribute = renderPrintClassAttribute(getGenericPrintColumnClassName(header));
                   return `<th${classAttribute}>${escapeHtml(header.label)}</th>`;
                 })
               : [],
@@ -5986,7 +6139,7 @@ export const LearningResourceGenerator = ({
           .join('')}</tr>`
       : `<tr>${headers
           .map((header) => {
-            const classAttribute = renderPrintClassAttribute(getPrintColumnClassName(header.column));
+            const classAttribute = renderPrintClassAttribute(getGenericPrintColumnClassName(header));
             return `<th${classAttribute}>${escapeHtml(header.label)}</th>`;
           })
           .join('')}</tr>`;
@@ -6001,7 +6154,7 @@ export const LearningResourceGenerator = ({
                 const lines = lineGroups[headerIndex] || [''];
                 const shouldRenderPerVisualLine = isKktpCriteriaColumnKey(header.key) && maxLineCount > 1;
                 if (lines.length <= 1 && lineIndex > 0 && !shouldRenderPerVisualLine) return '';
-                const classAttribute = renderPrintClassAttribute(getPrintColumnClassName(header.column));
+                const classAttribute = renderPrintClassAttribute(getGenericPrintColumnClassName(header));
                 const rowSpanAttribute =
                   !shouldRenderPerVisualLine && lines.length <= 1 && maxLineCount > 1 ? ` rowspan="${maxLineCount}"` : '';
                 const valignAttribute = rowSpanAttribute ? ' style="vertical-align: middle;"' : '';
@@ -6021,7 +6174,8 @@ export const LearningResourceGenerator = ({
       })
       .join('');
 
-    return `<div class="table-wrap"><table><thead>${thead}</thead><tbody>${tbody}</tbody></table></div>`;
+    const tableClassAttribute = hasMatriksSebaranPrintLayout ? ' class="print-matrix-sebaran-table"' : '';
+    return `<div class="table-wrap"><table${tableClassAttribute}>${genericColgroup}<thead>${thead}</thead><tbody>${tbody}</tbody></table></div>`;
   };
 
   const renderSectionPrintHtml = (section: EntrySectionForm): string => {
@@ -6202,6 +6356,45 @@ export const LearningResourceGenerator = ({
           }
           .print-week-grid-column {
             min-width: 156px;
+          }
+          .print-matrix-sebaran-table {
+            table-layout: fixed;
+            font-size: 9.5px;
+          }
+          .print-matrix-sebaran-table th,
+          .print-matrix-sebaran-table td {
+            border-width: 0.35pt;
+            padding: 3px 4px;
+          }
+          .print-matrix-no-column {
+            width: 9mm;
+            min-width: 9mm;
+            text-align: center;
+            vertical-align: middle;
+            white-space: nowrap;
+          }
+          .print-matrix-tp-column {
+            text-align: left;
+            white-space: normal;
+            overflow-wrap: break-word;
+            word-break: normal;
+          }
+          .print-matrix-jp-column,
+          .print-matrix-semester-column {
+            text-align: center;
+            vertical-align: middle;
+            white-space: normal;
+            overflow-wrap: anywhere;
+          }
+          .print-matrix-week-column {
+            width: 5mm;
+            min-width: 5mm;
+            max-width: 5mm;
+            padding-left: 0;
+            padding-right: 0;
+            text-align: center;
+            vertical-align: middle;
+            white-space: nowrap;
           }
           .print-month-week-table {
             table-layout: fixed;
@@ -6687,6 +6880,13 @@ export const LearningResourceGenerator = ({
                                     const sectionColumns = getVisibleSectionColumns(quickSection);
                                     const sectionRows = quickSection.rows;
                                     const headerGroupLayout = buildHeaderGroupLayout(sectionColumns);
+                                    const hasMatriksSebaranWeekGrid =
+                                      isActiveProgramMatriksSebaran &&
+                                      sectionColumns.some(
+                                        (column) =>
+                                          isMatriksSebaranGroupedWeekColumn(column) ||
+                                          isMatriksSebaranWeekColumnKey(column.key),
+                                      );
                                     return (
                                       <div key={`quick-section-table-${quickSection.id}`}>
                                         {!shouldUseQuickSectionTabs && displayedQuickSections.length > 1 ? (
@@ -6697,8 +6897,12 @@ export const LearningResourceGenerator = ({
                                         {buildMonthWeekColumnLayout(sectionColumns) ? (
                                           renderQuickEditMonthWeekTable(quickSection, sectionColumns, sectionRows)
                                         ) : (
-                                          <div className="mt-3 rounded-lg border border-slate-300">
-                                            <table className="w-full table-fixed border-collapse text-xs">
+                                          <div className="mt-3 overflow-x-auto rounded-lg border border-slate-300">
+                                            <table
+                                              className={`table-fixed border-collapse text-xs ${
+                                                hasMatriksSebaranWeekGrid ? 'w-full min-w-[1440px]' : 'w-full'
+                                              }`}
+                                            >
                                               <thead className="bg-slate-100">
                                                 {headerGroupLayout ? (
                                                   <>

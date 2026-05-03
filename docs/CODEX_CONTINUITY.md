@@ -5,12 +5,12 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-05-03 18:37 WIB
-- Current status: hotfix lanjutan KKTP perangkat ajar sudah live. Kolom TP di KKTP kini diperlakukan sebagai induk tunggal, sehingga saat guru menekan Enter pada IKTP, subbaris tetap berada di TP yang sama seperti `1.1`; kotak cari referensi inline pada KKTP juga dihapus dari tabel cepat/editor.
+- Last updated: 2026-05-03 19:15 WIB
+- Current status: hotfix `Matriks Sebaran` perangkat ajar sudah live. Kolom minggu `1-19` kini diberi parent header dinamis `Pelaksanaan Minggu Ke-`, table view memakai lebar khusus agar kolom `Tujuan Pembelajaran` tidak gepeng/menabrak minggu, dan print preview memakai colgroup + garis lebih tipis untuk bentuk matriks.
 - Objective/task aktif:
   - Melanjutkan pengembangan perangkat ajar dinamis setelah polish tab remedial dan editor tabel guru.
 - Batch terakhir selesai:
-  - `Perangkat ajar hotfix - KKTP parent row stability`
+  - `Perangkat ajar hotfix - Matriks Sebaran table/print layout`
 - Progress fitur remedial keseluruhan:
   - `100%`
 - Progress presensi terpadu saat ini:
@@ -26,13 +26,13 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
-  - Commit: `81f02c9`
-  - Title: `fix(teaching-resources): keep kktp tp parent rows stable`
+  - Commit: `pending`
+  - Title: `fix(teaching-resources): align matriks sebaran table layout`
   - Summary:
-    - nilai TP lama yang masih tersimpan sebagai agregat kini hanya dirender sebagai induk pertama pada KKTP
-    - Enter pada IKTP tidak lagi membuat visual TP turun menjadi `1.2/1.3/1.4` pada row yang sama
-    - kotak cari referensi inline disembunyikan pada KKTP agar tabel tetap ringkas dan sesuai instruksi user
-    - print KKTP juga memakai visual line yang sama agar TP induk tidak pecah saat IKTP punya subbaris
+    - deteksi dokumen `Matriks Sebaran` ditambahkan berdasarkan kode/label/schema aktif
+    - kolom minggu numerik `1-19` otomatis dikelompokkan di bawah header `Pelaksanaan Minggu Ke-`
+    - table view `Matriks Sebaran` memakai lebar kolom khusus untuk `No`, `Tujuan Pembelajaran`, `Waktu/Jumlah Jam`, `Semester`, dan minggu agar tidak saling tabrak
+    - print preview `Matriks Sebaran` memakai colgroup dan CSS khusus agar output lebih dekat dengan contoh Excel
     - perubahan frontend-only, tidak mengubah backend atau data tersimpan
 - Area/file disentuh:
   - `frontend/src/pages/teacher/learning-resources/LearningResourceGenerator.tsx`
@@ -47,10 +47,10 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - Backend tidak diubah pada hotfix ini
   - Tidak ada perubahan mobile pada batch ini
 - Remaining work:
-  - QA manual pada akun `KGB2G071`: buka program KKTP, tekan Enter pada IKTP di TP `1.1`, pastikan subbaris tambahan tetap di bawah TP `1.1` dan tidak menampilkan search box referensi.
-  - Jika user ingin output print KKTP/Matrik Sebaran dipoles lebih mirip contoh Excel sampai detail tipografi/merge, lakukan batch terpisah setelah menu dasar dan korelasi referensi diuji.
+  - QA manual pada akun `KGB2G071`: buka menu `Matriks Sebaran`, pastikan header `Pelaksanaan Minggu Ke-` muncul di tabel view dan print preview, kolom TP tidak bertabrakan dengan minggu, dan cetak tetap muat A4 landscape.
+  - Jika user ingin warna/ceklis minggu pada `Matriks Sebaran` dibuat otomatis seperti contoh Excel, lakukan batch terpisah setelah struktur dasar ini divalidasi.
 - Residual risk:
-  - Perubahan ini frontend-only dan tidak memigrasi isi dokumen existing. Baris lama yang sudah sempat tersimpan saat UI salah mungkin tetap perlu pilih ulang referensi utama sekali agar snapshot korelasinya tersimpan benar.
+  - Perubahan ini frontend-only dan tidak memigrasi isi dokumen existing. Dokumen lama mengikuti schema/kolom yang sudah tersimpan; jika konfigurasi minggu tidak memakai key numerik `1-19` atau `minggu_1..19`, parent header tidak akan diterapkan sampai konfigurasi kolomnya disesuaikan.
 
 ## Status Saat Ini
 
