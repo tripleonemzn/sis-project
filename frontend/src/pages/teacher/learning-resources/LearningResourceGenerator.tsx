@@ -1188,6 +1188,11 @@ const formatReferenceOptionLabel = (value: unknown, fallback = 'Referensi tersim
   return firstLine || fallback;
 };
 
+const getFirstReferenceValueLine = (value: unknown): string =>
+  splitCellLines(value)
+    .map((line) => line.trim())
+    .find(isMeaningfulReferenceValue) || String(value || '').trim();
+
 const truncateReferenceOptionSegment = (value: string, maxLength = 72): string => {
   const normalized = value.replace(/\s+/g, ' ').trim();
   if (normalized.length <= maxLength) return normalized;
@@ -3755,6 +3760,19 @@ export const LearningResourceGenerator = ({
     return applyDerivedTableColumnMetadata(applyMonthWeekCalendarColumns(section, sanitizeSectionColumns(schema?.columns)));
   };
 
+  const isKktpPrimaryReferenceColumn = (column?: Partial<EntrySectionColumnForm> | null): boolean =>
+    isActiveProgramKktp && getColumnIdentityCandidates(column).includes('tujuan_pembelajaran');
+
+  const getVisualEditableCellLines = (column: EntrySectionColumnForm, value: unknown): string[] => {
+    const lines = splitEditableCellLines(value);
+    return isKktpPrimaryReferenceColumn(column) ? [lines[0] || ''] : lines;
+  };
+
+  const getVisualPrintCellLines = (column: EntrySectionColumnForm | undefined, value: unknown): string[] => {
+    const lines = splitCellLines(value);
+    return isKktpPrimaryReferenceColumn(column) ? [lines[0] || ''] : lines;
+  };
+
   const getVisibleSectionColumns = (section: EntrySectionForm): EntrySectionColumnForm[] =>
     resolveSectionColumns(section).filter((column) => String(column.key || '').trim().toLowerCase() !== 'tahun_ajaran');
 
@@ -4297,11 +4315,17 @@ export const LearningResourceGenerator = ({
             const nextValues = {
               ...row.values,
             };
-            const shouldReplaceWholeSourceCell = Boolean(selectedOption?.isAggregate || String(selectedOption?.value || '').includes('\n'));
+            const shouldKeepReferenceAsSingleParent = isKktpPrimaryReferenceColumn(sourceColumn);
+            const selectedValue = shouldKeepReferenceAsSingleParent
+              ? getFirstReferenceValueLine(selectedOption?.value || '')
+              : selectedOption?.value || '';
+            const shouldReplaceWholeSourceCell =
+              !shouldKeepReferenceAsSingleParent &&
+              Boolean(selectedOption?.isAggregate || String(selectedOption?.value || '').includes('\n'));
             nextValues[columnKey] =
               selectedOption && shouldReplaceWholeSourceCell
-                ? selectedOption.value
-                : setCellLineValue(nextValues[columnKey], lineIndex, selectedOption?.value || '');
+                ? selectedValue
+                : setCellLineValue(nextValues[columnKey], lineIndex, selectedValue);
             const nextReferenceSelections = {
               ...(row.referenceSelections || {}),
             };
@@ -4316,8 +4340,10 @@ export const LearningResourceGenerator = ({
                 sourceEntryTitle: selectedOption.sourceEntryTitle,
                 sourceFieldKey: selectedOption.sourceFieldKey,
                 sourceFieldIdentity: selectedOption.sourceFieldIdentity,
-                value: selectedOption.value,
-                label: selectedOption.label,
+                value: shouldKeepReferenceAsSingleParent ? selectedValue : selectedOption.value,
+                label: shouldKeepReferenceAsSingleParent
+                  ? formatReferenceOptionLabel(selectedOption.value, selectedOption.label)
+                  : selectedOption.label,
                 snapshot: selectedOption.snapshot,
               };
             } else {
@@ -4416,9 +4442,12 @@ export const LearningResourceGenerator = ({
       const referenceSelection =
         row?.referenceSelections?.[selectionKey] || (lineIndex === 0 ? row?.referenceSelections?.[columnKey] : undefined);
       const aggregateReferenceSelection = row?.referenceSelections?.[columnKey];
-      const aggregateReferenceLines = splitCellLines(aggregateReferenceSelection?.value)
-        .map((line) => line.trim())
-        .filter(isMeaningfulReferenceValue);
+      const shouldKeepReferenceAsSingleParent = isKktpPrimaryReferenceColumn(column);
+      const aggregateReferenceLines = shouldKeepReferenceAsSingleParent
+        ? []
+        : splitCellLines(aggregateReferenceSelection?.value)
+            .map((line) => line.trim())
+            .filter(isMeaningfulReferenceValue);
       const aggregateLineValue = aggregateReferenceLines[lineIndex] || value;
       if (lineIndex > 0 && aggregateReferenceLines.length > lineIndex && aggregateLineValue) {
         return (
@@ -4454,8 +4483,12 @@ export const LearningResourceGenerator = ({
         !referenceOptions.some((option) => option.selectValue === referenceSelectValue)
           ? {
               selectValue: referenceSelectValue,
-              value: String(referenceSelection?.value || value || '').trim(),
-              label: formatGroupedReferenceOptionLabel(referenceSelection?.value || value, referenceSelection?.label),
+              value: shouldKeepReferenceAsSingleParent
+                ? getFirstReferenceValueLine(referenceSelection?.value || value)
+                : String(referenceSelection?.value || value || '').trim(),
+              label: shouldKeepReferenceAsSingleParent
+                ? formatReferenceOptionLabel(referenceSelection?.value || value, referenceSelection?.label)
+                : formatGroupedReferenceOptionLabel(referenceSelection?.value || value, referenceSelection?.label),
               sourceProgramCode: sourceProgramCode || String(referenceSelection?.sourceProgramCode || '').trim(),
               sourceEntryId: Number(referenceSelection?.sourceEntryId || 0),
               sourceEntryTitle: String(referenceSelection?.sourceEntryTitle || '').trim() || undefined,
@@ -4470,14 +4503,14 @@ export const LearningResourceGenerator = ({
       );
       const referenceSearchKey = buildReferenceSearchKey('quick', section.id, row?.id, columnKey);
       const referenceSearchTerm = referenceSearchTerms[referenceSearchKey] || '';
-      const effectiveReferenceSearchTerm = isMonthWeekReferenceCell ? '' : referenceSearchTerm;
+      const effectiveReferenceSearchTerm = isMonthWeekReferenceCell || isActiveProgramKktp ? '' : referenceSearchTerm;
       const filteredReferenceSelectOptions = keepSelectedReferenceOptionVisible(
         filterReferenceOptions(referenceSelectOptions, effectiveReferenceSearchTerm),
         referenceSelectOptions,
         referenceSelectValue,
       );
       const showReferenceSearch =
-        !isMonthWeekReferenceCell && (referenceSelectOptions.length > 6 || Boolean(effectiveReferenceSearchTerm));
+        !isMonthWeekReferenceCell && !isActiveProgramKktp && (referenceSelectOptions.length > 6 || Boolean(effectiveReferenceSearchTerm));
       const referenceLimitHelperText = getReferenceLimitHelperText(sourceProgramCode, sourceProgramLabel);
       const referenceSearchHelperText =
         referenceEntriesQuery.isFetching && effectiveReferenceSearchTerm.trim().length >= 2
@@ -4749,9 +4782,13 @@ export const LearningResourceGenerator = ({
               referenceOptionsByColumnKey.get(`${String(item.schemaKey || '').trim()}::${columnKey}`) || [];
             const selectedOption = referenceOptions.find((option) => option.selectValue === selectionToken);
             if (selectedOption?.snapshot) selectedSnapshot = selectedOption.snapshot;
+            const shouldKeepReferenceAsSingleParent = isKktpPrimaryReferenceColumn(sourceColumn);
+            const selectedValue = shouldKeepReferenceAsSingleParent
+              ? getFirstReferenceValueLine(selectedOption?.value || '')
+              : selectedOption?.value || '';
             const nextValues = {
               ...row.values,
-              [columnKey]: selectedOption?.value || '',
+              [columnKey]: selectedValue,
             };
             const nextReferenceSelections = {
               ...(row.referenceSelections || {}),
@@ -4766,8 +4803,10 @@ export const LearningResourceGenerator = ({
                 sourceEntryTitle: selectedOption.sourceEntryTitle,
                 sourceFieldKey: selectedOption.sourceFieldKey,
                 sourceFieldIdentity: selectedOption.sourceFieldIdentity,
-                value: selectedOption.value,
-                label: selectedOption.label,
+                value: shouldKeepReferenceAsSingleParent ? selectedValue : selectedOption.value,
+                label: shouldKeepReferenceAsSingleParent
+                  ? formatReferenceOptionLabel(selectedOption.value, selectedOption.label)
+                  : selectedOption.label,
                 snapshot: selectedOption.snapshot,
               };
             } else {
@@ -5080,8 +5119,12 @@ export const LearningResourceGenerator = ({
       !referenceOptions.some((option) => option.selectValue === referenceSelectValue)
         ? {
             selectValue: referenceSelectValue,
-            value: String(referenceSelection?.value || value || '').trim(),
-            label: formatGroupedReferenceOptionLabel(referenceSelection?.value || value, referenceSelection?.label),
+            value: isKktpPrimaryReferenceColumn(column)
+              ? getFirstReferenceValueLine(referenceSelection?.value || value)
+              : String(referenceSelection?.value || value || '').trim(),
+            label: isKktpPrimaryReferenceColumn(column)
+              ? formatReferenceOptionLabel(referenceSelection?.value || value, referenceSelection?.label)
+              : formatGroupedReferenceOptionLabel(referenceSelection?.value || value, referenceSelection?.label),
             sourceProgramCode: sourceProgramCode || String(referenceSelection?.sourceProgramCode || '').trim(),
             sourceEntryId: Number(referenceSelection?.sourceEntryId || 0),
             sourceEntryTitle: String(referenceSelection?.sourceEntryTitle || '').trim() || undefined,
@@ -5101,7 +5144,7 @@ export const LearningResourceGenerator = ({
       referenceSelectOptions,
       referenceSelectValue,
     );
-    const showReferenceSearch = referenceSelectOptions.length > 6 || Boolean(referenceSearchTerm);
+    const showReferenceSearch = !isActiveProgramKktp && (referenceSelectOptions.length > 6 || Boolean(referenceSearchTerm));
     const referenceLimitHelperText = getReferenceLimitHelperText(sourceProgramCode, sourceProgramLabel);
     const referenceSearchHelperText =
       referenceEntriesQuery.isFetching && referenceSearchTerm.trim().length >= 2 ? 'Mencari referensi sumber...' : '';
@@ -5949,7 +5992,7 @@ export const LearningResourceGenerator = ({
           .join('')}</tr>`;
     const tbody = rows
       .map((row) => {
-        const lineGroups = headers.map((header) => splitCellLines(row.values?.[header.key]));
+        const lineGroups = headers.map((header) => getVisualPrintCellLines(header.column, row.values?.[header.key]));
         const maxLineCount = Math.max(1, ...lineGroups.map((lines) => lines.length));
         return Array.from({ length: maxLineCount })
           .map((_, lineIndex) => {
@@ -6714,7 +6757,7 @@ export const LearningResourceGenerator = ({
                                               <tbody>
                                                 {sectionRows.map((row) => {
                                                   const lineCounts = sectionColumns.map((column) =>
-                                                    splitEditableCellLines(row.values[String(column.key || '').trim()]).length,
+                                                    getVisualEditableCellLines(column, row.values[String(column.key || '').trim()]).length,
                                                   );
                                                   const maxLineCount = Math.max(1, ...lineCounts);
                                                   return Array.from({ length: maxLineCount }).map((_, lineIndex) => (
@@ -6724,7 +6767,7 @@ export const LearningResourceGenerator = ({
                                                     >
                                                       {sectionColumns.map((column) => {
                                                         const columnKey = String(column.key || '').trim();
-                                                        const cellLines = splitEditableCellLines(row.values[columnKey]);
+                                                        const cellLines = getVisualEditableCellLines(column, row.values[columnKey]);
                                                         const shouldRenderPerVisualLine =
                                                           isKktpCriteriaColumnKey(columnKey) && maxLineCount > 1;
                                                         if (cellLines.length <= 1 && lineIndex > 0 && !shouldRenderPerVisualLine) {
