@@ -26,7 +26,7 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
-  - Commit: `pending`
+  - Commit: `8216bfa`
   - Title: `fix(teaching-resources): align signatures and references`
   - Summary:
     - default blok pengesahan Wakakur memakai field manusiawi dan 1:1 dengan output guru
