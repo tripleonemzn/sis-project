@@ -5,12 +5,12 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-05-03 15:12 WIB
-- Current status: hotfix referensi grup perangkat ajar sudah live. Dropdown referensi guru dikembalikan ke pola utama-per-grup: hanya kolom referensi utama dalam satu sumber yang menjadi picker, sedangkan kolom korelasi turunan kembali diisi otomatis dari snapshot pilihan utama. Print table juga dipoles: garis tabel lebih tipis dan kolom `No` lebih lebar agar label tidak pecah.
+- Last updated: 2026-05-03 15:20 WIB
+- Current status: hotfix keamanan input referensi perangkat ajar sudah live. Dropdown induk tetap menjadi satu-satunya titik pilihan referensi per grup, sedangkan kolom turunan seperti TP/Materi/Dimensi ditampilkan sebagai hasil korelasi terkunci tanpa textarea/manual edit agar mengurangi human error.
 - Objective/task aktif:
   - Melanjutkan pengembangan perangkat ajar dinamis setelah polish tab remedial dan editor tabel guru.
 - Batch terakhir selesai:
-  - `Perangkat ajar hotfix - reference group picker dan print line`
+  - `Perangkat ajar hotfix - lock secondary reference cells`
 - Progress fitur remedial keseluruhan:
   - `100%`
 - Progress presensi terpadu saat ini:
@@ -26,13 +26,12 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
-  - Commit: `56246ac`
-  - Title: `fix(teaching-resources): restore grouped references`
+  - Commit: `9d7520b`
+  - Title: `fix(teaching-resources): lock derived reference cells`
   - Summary:
-    - hanya kolom referensi utama dalam grup yang dirender sebagai dropdown picker
-    - kolom referensi turunan seperti TP/Materi/Dimensi kembali memakai nilai hasil korelasi dari pilihan utama, bukan dropdown satu per satu
-    - request opsi referensi dipersempit hanya untuk picker utama agar UI tidak menampilkan daftar referensi yang salah di kolom turunan
-    - border tabel print diubah menjadi `0.5pt` dan kolom `No` print dilebarkan
+    - kolom referensi turunan tidak lagi memakai textarea/manual input di tabel view maupun editor lengkap
+    - kolom turunan sekarang tampil sebagai kotak hasil korelasi terkunci yang mengikuti dropdown induk
+    - perubahan frontend-only, tidak mengubah backend atau data tersimpan
 - Area/file disentuh:
   - `frontend/src/pages/teacher/learning-resources/LearningResourceGenerator.tsx`
   - `docs/CODEX_CONTINUITY.md`
