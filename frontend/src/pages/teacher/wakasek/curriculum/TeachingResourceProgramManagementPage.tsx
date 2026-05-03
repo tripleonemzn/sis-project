@@ -1487,6 +1487,22 @@ const MONTH_WEEK_SCHEMA_MONTH_KEYS = new Set([
   'desember',
 ]);
 
+const MONTH_WEEK_SCHEMA_MONTH_LABELS: Record<string, string> = {
+  januari: 'Januari',
+  februari: 'Februari',
+  maret: 'Maret',
+  april: 'April',
+  mei: 'Mei',
+  juni: 'Juni',
+  juli: 'Juli',
+  agustus: 'Agustus',
+  september: 'September',
+  oktober: 'Oktober',
+  nopember: 'November',
+  november: 'November',
+  desember: 'Desember',
+};
+
 function isMonthWeekSchemaColumnKey(key: unknown): boolean {
   const match = String(key || '')
     .trim()
@@ -1495,6 +1511,106 @@ function isMonthWeekSchemaColumnKey(key: unknown): boolean {
   if (!match) return false;
   const weekNumber = Number(match[2]);
   return MONTH_WEEK_SCHEMA_MONTH_KEYS.has(match[1]) && Number.isInteger(weekNumber) && weekNumber >= 1 && weekNumber <= 6;
+}
+
+type VisualHeaderGroup = {
+  key: string;
+  label: string;
+  columns: TeachingResourceProgramColumnSchema[];
+  grouped: boolean;
+  source: 'month-week' | 'header-group' | 'standalone';
+};
+
+function parseMonthWeekSchemaColumn(key: unknown): { monthKey: string; monthLabel: string; weekNumber: number } | null {
+  const match = String(key || '')
+    .trim()
+    .toLowerCase()
+    .match(/^([a-z]+)_(\d{1,2})$/);
+  if (!match) return null;
+  const weekNumber = Number(match[2]);
+  const monthKey = match[1];
+  if (!MONTH_WEEK_SCHEMA_MONTH_KEYS.has(monthKey) || !Number.isInteger(weekNumber) || weekNumber < 1 || weekNumber > 6) {
+    return null;
+  }
+  return {
+    monthKey,
+    monthLabel: MONTH_WEEK_SCHEMA_MONTH_LABELS[monthKey] || monthKey,
+    weekNumber,
+  };
+}
+
+function normalizeVisualHeaderGroupKey(value: unknown, fallback: unknown): string {
+  return normalizeSchemaKey(String(value || fallback || '').trim(), 'group');
+}
+
+function buildVisualHeaderGroups(columns: TeachingResourceProgramColumnSchema[]): VisualHeaderGroup[] {
+  return columns.reduce<VisualHeaderGroup[]>((groups, column, index) => {
+    const monthWeek = parseMonthWeekSchemaColumn(column.key);
+    if (monthWeek) {
+      const groupKey = `month_${monthWeek.monthKey}`;
+      const previous = groups[groups.length - 1];
+      if (previous?.source === 'month-week' && previous.key === groupKey) {
+        previous.columns.push(column);
+        return groups;
+      }
+      groups.push({
+        key: groupKey,
+        label: monthWeek.monthLabel,
+        columns: [column],
+        grouped: true,
+        source: 'month-week',
+      });
+      return groups;
+    }
+
+    const headerGroupLabel = String(column.headerGroupLabel || '').trim();
+    if (headerGroupLabel) {
+      const groupKey = `header_${normalizeVisualHeaderGroupKey(column.headerGroupKey, headerGroupLabel)}`;
+      const previous = groups[groups.length - 1];
+      if (previous?.source === 'header-group' && previous.key === groupKey) {
+        previous.columns.push(column);
+        return groups;
+      }
+      groups.push({
+        key: groupKey,
+        label: headerGroupLabel,
+        columns: [column],
+        grouped: true,
+        source: 'header-group',
+      });
+      return groups;
+    }
+
+    groups.push({
+      key: `standalone_${normalizeSchemaKey(column.key || column.label || index, `kolom_${index + 1}`)}`,
+      label: column.label || column.key || `Kolom ${index + 1}`,
+      columns: [column],
+      grouped: false,
+      source: 'standalone',
+    });
+    return groups;
+  }, []);
+}
+
+function formatVisualColumnLabel(column: TeachingResourceProgramColumnSchema): string {
+  const monthWeek = parseMonthWeekSchemaColumn(column.key);
+  if (monthWeek) return String(monthWeek.weekNumber);
+  return String(column.label || column.key || '').trim() || 'Kolom';
+}
+
+function getReadableSignatureFieldLabel(column: TeachingResourceProgramColumnSchema): string {
+  const key = normalizeSchemaKey(column.fieldIdentity || column.semanticKey || column.key || column.label, '');
+  const label = String(column.label || '').trim();
+  if (key.includes('tempat') || key.includes('tanggal')) return 'Tempat, tanggal';
+  if (key.includes('pihak_1') && key.includes('jabatan')) return 'Jabatan penandatangan kiri';
+  if (key.includes('pihak_1') && key.includes('nama')) return 'Nama penandatangan kiri';
+  if (key.includes('pihak_2') && key.includes('jabatan')) return 'Jabatan penandatangan kanan';
+  if (key.includes('pihak_2') && key.includes('nama')) return 'Nama penandatangan kanan';
+  if (key.includes('guru') || key.includes('mapel')) return 'Guru mata pelajaran';
+  if (key.includes('kepala') || key.includes('principal')) return 'Kepala sekolah';
+  if (key.includes('jabatan')) return 'Jabatan penandatangan';
+  if (key.includes('nama')) return 'Nama penandatangan';
+  return label || 'Field pengesahan';
 }
 
 function validateProgramDraftSchema(draft: CreateProgramDraft): DraftSchemaIssue[] {
@@ -2266,6 +2382,155 @@ export default function TeachingResourceProgramManagementPage() {
   const draftSchemaIssues = validateProgramDraftSchema(createDraft);
   const draftSchemaErrorCount = draftSchemaIssues.filter((issue) => issue.severity === 'error').length;
   const showAdvancedEditor = false;
+  const visualTableSections = createDraft.schema.sections
+    .map((section, sectionIndex) => ({ section, sectionIndex }))
+    .filter(({ section }) => (section.editorType || 'TABLE') === 'TABLE' && inferBlockType(section) === 'TABLE');
+  const visualSupportSections = createDraft.schema.sections
+    .map((section, sectionIndex) => ({ section, sectionIndex }))
+    .filter(({ section }) => ['CONTEXT', 'NOTE', 'SIGNATURE', 'RICH_TEXT'].includes(inferBlockType(section)));
+
+  const renderVisualTablePreview = (section: TeachingResourceProgramSectionSchema) => {
+    const columns = Array.isArray(section.columns) ? section.columns : [];
+    const headerGroups = buildVisualHeaderGroups(columns);
+    const hasGroupedHeader = headerGroups.some((group) => group.grouped);
+    const monthWeekGroupCount = headerGroups.filter((group) => group.source === 'month-week').length;
+    return (
+      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+        <table className="min-w-full text-xs">
+          <thead className="bg-slate-50 text-slate-600">
+            {hasGroupedHeader ? (
+              <>
+                <tr>
+                  {headerGroups.map((group) =>
+                    group.grouped ? (
+                      <th
+                        key={`visual-group-${section.key}-${group.key}`}
+                        colSpan={group.columns.length}
+                        className="border-b border-r border-slate-200 px-3 py-2 text-center font-semibold last:border-r-0"
+                      >
+                        {group.label}
+                      </th>
+                    ) : (
+                      <th
+                        key={`visual-standalone-${section.key}-${group.key}`}
+                        rowSpan={2}
+                        className="min-w-[120px] border-b border-r border-slate-200 px-3 py-2 text-center font-semibold last:border-r-0"
+                      >
+                        {group.label}
+                      </th>
+                    ),
+                  )}
+                </tr>
+                <tr>
+                  {headerGroups.flatMap((group) =>
+                    group.grouped
+                      ? group.columns.map((column, index) => (
+                          <th
+                            key={`visual-child-${section.key}-${group.key}-${column.key || index}`}
+                            className="min-w-[48px] border-b border-r border-slate-200 px-3 py-2 text-center font-semibold last:border-r-0"
+                          >
+                            {formatVisualColumnLabel(column)}
+                          </th>
+                        ))
+                      : [],
+                  )}
+                </tr>
+              </>
+            ) : (
+              <tr>
+                {columns.map((column, index) => (
+                  <th
+                    key={`visual-column-${section.key}-${column.key || index}`}
+                    className="min-w-[120px] border-b border-r border-slate-200 px-3 py-2 text-center font-semibold last:border-r-0"
+                  >
+                    {formatVisualColumnLabel(column)}
+                  </th>
+                ))}
+              </tr>
+            )}
+          </thead>
+          <tbody>
+            <tr>
+              {columns.map((column, index) => (
+                <td
+                  key={`visual-cell-${section.key}-${column.key || index}`}
+                  className="border-r border-slate-100 px-3 py-2 align-top text-slate-500 last:border-r-0"
+                >
+                  <span className="inline-flex rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-[11px]">
+                    {column.sourceType === 'DOCUMENT_REFERENCE'
+                      ? 'Dropdown referensi'
+                      : column.sourceType === 'DOCUMENT_SNAPSHOT'
+                        ? 'Otomatis dari referensi'
+                        : column.sourceType === 'SYSTEM' || String(column.valueSource || '').startsWith('SYSTEM_')
+                          ? 'Nilai sistem'
+                          : column.dataType === 'BOOLEAN'
+                            ? 'Ceklis'
+                            : column.dataType === 'SEMESTER'
+                              ? 'Pilihan semester'
+                              : 'Input guru'}
+                  </span>
+                </td>
+              ))}
+            </tr>
+          </tbody>
+        </table>
+        {monthWeekGroupCount > 0 ? (
+          <div className="border-t border-slate-100 bg-blue-50 px-3 py-2 text-[11px] leading-5 text-blue-700">
+            Struktur bulan dan minggu ini adalah struktur yang sama dengan tabel guru. Kolom teknis seperti `juli_1`
+            hanya disimpan di belakang layar agar output tetap konsisten.
+          </div>
+        ) : null}
+      </div>
+    );
+  };
+
+  const renderVisualSupportPreview = (section: TeachingResourceProgramSectionSchema) => {
+    const blockType = inferBlockType(section);
+    const columns = Array.isArray(section.columns) ? section.columns : [];
+    if (blockType === 'SIGNATURE') {
+      return (
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <div className="text-sm font-semibold text-emerald-900">Pengesahan / Tanda Tangan</div>
+              <div className="mt-1 text-xs leading-5 text-emerald-800">
+                Ditampilkan sebagai blok tanda tangan pada hasil guru/print, bukan sebagai kolom tabel.
+              </div>
+            </div>
+            <span className="rounded-full bg-white px-3 py-1 text-[11px] font-semibold text-emerald-700">
+              Blok khusus
+            </span>
+          </div>
+          <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">
+            {columns.map((column, index) => (
+              <div
+                key={`signature-preview-${section.key}-${column.key || index}`}
+                className="rounded-lg border border-emerald-100 bg-white px-3 py-2 text-xs text-emerald-900"
+              >
+                <div className="font-semibold">{getReadableSignatureFieldLabel(column)}</div>
+                <div className="mt-1 text-[11px] text-emerald-700">
+                  Key teknis: {String(column.fieldIdentity || column.key || '-')}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+        <div className="text-sm font-semibold text-slate-900">{section.label || 'Bagian dokumen'}</div>
+        <div className="mt-1 text-xs leading-5 text-slate-600">
+          {blockType === 'CONTEXT'
+            ? 'Bagian konteks/header dokumen. Tampil sebagai informasi dokumen, bukan tabel isian utama.'
+            : blockType === 'NOTE'
+              ? 'Bagian catatan/keterangan. Tampil sebagai teks pendukung.'
+              : 'Bagian teks/narasi yang tampil di dokumen guru.'}
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="space-y-6 w-full pb-28">
@@ -2524,12 +2789,66 @@ export default function TeachingResourceProgramManagementPage() {
                 <div className="mb-3">
                   <h3 className="text-sm font-semibold text-gray-900">Struktur Dokumen Universal</h3>
                   <p className="mt-1 text-xs leading-5 text-gray-500">
-                    Susun tabel dari kolom yang dibutuhkan. Jika perlu header gabungan seperti KKTP atau grid minggu,
-                    atur langsung pada baris kolomnya agar posisi kolom tetap jelas.
+                    Susun struktur yang sama dengan tampilan guru. Preview di bawah membaca schema yang sama, jadi Wakakur
+                    bisa melihat apakah dokumen tampil sebagai satu tabel, tab per tabel, header gabungan, atau blok pengesahan.
                   </p>
                 </div>
 
-	                <div className="rounded-xl border border-gray-200 bg-white p-4">
+                <div className="mb-4 rounded-xl border border-blue-200 bg-blue-50 p-4">
+                  <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <h3 className="text-sm font-semibold text-blue-950">Preview Struktur Guru</h3>
+                      <p className="mt-1 text-xs leading-5 text-blue-800">
+                        Ini gambaran struktur yang dipakai guru. Kalau di sini bertingkat atau berbentuk tab, di guru juga begitu.
+                      </p>
+                    </div>
+                    <span className="rounded-full bg-white px-3 py-1 text-[11px] font-semibold text-blue-700">
+                      {visualTableSections.length > 1 ? 'Tab per tabel' : 'Satu tabel'}
+                    </span>
+                  </div>
+                  {visualTableSections.length > 1 ? (
+                    <div className="mb-3 flex flex-wrap gap-2 border-b border-blue-200">
+                      {visualTableSections.map(({ section }, index) => (
+                        <div
+                          key={`visual-tab-${section.key}-${index}`}
+                          className={`inline-flex items-center gap-2 border-b-2 px-3 py-2 text-xs font-semibold ${
+                            index === 0 ? 'border-blue-600 text-blue-700' : 'border-transparent text-blue-500'
+                          }`}
+                        >
+                          <span className="h-2 w-2 rounded-full bg-current" />
+                          {section.label || `Tabel ${index + 1}`}
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                  <div className="space-y-4">
+                    {visualTableSections.map(({ section, sectionIndex }) => (
+                      <div key={`visual-table-${section.key}-${sectionIndex}`} className="rounded-xl bg-white p-3 shadow-sm">
+                        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                          <div className="text-sm font-semibold text-gray-900">
+                            {section.label || `Tabel ${sectionIndex + 1}`}
+                          </div>
+                          <span className="rounded-full bg-slate-100 px-2 py-1 text-[11px] font-medium text-slate-600">
+                            {Array.isArray(section.columns) ? section.columns.length : 0} kolom tampil
+                          </span>
+                        </div>
+                        {renderVisualTablePreview(section)}
+                      </div>
+                    ))}
+                    {visualSupportSections.map(({ section, sectionIndex }) => (
+                      <div key={`visual-support-${section.key}-${sectionIndex}`}>
+                        {renderVisualSupportPreview(section)}
+                      </div>
+                    ))}
+                    {visualTableSections.length === 0 && visualSupportSections.length === 0 ? (
+                      <div className="rounded-xl border border-dashed border-blue-200 bg-white px-4 py-6 text-center text-sm text-blue-700">
+                        Belum ada struktur dokumen yang bisa dipreview.
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-gray-200 bg-white p-4">
 	                  <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
 	                    <div>
 	                      <h3 className="text-sm font-semibold text-gray-900">Struktur & Integrasi Dokumen</h3>
@@ -2553,10 +2872,7 @@ export default function TeachingResourceProgramManagementPage() {
 	                  </div>
 
 	                  <div className="space-y-4">
-	                    {createDraft.schema.sections
-	                      .map((section, sectionIndex) => ({ section, sectionIndex }))
-	                      .filter(({ section }) => (section.editorType || 'TABLE') === 'TABLE' && inferBlockType(section) === 'TABLE')
-	                      .map(({ section, sectionIndex }) => (
+	                    {visualTableSections.map(({ section, sectionIndex }) => (
 	                        <div key={`ready-section-${section.key}-${sectionIndex}`} className="rounded-xl border border-gray-200 bg-gray-50 p-4">
 	                          <div className="grid grid-cols-1 gap-3 md:grid-cols-[1fr_160px_auto] md:items-end">
 	                            <div>
