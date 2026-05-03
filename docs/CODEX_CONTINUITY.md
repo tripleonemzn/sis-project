@@ -5,12 +5,12 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-05-03 11:30 WIB
-- Current status: builder Wakakur untuk Program Perangkat Ajar sudah makin disederhanakan ke model satu struktur dokumen universal. Preset/bentuk dokumen lama dihapus dari flow utama, konfigurasi bulan-minggu terpisah dihapus, dan kebutuhan seperti header gabungan `Kriteria Penetapan KKTP` atau grid `Pelaksanaan Minggu Ke-` kini dibuat langsung dari baris kolom terkait. Bagian konteks/catatan/pengesahan tidak lagi dicampur ke tabel utama Wakakur, sementara renderer guru dan print sudah mendukung header gabungan dinamis.
+- Last updated: 2026-05-03 12:08 WIB
+- Current status: batch awal visual 1:1 Wakakur -> Guru sudah live. Popup tambah/edit Program Perangkat Ajar Wakakur sekarang menampilkan blok `Preview Struktur Guru` yang membaca schema yang sama dengan role guru: tabel biasa, header gabungan, struktur bulan -> minggu Promes, mode multi-tabel/tab, dan blok pengesahan. Ini membuat struktur yang selama ini hanya terlihat di role guru sekarang terlihat juga di konfigurasi Wakakur.
 - Objective/task aktif:
   - Melanjutkan pengembangan perangkat ajar dinamis setelah polish tab remedial dan editor tabel guru.
 - Batch terakhir selesai:
-  - `Perangkat ajar follow-up - universal grouped column builder`
+  - `Perangkat ajar follow-up - Wakakur visual 1:1 preview`
 - Progress fitur remedial keseluruhan:
   - `100%`
 - Progress presensi terpadu saat ini:
@@ -26,18 +26,16 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
-  - Commit: `77ce24f`
-  - Title: `fix(teaching-resources): support universal grouped columns`
+  - Commit: `d10a3c9`
+  - Title: `fix(teaching-resources): add wakakur visual schema preview`
   - Summary:
-    - metadata kolom perangkat ajar ditambah untuk header group dinamis (`headerGroupKey`, `headerGroupLabel`) dan jumlah subkolom grid
-    - builder Wakakur sekarang membuat header gabungan langsung di baris kolom, termasuk tombol `Buat Subkolom` untuk `Grid Minggu / Periode`
-    - rantai preset/bentuk dokumen lama dan panel bulan-minggu terpisah dibersihkan agar konfigurasi tidak terasa hardcode
-    - renderer tabel guru dan print dokumen kini menampilkan header group dua baris secara dinamis
-    - block konteks/catatan/pengesahan tidak ikut tampil sebagai kolom tabel utama di builder siap pakai
+    - modal Wakakur sekarang punya preview visual 1:1 yang memakai schema yang sama dengan renderer guru
+    - preview menampilkan header bertingkat untuk kolom dengan `headerGroupLabel`
+    - preview menampilkan kolom teknis Promes seperti `juli_1` sebagai `Juli -> 1`, sehingga bulan/minggu tidak lagi terasa hilang dari konfigurasi
+    - jika ada lebih dari satu tabel/section, preview menampilkan indikator `Tab per tabel`
+    - blok pengesahan ditampilkan dengan label manusiawi seperti `Tempat, tanggal`, `Guru mata pelajaran`, dan `Kepala sekolah`, bukan hanya key teknis
 - Area/file disentuh:
   - `frontend/src/pages/teacher/wakasek/curriculum/TeachingResourceProgramManagementPage.tsx`
-  - `frontend/src/pages/teacher/learning-resources/LearningResourceGenerator.tsx`
-  - `frontend/src/services/teachingResourceProgram.service.ts`
   - `docs/CODEX_CONTINUITY.md`
 - Verifikasi batch ini:
   - `git diff --check`
@@ -49,10 +47,10 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - Backend tidak diubah pada batch ini
   - Tidak ada perubahan mobile pada batch ini
 - Remaining work:
-  - Uji manual dari UI Wakakur: buat kolom biasa, buat header induk gabungan, buat grid minggu/periode lewat tipe kolom, lalu cek tampilan guru dan print.
-  - Lanjut polish perangkat ajar dinamis sesuai feedback user berikutnya.
+  - Batch berikutnya bisa membuat mode tab benar-benar editable eksplisit, bukan sekadar dibaca dari jumlah table section.
+  - Batch berikutnya bisa membuat editor pengesahan siap pakai agar Wakakur mengedit jabatan/nama kiri-kanan tanpa melihat key teknis sama sekali.
 - Residual risk:
-  - Perubahan batch ini frontend-only dan mempertahankan schema lama. Dokumen existing tetap dibaca seperti sebelumnya, tetapi konfigurasi baru perlu uji manual untuk kombinasi header gabungan yang kompleks.
+  - Perubahan batch ini frontend-only, read-only preview terhadap schema existing, dan tidak mengubah format data/backend. Risiko rendah; butuh uji manual di modal Wakakur untuk memastikan preview sesuai dokumen real user seperti Promes/Prota/CP.
 
 ## Status Saat Ini
 
