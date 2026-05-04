@@ -5,6 +5,52 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
+- Last updated: 2026-05-05 05:53 WIB
+- Current status: Batch 4 audit konteks arsip/lintas tahun selesai, terverifikasi, dan web sudah live. Halaman web admin yang memang boleh membaca lintas tahun sekarang diberi label konteks jelas, sementara `Data Kelas` default ke tahun ajaran aktif dan filter tahun/tingkat/jurusan dikirim ke backend agar tidak salah membaca data paginated/client-side.
+- Objective/task aktif:
+  - Menyederhanakan fitur tahun ajaran baru/promotion agar admin bisa melanjutkan data tahun ajaran lama ke tahun ajaran baru secara aman, bertahap, dan mudah dipahami.
+- Batch terakhir selesai:
+  - `Academic year archive context Batch 4`
+- Progress roadmap fitur tahun ajaran baru:
+  - `100%` Batch 1 UI/terminologi web admin
+  - `100%` Batch 2 guard kontrak backend legacy vs v2
+  - `100%` Batch 3 preflight/checklist web admin
+  - `100%` Batch 4 audit konteks arsip/lintas tahun web admin
+  - `85%` total roadmap redesign tahun ajaran baru/promotion
+- Last completed repo work:
+  - Commit: `850fc21`
+  - Title: `fix(admin): clarify academic year archive context`
+  - Summary:
+    - menambah komponen shared `AcademicYearContextNotice` untuk menandai halaman `Mode Laporan Lintas Tahun`, `Data Historis`, dan `Konfigurasi Lintas Tahun`
+    - menampilkan konteks rekap/historis pada halaman `Rekap Absensi Kelas`, `Laporan / Rapor Kelas`, dan `Rekap Jam Mengajar Guru`
+    - mengganti label filter menjadi `Tahun Ajaran Rekap` atau `Tahun Ajaran Rapor` agar tidak disalahartikan sebagai workflow operasional aktif
+    - halaman `Data Kelas` sekarang default ke `Tahun Ajaran Aktif`, menyediakan mode eksplisit `Semua Tahun Ajaran (lintas tahun)`, dan menandai tahun ajaran aktif/nonaktif pada tabel
+    - query `Data Kelas` kini mengirim filter `academicYearId`, `level`, dan `majorId` ke backend, bukan memfilter hasil halaman aktif di client
+    - audit backend menemukan guard arsip existing sudah tersedia via `academicYearArchiveAccess` dan controller terkait sudah memakai read/write guard untuk modul seperti laporan, presensi, izin, BPBK, dan class roster
+- Area/file disentuh:
+  - `frontend/src/components/academic/AcademicYearContextNotice.tsx`
+  - `frontend/src/pages/admin/master/ClassPage.tsx`
+  - `frontend/src/pages/admin/academic/AttendanceRecapPage.tsx`
+  - `frontend/src/pages/admin/academic/ReportCardsPage.tsx`
+  - `frontend/src/pages/admin/academic/TeachingLoadSummaryPage.tsx`
+  - `docs/CODEX_CONTINUITY.md`
+- Verifikasi batch ini:
+  - `git diff --check`
+  - `cd frontend && npm run build`
+  - `cd frontend && npm run deploy`
+  - `curl -I -s https://siskgb2.id/admin/academic-years | head -n 5` -> `HTTP/1.1 200 OK`
+- Publish/live status:
+  - Web sudah deploy live.
+  - Backend tidak disentuh dan tidak direstart pada batch ini.
+  - Mobile OTA tidak dipublish karena batch ini hanya menyentuh web admin; belum ada layar mobile untuk flow admin tahun ajaran baru/promotion yang terdampak.
+- Remaining work:
+  - Batch 5: audit/parity mobile jika nanti ada screen/flow mobile terkait tahun ajaran/promotion yang perlu disediakan, sekaligus final sweep kecil terhadap wording lintas tahun bila ditemukan di area mobile.
+- Residual risk:
+  - Risiko rendah karena frontend-only, tanpa endpoint baru, mutation baru, polling baru, migration, atau perubahan data production.
+  - Mode `Semua Tahun Ajaran (lintas tahun)` pada `Data Kelas` tetap dibatasi pagination/limit existing dan dibuat eksplisit untuk audit, bukan default operasional.
+
+## Update Sebelumnya
+
 - Last updated: 2026-05-05 05:32 WIB
 - Current status: Batch 3 preflight UI fitur `Tahun Ajaran Baru` selesai, terverifikasi, dan web sudah live. Alur `Kenaikan & Kelulusan` sekarang punya tabel `Checklist Kesiapan Sebelum Proses` agar admin melihat area yang siap, perlu dicek, atau harus diperbaiki sebelum siswa dipindahkan.
 - Objective/task aktif:
