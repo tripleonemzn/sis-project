@@ -5,56 +5,59 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-05-04 15:48 WIB
-- Current status: Batch 1 fondasi backend untuk fitur `Jurnal Mengajar Guru` sudah live. Schema Prisma, migration database, route API, dan controller dasar untuk daftar sesi jurnal serta create/update detail jurnal per sesi sudah tersedia dengan basis utama `scheduleEntryId` dan tahun ajaran aktif.
+- Last updated: 2026-05-04 15:56 WIB
+- Current status: Batch 2 input guru untuk fitur `Jurnal Mengajar Guru` sudah live di web dan mobile. Guru sekarang punya menu `Jurnal Mengajar` untuk melihat sesi dari jadwal aktif, memfilter status/rentang waktu, melihat status presensi mapel, serta menyimpan draft atau mengirim jurnal per sesi.
 - Objective/task aktif:
   - Mengembangkan fitur `Jurnal Mengajar Guru` yang terhubung ke jadwal mengajar, perangkat ajar, dan presensi mapel sebagai pondasi monitoring kurikulum serta supervisi kepsek.
 - Batch terakhir selesai:
-  - `Teaching journal foundation backend`
+  - `Teaching journal teacher input UI`
 - Progress fitur jurnal mengajar guru:
-  - `20%` keseluruhan roadmap
+  - `40%` keseluruhan roadmap
   - `100%` Batch 1 foundation backend
-  - `0%` Batch 2 teacher input web/mobile
+  - `100%` Batch 2 teacher input web/mobile
   - `0%` Batch 3 integrasi referensi perangkat ajar di form jurnal
   - `0%` Batch 4 monitoring kurikulum
   - `0%` Batch 5 supervisi/ringkasan kepsek
 - Last completed repo work:
-  - Commit: `pending current batch commit`
-  - Title: `teaching journal backend foundation`
+  - Commit: `1ca0dfc`
+  - Title: `feat(teaching-journal): add teacher input UI`
   - Summary:
-    - menambah model `TeachingJournal` dan `TeachingJournalReference` di Prisma dengan enum status, mode, dan delivery status
-    - menambah endpoint `/api/teaching-journals/sessions`, `/api/teaching-journals/entries/:id`, dan `/api/teaching-journals/entries`
-    - sesi jurnal dibangkitkan dari `scheduleEntryId`, dibatasi ke tahun ajaran aktif, melewati hari libur, dan menampilkan status jurnal/presensi per sesi
-    - upsert jurnal sudah menahan mismatch `id` vs `scheduleEntryId` dan tidak mengizinkan guru menandai `REVIEWED`
+    - menambah service web/mobile untuk endpoint `/api/teaching-journals`
+    - menambah halaman web guru `/teacher/teaching-journals` dengan tabel sesi, ringkasan status, filter rentang/status, dan modal input jurnal
+    - menambah screen mobile guru `/teacher/teaching-journals` dengan parity istilah, filter, list sesi compact, dan modal input jurnal
+    - menambah menu dan breadcrumb `Jurnal Mengajar` pada role guru
 - Area/file disentuh:
-  - `backend/prisma/schema.prisma`
-  - `backend/prisma/migrations/20260504161000_add_teaching_journal_foundation/migration.sql`
-  - `backend/src/controllers/teachingJournal.controller.ts`
-  - `backend/src/routes/teachingJournal.routes.ts`
-  - `backend/src/routes/index.ts`
+  - `frontend/src/App.tsx`
+  - `frontend/src/components/layout/Sidebar.tsx`
+  - `frontend/src/layouts/DashboardLayout.tsx`
+  - `frontend/src/pages/teacher/TeacherTeachingJournalPage.tsx`
+  - `frontend/src/services/teachingJournal.service.ts`
+  - `mobile-app/app/(app)/teacher/teaching-journals.tsx`
+  - `mobile-app/src/features/teachingJournals/teachingJournalApi.ts`
+  - `mobile-app/src/features/teachingJournals/types.ts`
+  - `mobile-app/src/features/dashboard/roleMenu.ts`
   - `docs/CODEX_CONTINUITY.md`
 - Verifikasi batch ini:
   - `git diff --check`
-  - `cd backend && npx prisma generate`
-  - `cd backend && npm run build`
-  - `cd backend && npx prisma migrate deploy`
-  - `cd backend && npm run service:restart`
-  - `cd backend && npm run service:health`
-  - `node ... prisma.teachingJournal.count()` -> tabel baru terbaca normal
-  - `curl http://127.0.0.1:3000/api/teaching-journals/sessions` -> `401`, menandakan route baru sudah aktif dan terlindungi auth
+  - `cd frontend && npm run build`
+  - `cd mobile-app && npm run typecheck`
+  - `cd mobile-app && npm run audit:parity:check`
+  - `cd frontend && npm run deploy`
+  - `curl -I -s https://siskgb2.id/teacher/teaching-journals` -> `HTTP/1.1 200 OK`
+  - `cd mobile-app && npm run update:pilot-live:auto -- "Jurnal Mengajar Guru. Silakan perbarui untuk menikmati fitur terbaru."`
 - Publish/live status:
-  - Backend migration sudah applied live
-  - Backend service sudah direload dan health check `200/200`
-  - Tidak ada perubahan web pada batch ini
-  - Tidak ada perubahan mobile pada batch ini
+  - Web sudah deploy live
+  - Mobile OTA `pilot-live` sudah publish
+  - OTA update group ID: `68d75b22-7872-4c83-b224-f5424a76d1ac`
+  - Android update ID: `019df231-72b0-753f-8479-e3181aed0189`
+  - Push notification OTA terkirim: `recipients=84`, `sent=84`, `failed=0`, `stale=0`
 - Remaining work:
-  - Batch 2: bangun UI guru untuk daftar sesi jurnal dan form input jurnal
   - Batch 3: sambungkan picker referensi perangkat ajar ke form jurnal
   - Batch 4: buat monitoring kurikulum berbasis kepatuhan dan coverage
   - Batch 5: buat ringkasan supervisi kepsek
 - Residual risk:
-  - Risiko rendah-sedang; perubahan backend menambah tabel dan route baru tetapi tidak mengubah alur runtime existing lain.
-  - Endpoint daftar sesi untuk role non-teacher saat ini masih bisa membaca scope aktif tahun ajaran secara cukup lebar dalam rentang tanggal yang dipilih; Batch 4 perlu menambahkan filter/pagination UI yang disiplin agar monitoring tetap hemat beban.
+  - Risiko rendah; Batch 2 hanya menambah consumer UI ke endpoint Batch 1, tidak menambah polling, realtime, atau query backend baru.
+  - Referensi perangkat ajar belum masuk form jurnal; itu sengaja ditahan untuk Batch 3 agar picker CP/TP/materi mengikuti pola yang sudah stabil dari perangkat ajar.
 
 ## Status Saat Ini
 
