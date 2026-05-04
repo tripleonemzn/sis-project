@@ -4353,17 +4353,20 @@ export const reviewTeachingResourcePackageByCurriculum = asyncHandler(async (req
 
   const now = new Date();
   const reviewNote = String(req.body?.reviewNote || '').trim();
+  const approved = action === 'APPROVE';
   await updateTeachingResourcePackageRows(rows, {
-    entryStatus: action === 'APPROVE' ? 'APPROVED' : 'REJECTED',
+    entryStatus: approved ? 'APPROVED' : 'REJECTED',
     reviewerId: Number(user.id),
     reviewedAt: now,
     reviewNote: reviewNote || null,
     meta: {
       packageKey: pkg.packageKey,
-      status: action === 'APPROVE' ? 'CURRICULUM_APPROVED' : 'REVISION_REQUESTED',
+      status: approved ? 'SUBMITTED_TO_PRINCIPAL' : 'REVISION_REQUESTED',
       curriculumReviewedAt: now.toISOString(),
       curriculumReviewerId: Number(user.id),
-      curriculumApprovedAt: action === 'APPROVE' ? now.toISOString() : null,
+      curriculumApprovedAt: approved ? now.toISOString() : null,
+      principalSubmittedAt: approved ? now.toISOString() : null,
+      principalSubmittedBy: approved ? Number(user.id) : null,
       reviewNote: reviewNote || null,
     },
   });
@@ -4371,9 +4374,13 @@ export const reviewTeachingResourcePackageByCurriculum = asyncHandler(async (req
   const updatedRows = await loadPackageRowsFromEntryIds(rows.map((entry) => entry.id));
   const updatedSubjectLabelsById = await loadTeachingResourceSubjectLabels(updatedRows);
   const [updatedPackage] = serializeTeachingResourcePackages(updatedRows, programs, updatedSubjectLabelsById);
-  return res
-    .status(200)
-    .json(new ApiResponse(200, updatedPackage, action === 'APPROVE' ? 'Paket disetujui Kurikulum.' : 'Paket dikembalikan untuk revisi.'));
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      updatedPackage,
+      approved ? 'Paket disetujui Kurikulum dan otomatis diajukan ke Kepala Sekolah.' : 'Paket dikembalikan untuk revisi.',
+    ),
+  );
 });
 
 export const submitTeachingResourcePackageToPrincipal = asyncHandler(async (req: Request, res: Response) => {

@@ -219,19 +219,12 @@ export default function LearningResourceReviewSubmissionPage() {
         action: payload.action,
         reviewNote: payload.reviewNote,
       }),
-    onSuccess: () => {
-      toast.success('Review Kurikulum berhasil disimpan.');
-      invalidate();
-      invalidateDetail();
-      setSelectedPackage(null);
-    },
-  });
-
-  const submitPrincipalMutation = useMutation({
-    mutationFn: (item: TeachingResourceReviewPackage) =>
-      teachingResourceProgramService.submitPackageToPrincipal({ entryIds: item.entryIds }),
-    onSuccess: () => {
-      toast.success('Paket berhasil diajukan ke Kepala Sekolah.');
+    onSuccess: (_data, variables) => {
+      toast.success(
+        variables.action === 'APPROVE'
+          ? 'Paket disetujui Kurikulum dan otomatis masuk ke Kepala Sekolah.'
+          : 'Paket dikembalikan untuk revisi.',
+      );
       invalidate();
       invalidateDetail();
       setSelectedPackage(null);
@@ -604,17 +597,6 @@ export default function LearningResourceReviewSubmissionPage() {
                     Setujui Paket
                   </button>
                 </>
-              ) : null}
-              {activeView === 'curriculum' && selectedPackage.status === 'CURRICULUM_APPROVED' ? (
-                <button
-                  type="button"
-                  disabled={submitPrincipalMutation.isPending}
-                  onClick={() => submitPrincipalMutation.mutate(selectedPackage)}
-                  className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white disabled:bg-indigo-300"
-                >
-                  <Send size={16} />
-                  Ajukan ke Kepala Sekolah
-                </button>
               ) : null}
               {activeView === 'principal' && selectedPackage.status === 'SUBMITTED_TO_PRINCIPAL' ? (
                 <>
