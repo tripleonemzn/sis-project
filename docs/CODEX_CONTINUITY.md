@@ -5,8 +5,8 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-05-04 16:19 WIB
-- Current status: Batch 3 integrasi referensi perangkat ajar untuk fitur `Jurnal Mengajar Guru` sudah selesai di source dan web sudah deploy live. Form jurnal web/mobile kini punya picker `Capaian/Kompetensi`, `Tujuan Pembelajaran`, `Materi`, dan `Indikator` yang mengambil opsi dari Perangkat Ajar existing dan menyimpan pilihan ke `TeachingJournalReference`. OTA mobile akan dipublish setelah commit/push agar safety gate OTA berjalan dari worktree bersih.
+- Last updated: 2026-05-04 16:22 WIB
+- Current status: Batch 3 integrasi referensi perangkat ajar untuk fitur `Jurnal Mengajar Guru` sudah live di web dan mobile. Form jurnal web/mobile kini punya picker `Capaian/Kompetensi`, `Tujuan Pembelajaran`, `Materi`, dan `Indikator` yang mengambil opsi dari Perangkat Ajar existing dan menyimpan pilihan ke `TeachingJournalReference`.
 - Objective/task aktif:
   - Mengembangkan fitur `Jurnal Mengajar Guru` yang terhubung ke jadwal mengajar, perangkat ajar, dan presensi mapel sebagai pondasi monitoring kurikulum serta supervisi kepsek.
 - Batch terakhir selesai:
@@ -19,7 +19,7 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `0%` Batch 4 monitoring kurikulum
   - `0%` Batch 5 supervisi/ringkasan kepsek
 - Last completed repo work:
-  - Commit: pending batch 3 commit
+  - Commit: `4a5eab5`
   - Title: `feat(teaching-journal): add resource references`
   - Summary:
     - menambah picker referensi perangkat ajar pada modal input jurnal guru di web
@@ -39,10 +39,14 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `cd mobile-app && npm run typecheck`
   - `cd mobile-app && npm run audit:parity:check`
   - `cd frontend && npm run deploy`
-  - OTA mobile belum dipublish pada catatan ini karena safety gate meminta worktree bersih; langkah berikutnya commit/push lalu rerun OTA.
+  - `curl -I -s https://siskgb2.id/teacher/teaching-journals` -> `HTTP/1.1 200 OK`
+  - `cd mobile-app && npm run update:pilot-live:auto -- "Jurnal Mengajar Guru. Silakan perbarui untuk menikmati fitur terbaru."`
 - Publish/live status:
   - Web sudah deploy live
-  - Mobile OTA `pilot-live` pending setelah commit/push
+  - Mobile OTA `pilot-live` sudah publish
+  - OTA update group ID: `493496e0-8c72-46f6-abe4-daa8d0d0c7b1`
+  - Android update ID: `019df24b-7802-728e-a845-7e060268e615`
+  - Push notification OTA terkirim: `recipients=84`, `sent=84`, `failed=0`, `stale=0`
 - Remaining work:
   - Batch 4: buat monitoring kurikulum berbasis kepatuhan dan coverage
   - Batch 5: buat ringkasan supervisi kepsek
