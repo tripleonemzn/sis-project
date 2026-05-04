@@ -5,8 +5,8 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-05-04 14:42 WIB
-- Current status: kisi-kisi dan kartu soal guru sekarang bisa mengambil referensi dari perangkat ajar yang sudah dibuat guru, termasuk paket ujian dengan mapel payung seperti `Konsentrasi Keahlian`. Untuk kasus KGB2G071 pada ASAJ, paket ujian memakai `subjectId 144 = Konsentrasi Keahlian`, sedangkan perangkat ajar yang sudah dibuat ada di `subjectId 99 = Network Client Server`; frontend kini otomatis menambahkan mapel spesifik dari assignment kelas/jurusan yang sama sebagai kandidat referensi.
+- Last updated: 2026-05-04 14:56 WIB
+- Current status: field `Kompetensi/Capaian`, `Tujuan Pembelajaran`, `Indikator Soal`, dan `Ruang Lingkup Materi` pada modal `Kisi-kisi & Kartu Soal` sekarang langsung berupa dropdown referensi perangkat ajar. Textarea manual di bawah field tersebut sudah dihapus agar guru tinggal memilih CP/kompetensi, TP, IKTP, dan materi dari perangkat ajar yang tersedia.
 - Objective/task aktif:
   - Mengintegrasikan dokumen perangkat ajar guru ke workflow ujian, khususnya agar guru tidak mengetik ulang CP/kompetensi, TP, materi, dan IKTP ketika menyusun kisi-kisi/kartu soal.
 - Batch terakhir selesai:
@@ -26,12 +26,12 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
-  - Commit: `1d61cbe`
-  - Title: `fix(exams): resolve teaching resource refs for umbrella subjects`
+  - Commit: `8f7527d`
+  - Title: `fix(exams): use dropdown-only blueprint references`
   - Summary:
-    - query referensi kisi-kisi/kartu soal tidak lagi kosong pada paket mapel payung `Konsentrasi Keahlian`
-    - ketika mapel paket adalah mapel payung, frontend menambahkan subjectId dari assignment spesifik guru pada kelas/jurusan yang sama, lalu tetap mengirim request referensi yang scoped per subjectId
-    - kasus KGB2G071 ASAJ sekarang bisa membaca perangkat ajar `Network Client Server` walaupun paket ujiannya memakai subject `Konsentrasi Keahlian`
+    - empat field referensi utama di modal kisi-kisi/kartu soal tidak lagi menyediakan input teks manual
+    - dropdown menampilkan referensi perangkat ajar yang relevan dan tetap menampilkan `Nilai tersimpan` jika ada data lama yang belum cocok dengan opsi referensi
+    - jika referensi perangkat ajar belum tersedia, field tampil disabled dengan pesan yang jelas, bukan textarea manual
 - Area/file disentuh:
   - `frontend/src/pages/teacher/exams/ExamEditorPage.tsx`
   - `docs/CODEX_CONTINUITY.md`
@@ -39,17 +39,13 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `git diff --check`
   - `cd frontend && npm run build`
   - `cd frontend && npm run deploy`
-  - `curl -I -s 'https://siskgb2.id/' | head -n 1` -> `HTTP/1.1 200 OK`
-  - DB sanity check:
-    - user `KGB2G071` memiliki paket ASAJ `subjectId 144 = Konsentrasi Keahlian`
-    - perangkat ajar approved `CP`, `ATP`, `PROTA`, `PROMES`, `KKTP`, `MATRIKS_SEBARAN` milik user yang sama berada di `subjectId 99 = Network Client Server`
-    - assignment aktif kelas `XII TKJ 1-4` memuat kedua subject tersebut, sehingga fallback subject scoped aman dipakai
+  - `curl -I -s https://siskgb2.id/` -> `HTTP/1.1 200 OK`
 - Publish/live status:
   - Web sudah deploy live
   - Tidak ada perubahan backend dan tidak ada restart service pada batch ini
   - Tidak ada perubahan mobile pada batch ini karena editor kisi-kisi/kartu soal yang tersedia saat ini berada di web
 - Remaining work:
-  - QA manual direkomendasikan: buka paket ujian yang mendukung `Kisi-kisi & Kartu Soal`, pilih dropdown referensi CP/TP/IKTP/materi, simpan paket, lalu cek kartu soal ikut membaca data blueprint yang sama.
+  - QA manual direkomendasikan: pada akun guru, buka paket ujian seperti mapel `Projek Ilmu Pengetahuan Alam`, buka `Kisi-kisi & Kartu Soal`, lalu pastikan empat field referensi utama muncul sebagai dropdown langsung tanpa textarea manual di bawahnya.
   - Jika nanti mobile memiliki editor kisi-kisi/kartu soal, parity mobile perlu mengikuti istilah dan alur dropdown web ini.
 - Residual risk:
   - Risiko rendah; perubahan frontend-only dan memakai endpoint referensi perangkat ajar existing dengan query key scoped per paket/mapel/kelas. Tidak ada polling, endpoint baru, atau perubahan data flow backend.
