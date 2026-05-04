@@ -3,6 +3,7 @@ import { useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { academicYearService, type AcademicYear } from '../../../services/academicYear.service';
 import { classService, type Class } from '../../../services/class.service';
+import AcademicYearContextNotice from '../../../components/academic/AcademicYearContextNotice';
 import {
   reportService,
   type ClassReportSummary,
@@ -210,6 +211,10 @@ export const ReportCardsPage = () => {
     isFetchingRanking;
 
   const canLoadRanking = !!effectiveAcademicYearId && !!effectiveClassId && !!semester;
+  const selectedYear = useMemo(
+    () => academicYears.find((ay) => ay.id === effectiveAcademicYearId),
+    [academicYears, effectiveAcademicYearId],
+  );
 
   const handleRefresh = async () => {
     if (viewMode === 'REPORT' && !isPrincipalRoute) {
@@ -349,6 +354,16 @@ export const ReportCardsPage = () => {
         </button>
       </div>
 
+      {!isPrincipalRoute && (
+        <AcademicYearContextNotice
+          variant="report"
+          title="Data Historis Rapor"
+          description="Pilih tahun ajaran untuk membaca leger atau peringkat sebagai arsip. Input dan publikasi nilai tetap mengikuti alur operasional wali kelas dan kurikulum."
+          selectedYearName={selectedYear?.name}
+          isActiveYear={selectedYear?.isActive ?? null}
+        />
+      )}
+
       <div className="bg-white rounded-xl shadow-md border-0 p-6 space-y-4">
         <div className={`grid grid-cols-1 ${isPrincipalRoute ? 'md:grid-cols-2' : 'md:grid-cols-3'} gap-4`}>
           {!isPrincipalRoute && (
@@ -357,7 +372,7 @@ export const ReportCardsPage = () => {
                 htmlFor="report-academic-year"
                 className="block text-sm font-medium text-gray-700 mb-1"
               >
-                Tahun Ajaran
+                Tahun Ajaran Rapor
               </label>
               <select
                 id="report-academic-year"

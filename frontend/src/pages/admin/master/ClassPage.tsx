@@ -4,6 +4,7 @@ import { classService } from '../../../services/class.service';
 import { majorService, type Major } from '../../../services/major.service';
 import { academicYearService, type AcademicYear } from '../../../services/academicYear.service';
 import { userService } from '../../../services/user.service';
+import AcademicYearContextNotice from '../../../components/academic/AcademicYearContextNotice';
 import type { Class } from '../../../services/class.service';
 import type { User } from '../../../types/auth';
 import { z } from 'zod';
@@ -45,7 +46,7 @@ export const ClassPage = () => {
   const [limit, setLimit] = useState(10);
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
-  const [filterAcademicYearId, setFilterAcademicYearId] = useState('');
+  const [filterAcademicYearId, setFilterAcademicYearId] = useState('ACTIVE');
   const [filterLevel, setFilterLevel] = useState('');
   const [filterMajorId, setFilterMajorId] = useState('');
 
@@ -58,12 +59,6 @@ export const ClassPage = () => {
     return () => clearTimeout(timer);
   }, [search]);
 
-  // Fetch Classes
-  const { data, isLoading, isError, error } = useQuery({
-    queryKey: ['classes', page, limit, debouncedSearch],
-    queryFn: () => classService.list({ page, limit, search: debouncedSearch }),
-  });
-
   // Fetch Options for Form
   const { data: majorsData } = useQuery({ 
     queryKey: ['majors-options'], 
@@ -72,7 +67,7 @@ export const ClassPage = () => {
   
   const { data: academicYearsData } = useQuery({ 
     queryKey: ['academic-years-options'], 
-    queryFn: () => academicYearService.list({ limit: 100, isActive: true }),
+    queryFn: () => academicYearService.list({ limit: 100 }),
   });
 
   const { data: teachersData } = useQuery({ 
@@ -90,10 +85,66 @@ export const ClassPage = () => {
     () => academicYearsData?.data?.academicYears || academicYearsData?.academicYears || [],
     [academicYearsData],
   );
+  const activeAcademicYear = useMemo(
+    () => academicYears.find((ay: AcademicYear) => ay.isActive) || academicYears[0],
+    [academicYears],
+  );
+  const effectiveFilterAcademicYearId = useMemo(() => {
+    if (filterAcademicYearId === 'ALL') {
+      return undefined;
+    }
+
+    if (filterAcademicYearId === 'ACTIVE') {
+      return activeAcademicYear?.id;
+    }
+
+    return Number(filterAcademicYearId);
+  }, [activeAcademicYear?.id, filterAcademicYearId]);
+  const selectedFilterAcademicYear = useMemo(
+    () => {
+      if (filterAcademicYearId === 'ALL') {
+        return null;
+      }
+
+      if (filterAcademicYearId === 'ACTIVE') {
+        return activeAcademicYear || null;
+      }
+
+      return academicYears.find((ay: AcademicYear) => ay.id === Number(filterAcademicYearId)) || null;
+    },
+    [academicYears, activeAcademicYear, filterAcademicYearId],
+  );
   const teachers = useMemo<User[]>(
     () => (Array.isArray(teachersData) ? teachersData : (teachersData?.data || [])),
     [teachersData],
   );
+
+  // Fetch Classes after the active year is known, so the first load does not
+  // accidentally query every archived class.
+  const { data, isLoading, isError, error } = useQuery({
+    queryKey: [
+      'classes',
+      page,
+      limit,
+      debouncedSearch,
+      filterAcademicYearId,
+      effectiveFilterAcademicYearId || 'all-years',
+      filterLevel,
+      filterMajorId,
+    ],
+    queryFn: () =>
+      classService.list({
+        page,
+        limit,
+        search: debouncedSearch,
+        academicYearId: effectiveFilterAcademicYearId,
+        level: filterLevel || undefined,
+        majorId: filterMajorId ? Number(filterMajorId) : undefined,
+      }),
+    enabled: filterAcademicYearId === 'ALL' || !!effectiveFilterAcademicYearId,
+  });
+  const isWaitingForAcademicYear =
+    filterAcademicYearId !== 'ALL' && !effectiveFilterAcademicYearId;
 
   const { register, handleSubmit, reset, setValue, getValues, formState: { errors } } = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -246,13 +297,6 @@ export const ClassPage = () => {
   const list: Class[] = data?.data?.classes || [];
   const pagination = data?.data?.pagination || { page: 1, limit: 10, total: 0, totalPages: 1 };
 
-  const filteredList = list.filter((item) => {
-    const matchesAcademicYear = !filterAcademicYearId || item.academicYearId === Number(filterAcademicYearId);
-    const matchesLevel = !filterLevel || item.level === filterLevel;
-    const matchesMajor = !filterMajorId || item.majorId === Number(filterMajorId);
-    return matchesAcademicYear && matchesLevel && matchesMajor;
-  });
-
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -275,6 +319,18 @@ export const ClassPage = () => {
           </button>
         )}
       </div>
+
+      <AcademicYearContextNotice
+        variant="config"
+        title="Konfigurasi Lintas Tahun"
+        description={
+          filterAcademicYearId !== 'ALL'
+            ? 'Data kelas ditampilkan berdasarkan tahun ajaran yang dipilih. Tahun ajaran nonaktif diperlakukan sebagai arsip atau draft oleh backend, sehingga workflow operasional tetap mengikuti tahun ajaran aktif.'
+            : 'Mode semua tahun ajaran dipakai untuk audit lintas tahun. Gunakan filter tahun ajaran aktif jika ingin bekerja pada data operasional berjalan.'
+        }
+        selectedYearName={selectedFilterAcademicYear?.name || 'Semua Tahun Ajaran'}
+        isActiveYear={selectedFilterAcademicYear?.isActive ?? null}
+      />
 
       {showForm ? (
         <div className="bg-white rounded-xl shadow-md border-0 p-6 space-y-4">
@@ -484,9 +540,13 @@ export const ClassPage = () => {
                     setPage(1);
                   }}
                 >
-                  <option value="">Semua Tahun Ajaran</option>
+                  <option value="ACTIVE">Tahun Ajaran Aktif</option>
+                  <option value="ALL">Semua Tahun Ajaran (lintas tahun)</option>
                   {academicYears.map((ay: AcademicYear) => (
-                    <option key={ay.id} value={ay.id}>{ay.name}</option>
+                    <option key={ay.id} value={ay.id}>
+                      {ay.name}
+                      {ay.isActive ? ' (Aktif)' : ''}
+                    </option>
                   ))}
                 </select>
                 <select
@@ -543,7 +603,7 @@ export const ClassPage = () => {
             </div>
           </div>
 
-          {isLoading ? (
+          {isLoading || isWaitingForAcademicYear ? (
             <div className="flex justify-center items-center h-40">
               <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
             </div>
@@ -571,14 +631,14 @@ export const ClassPage = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
-                    {filteredList.length === 0 ? (
+                    {list.length === 0 ? (
                       <tr>
                         <td colSpan={8} className="px-6 py-8 text-center text-gray-500">
                           {search ? 'Tidak ada data yang cocok dengan pencarian' : 'Belum ada data kelas'}
                         </td>
                       </tr>
                     ) : (
-                      filteredList.map((item) => (
+                      list.map((item) => (
                         <tr key={item.id} className="hover:bg-gray-50 transition-colors">
                           <td className="px-6 py-4 font-medium text-gray-900">{item.name}</td>
                           <td className="px-6 py-4 text-gray-600">
@@ -586,9 +646,14 @@ export const ClassPage = () => {
                           </td>
                           <td className="px-6 py-4 text-gray-600">
                             {item.academicYear ? (
-                              <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${item.academicYear.isActive ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
-                              {item.academicYear.name}
-                              </span>
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${item.academicYear.isActive ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
+                                  {item.academicYear.name}
+                                </span>
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold ${item.academicYear.isActive ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
+                                  {item.academicYear.isActive ? 'Aktif' : 'Nonaktif'}
+                                </span>
+                              </div>
                             ) : '-'}
                           </td>
                           <td className="px-6 py-4 text-gray-600">

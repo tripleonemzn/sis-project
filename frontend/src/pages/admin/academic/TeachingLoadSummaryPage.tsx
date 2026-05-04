@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { academicYearService, type AcademicYear } from '../../../services/academicYear.service';
+import AcademicYearContextNotice from '../../../components/academic/AcademicYearContextNotice';
 import {
   scheduleService,
   type TeachingLoadTeacherSummary,
@@ -57,6 +58,10 @@ export const TeachingLoadSummaryPage = ({ scope = 'DEFAULT' }: TeachingLoadSumma
 
     return academicYears[0]?.id ?? '';
   }, [academicYears, selectedAcademicYearId]);
+  const selectedYear = useMemo(
+    () => academicYears.find((ay) => ay.id === effectiveAcademicYearId),
+    [academicYears, effectiveAcademicYearId],
+  );
 
   const isCurriculumScope = scope === 'CURRICULUM';
 
@@ -173,6 +178,14 @@ export const TeachingLoadSummaryPage = ({ scope = 'DEFAULT' }: TeachingLoadSumma
         </button>
       </div>
 
+      <AcademicYearContextNotice
+        variant="report"
+        title="Mode Rekap Lintas Tahun"
+        description="Rekap jam mengajar membaca jadwal pada tahun ajaran yang dipilih. Perubahan jadwal tetap dilakukan dari menu jadwal operasional."
+        selectedYearName={selectedYear?.name}
+        isActiveYear={selectedYear?.isActive ?? null}
+      />
+
       <div className="bg-white rounded-xl shadow-md border-0 p-6 space-y-4">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
@@ -180,7 +193,7 @@ export const TeachingLoadSummaryPage = ({ scope = 'DEFAULT' }: TeachingLoadSumma
               htmlFor="teaching-load-academic-year"
               className="block text-sm font-medium text-gray-700 mb-1"
             >
-              Tahun Ajaran
+              Tahun Ajaran Rekap
             </label>
             <select
               id="teaching-load-academic-year"

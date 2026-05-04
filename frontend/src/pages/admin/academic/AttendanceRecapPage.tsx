@@ -3,6 +3,7 @@ import { useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { classService, type Class } from '../../../services/class.service';
 import { academicYearService, type AcademicYear } from '../../../services/academicYear.service';
+import AcademicYearContextNotice from '../../../components/academic/AcademicYearContextNotice';
 import {
   attendanceService,
   type AttendanceRecapPeriod,
@@ -321,6 +322,16 @@ export const AttendanceRecapPage = () => {
         </button>
       </div>
 
+      {!isPrincipalRoute && (
+        <AcademicYearContextNotice
+          variant="report"
+          title="Mode Laporan Lintas Tahun"
+          description="Halaman ini bersifat rekap/historis. Pilihan tahun ajaran hanya mengubah data yang dibaca, bukan workflow presensi harian yang tetap mengikuti tahun ajaran aktif."
+          selectedYearName={selectedYear?.name}
+          isActiveYear={selectedYear?.isActive ?? null}
+        />
+      )}
+
       <div className="bg-white rounded-xl shadow-md border-0 overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-100 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div>
@@ -505,7 +516,7 @@ export const AttendanceRecapPage = () => {
                 htmlFor="attendance-academic-year"
                 className="block text-sm font-medium text-gray-700 mb-1"
               >
-                Tahun Ajaran
+                Tahun Ajaran Rekap
               </label>
               <select
                 id="attendance-academic-year"
