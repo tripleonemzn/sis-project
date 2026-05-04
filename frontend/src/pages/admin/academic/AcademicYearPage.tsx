@@ -49,6 +49,21 @@ const schema = z.object({
 type FormValues = z.infer<typeof schema>;
 type MappingDrafts = Record<number, number | null>;
 type AcademicYearPageTab = 'years' | 'new-year' | 'history';
+type PromotionPreflightStatus = 'ready' | 'warning' | 'blocked' | 'info';
+type PromotionPreflightRow = {
+  key: string;
+  area: string;
+  status: PromotionPreflightStatus;
+  impact: string;
+  detail: string;
+  nextAction: string;
+};
+
+type PreflightComponentLike = {
+  ready: boolean;
+  errors: string[];
+  warnings: string[];
+};
 
 function formatDate(value?: string | null) {
   if (!value) return '-';
@@ -85,6 +100,38 @@ function getPromotionRunStatusLabel(status: string) {
   if (status === 'ROLLED_BACK') return 'Dibatalkan';
   if (status === 'COMMITTED') return 'Selesai';
   return status;
+}
+
+function getPreflightStatusMeta(status: PromotionPreflightStatus) {
+  if (status === 'blocked') {
+    return {
+      label: 'Harus Diperbaiki',
+      className: 'bg-red-100 text-red-700 ring-red-200',
+    };
+  }
+  if (status === 'warning') {
+    return {
+      label: 'Perlu Dicek',
+      className: 'bg-amber-100 text-amber-700 ring-amber-200',
+    };
+  }
+  if (status === 'ready') {
+    return {
+      label: 'Siap',
+      className: 'bg-green-100 text-green-700 ring-green-200',
+    };
+  }
+  return {
+    label: 'Informasi',
+    className: 'bg-blue-100 text-blue-700 ring-blue-200',
+  };
+}
+
+function getComponentStatus(component?: PreflightComponentLike | null, hasOperationalWarning = false): PromotionPreflightStatus {
+  if (!component) return 'warning';
+  if (!component.ready || component.errors.length > 0) return 'blocked';
+  if (component.warnings.length > 0 || hasOperationalWarning) return 'warning';
+  return 'ready';
 }
 
 function getRolloverPreviewItemLabel(item: unknown) {
@@ -584,6 +631,125 @@ export const AcademicYearPage = () => {
         },
       ]
     : [];
+  const hasPromotionMappingDraftChanges = useMemo(() => {
+    if (!promotionWorkspace) return false;
+    return promotionWorkspace.classes.some((item) => {
+      const savedTargetClassId = item.action === 'GRADUATE' ? null : (item.targetClassId ?? null);
+      return getResolvedTargetClassId(item, mappingDrafts) !== savedTargetClassId;
+    });
+  }, [mappingDrafts, promotionWorkspace]);
+  const promotionPreflightRows = useMemo<PromotionPreflightRow[]>(() => {
+    if (!promotionWorkspace) return [];
+
+    const classPreparation = rolloverWorkspace?.components.classPreparation;
+    const teacherAssignments = rolloverWorkspace?.components.teacherAssignments;
+    const academicSetupComponents = rolloverWorkspace
+      ? [
+          rolloverWorkspace.components.scheduleTimeConfig,
+          rolloverWorkspace.components.academicEvents,
+          rolloverWorkspace.components.reportDates,
+          rolloverWorkspace.components.subjectKkms,
+          rolloverWorkspace.components.examGradeComponents,
+          rolloverWorkspace.components.examProgramConfigs,
+          rolloverWorkspace.components.examProgramSessions,
+        ]
+      : [];
+    const academicSetupHasErrors = academicSetupComponents.some((component) => !component.ready || component.errors.length > 0);
+    const academicSetupHasWarnings = academicSetupComponents.some((component) => component.warnings.length > 0);
+    const academicSetupPendingCreate = academicSetupComponents.some(
+      (component) => 'createCount' in component.summary && Number(component.summary.createCount || 0) > 0,
+    );
+    const academicSetupStatus: PromotionPreflightStatus = !rolloverWorkspace
+      ? 'warning'
+      : academicSetupHasErrors
+        ? 'blocked'
+        : academicSetupHasWarnings || academicSetupPendingCreate
+          ? 'warning'
+          : 'ready';
+    const teacherSummary = teacherAssignments?.summary;
+    const teacherHasMissingTarget = Number(teacherSummary?.skipNoTargetClassCount || 0) > 0;
+    const promotionHasErrors = promotionWorkspace.validation.errors.length > 0;
+    const promotionHasWarnings = promotionWorkspace.validation.warnings.length > 0;
+    const destinationStatus: PromotionPreflightStatus = hasPromotionMappingDraftChanges
+      ? 'blocked'
+      : promotionHasErrors
+        ? 'blocked'
+        : promotionHasWarnings
+          ? 'warning'
+          : 'ready';
+
+    return [
+      {
+        key: 'classes',
+        area: 'Kelas & Wali Kelas',
+        status: getComponentStatus(classPreparation, Number(classPreparation?.summary.homeroomMissingSourceCount || 0) > 0),
+        impact: 'Menyiapkan kelas XI/XII di tahun ajaran baru dan menjaga wali kelas tetap ikut bila belum diganti.',
+        detail: classPreparation
+          ? `${classPreparation.summary.sourceItems} kelas sumber, ${classPreparation.summary.createCount} kelas akan dibuat, ${classPreparation.summary.existingCount} sudah ada. Wali ikut ${classPreparation.summary.homeroomCarryCount}, isi wali kosong ${classPreparation.summary.homeroomExistingFillCount}, tanpa wali ${classPreparation.summary.homeroomMissingSourceCount}.`
+          : 'Data salin tahun sebelumnya belum terbaca.',
+        nextAction: classPreparation?.ready ? 'Lanjutkan jika daftar wali kelas sudah sesuai.' : 'Cek tab Salin Data Tahun Sebelumnya dan perbaiki kelas/wali yang bermasalah.',
+      },
+      {
+        key: 'teacher-assignments',
+        area: 'Guru Mapel',
+        status: getComponentStatus(teacherAssignments, teacherHasMissingTarget),
+        impact: 'Menyalin penugasan guru mapel agar guru tetap mengajar mapel/kelas yang sama di tahun ajaran baru.',
+        detail: teacherAssignments
+          ? `${teacherAssignments.summary.sourceItems} penugasan sumber, ${teacherAssignments.summary.createCount} akan disalin, ${teacherAssignments.summary.existingCount} sudah ada, ${teacherAssignments.summary.skipNoTargetClassCount} menunggu kelas tujuan.`
+          : 'Data penugasan guru mapel belum terbaca.',
+        nextAction: teacherHasMissingTarget ? 'Lengkapi kelas tujuan dulu agar penugasan guru mapel bisa ikut.' : 'Cek hanya jika ada perubahan guru/mapel/assignment.',
+      },
+      {
+        key: 'academic-setup',
+        area: 'Jadwal, KKM, Rapor & Ujian',
+        status: academicSetupStatus,
+        impact: 'Membawa konfigurasi pendukung seperti jam pelajaran, kalender, tanggal rapor, KKM, komponen nilai, program ujian, dan sesi ujian.',
+        detail: rolloverWorkspace
+          ? `Sisa data yang akan disalin: jam pelajaran ${rolloverWorkspace.components.scheduleTimeConfig.summary.createCount}, kalender ${rolloverWorkspace.components.academicEvents.summary.createCount}, tanggal rapor ${rolloverWorkspace.components.reportDates.summary.createCount}, KKM ${rolloverWorkspace.components.subjectKkms.summary.createCount}, komponen nilai ${rolloverWorkspace.components.examGradeComponents.summary.createCount}, program ujian ${rolloverWorkspace.components.examProgramConfigs.summary.createCount}, sesi ujian ${rolloverWorkspace.components.examProgramSessions.summary.createCount}.`
+          : 'Data konfigurasi pendukung belum terbaca.',
+        nextAction: academicSetupPendingCreate ? 'Klik Salin Data ke Tahun Baru sebelum proses kenaikan jika data ini masih berlanjut.' : 'Konfigurasi pendukung sudah terlihat aman untuk dilanjutkan.',
+      },
+      {
+        key: 'student-destination',
+        area: 'Tujuan Kelas Siswa',
+        status: destinationStatus,
+        impact: 'Memastikan siswa kelas X/XI pindah ke kelas tujuan yang benar dan tidak masuk ke kelas yang sudah berisi siswa aktif.',
+        detail: `${promotionWorkspace.summary.configuredPromoteClasses}/${promotionWorkspace.summary.promotableClasses} kelas naik sudah punya tujuan. ${promotionWorkspace.summary.promotedStudents} siswa akan naik kelas.`,
+        nextAction: hasPromotionMappingDraftChanges
+          ? 'Klik Simpan Tujuan Kelas dulu sebelum memproses kenaikan.'
+          : promotionWorkspace.validation.readyToCommit
+            ? 'Tujuan kelas sudah siap diproses.'
+            : 'Perbaiki kelas tujuan yang masih bermasalah.',
+      },
+      {
+        key: 'graduation',
+        area: 'Kelulusan Kelas XII',
+        status: promotionWorkspace.summary.graduatingClasses > 0 ? 'ready' : 'info',
+        impact: 'Siswa kelas XII aktif akan dilepas dari kelas aktif dan berubah menjadi alumni.',
+        detail: `${promotionWorkspace.summary.graduatingClasses} kelas XII, ${promotionWorkspace.summary.graduatedStudents} siswa akan menjadi alumni.`,
+        nextAction: promotionWorkspace.summary.graduatingClasses > 0 ? 'Pastikan data kelas XII sudah final sebelum proses.' : 'Tidak ada kelas XII aktif pada tahun sumber.',
+      },
+      {
+        key: 'duties',
+        area: 'Duty/Jabatan Guru',
+        status: 'info',
+        impact: 'Duty guru melekat pada data guru dan tetap berjalan, kecuali admin menggantinya dari pengelolaan guru/duty.',
+        detail: 'Proses tahun ajaran baru tidak menghapus duty guru. Pergantian wakasek, wali kelas khusus, pembina, atau jabatan lain tetap dilakukan dari source of truth data guru.',
+        nextAction: 'Jika ada pergantian jabatan, ubah datanya sebelum tahun ajaran baru dipakai massal.',
+      },
+      {
+        key: 'active-year',
+        area: 'Aktivasi & Arsip',
+        status: activateTargetYearAfterCommit ? 'warning' : 'info',
+        impact: 'Menentukan kapan tahun ajaran baru menjadi operasional aktif dan tahun lama menjadi arsip/historis.',
+        detail: activateTargetYearAfterCommit ? 'Tahun ajaran baru akan langsung diaktifkan setelah proses selesai.' : 'Tahun ajaran baru tidak otomatis diaktifkan setelah proses selesai.',
+        nextAction: activateTargetYearAfterCommit ? 'Pastikan semua user siap berpindah ke tahun ajaran baru.' : 'Aktifkan manual dari Daftar Tahun Ajaran saat sudah siap.',
+      },
+    ];
+  }, [activateTargetYearAfterCommit, hasPromotionMappingDraftChanges, promotionWorkspace, rolloverWorkspace]);
+  const promotionPreflightBlockedCount = promotionPreflightRows.filter((item) => item.status === 'blocked').length;
+  const promotionPreflightWarningCount = promotionPreflightRows.filter((item) => item.status === 'warning').length;
+  const promotionPreflightReadyCount = promotionPreflightRows.filter((item) => item.status === 'ready').length;
 
   return (
     <div className="space-y-6">
@@ -1111,6 +1277,56 @@ export const AcademicYearPage = () => {
                   <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-5 text-sm text-red-700">{getErrorMessage(promotionWorkspaceQuery.error) || 'Gagal memuat data kenaikan.'}</div>
                 ) : (
                   <>
+                    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                      <div className="flex flex-col gap-3 border-b border-slate-100 bg-slate-50 px-4 py-4 lg:flex-row lg:items-center lg:justify-between">
+                        <div>
+                          <h3 className="text-base font-semibold text-slate-900">Checklist Kesiapan Sebelum Proses</h3>
+                          <p className="mt-1 text-sm text-slate-600">Ringkasan ini membantu admin memastikan data tahun ajaran baru aman sebelum siswa benar-benar dipindahkan.</p>
+                        </div>
+                        <div className="flex flex-wrap gap-2 text-xs font-semibold">
+                          <span className="rounded-full bg-green-100 px-3 py-1 text-green-700">{promotionPreflightReadyCount} siap</span>
+                          <span className="rounded-full bg-amber-100 px-3 py-1 text-amber-700">{promotionPreflightWarningCount} perlu dicek</span>
+                          <span className="rounded-full bg-red-100 px-3 py-1 text-red-700">{promotionPreflightBlockedCount} harus diperbaiki</span>
+                        </div>
+                      </div>
+                      <div className={`border-b px-4 py-3 text-sm ${promotionPreflightBlockedCount > 0 ? 'border-red-100 bg-red-50 text-red-700' : promotionPreflightWarningCount > 0 ? 'border-amber-100 bg-amber-50 text-amber-800' : 'border-green-100 bg-green-50 text-green-700'}`}>
+                        {promotionPreflightBlockedCount > 0
+                          ? 'Belum aman diproses. Selesaikan item berstatus Harus Diperbaiki terlebih dahulu.'
+                          : promotionPreflightWarningCount > 0
+                            ? 'Secara teknis bisa dilanjutkan jika tidak ada error, tetapi item Perlu Dicek sebaiknya dikonfirmasi dulu.'
+                            : 'Preflight terlihat siap. Tetap pastikan data sumber sudah final sebelum menekan proses.'}
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="min-w-full text-left text-sm">
+                          <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                            <tr>
+                              <th className="px-4 py-3 font-semibold">Area</th>
+                              <th className="px-4 py-3 font-semibold">Status</th>
+                              <th className="px-4 py-3 font-semibold">Dampak</th>
+                              <th className="px-4 py-3 font-semibold">Ringkasan Data</th>
+                              <th className="px-4 py-3 font-semibold">Langkah Aman</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {promotionPreflightRows.map((item) => {
+                              const statusMeta = getPreflightStatusMeta(item.status);
+                              return (
+                                <tr key={item.key} className="align-top">
+                                  <td className="px-4 py-4 font-semibold text-slate-900">{item.area}</td>
+                                  <td className="px-4 py-4">
+                                    <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ring-1 ${statusMeta.className}`}>{statusMeta.label}</span>
+                                  </td>
+                                  <td className="px-4 py-4 text-slate-600">{item.impact}</td>
+                                  <td className="px-4 py-4 text-slate-600">{item.detail}</td>
+                                  <td className="px-4 py-4 text-slate-700">{item.nextAction}</td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
                     <div className="grid gap-3 md:grid-cols-4">
                       <div className="rounded-xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
                         <p className="text-xs uppercase tracking-wide text-slate-500">Total Siswa Aktif</p>
@@ -1179,8 +1395,16 @@ export const AcademicYearPage = () => {
                         <button
                           type="button"
                           onClick={() => {
+                            if (hasPromotionMappingDraftChanges) {
+                              toast.error('Ada perubahan tujuan kelas yang belum disimpan. Klik Simpan Tujuan Kelas dulu sebelum proses.');
+                              return;
+                            }
                             if (promotionWorkspace.validation.readyToCommit === false) {
                               toast.error('Masih ada data yang harus diperbaiki sebelum proses.');
+                              return;
+                            }
+                            if (promotionPreflightBlockedCount > 0) {
+                              toast.error('Checklist preflight masih memiliki item yang harus diperbaiki.');
                               return;
                             }
                             if (!confirm('Proses kenaikan dan kelulusan sekarang? Data siswa aktif akan berpindah ke tahun ajaran baru.')) {
@@ -1212,6 +1436,8 @@ export const AcademicYearPage = () => {
                           <tbody className="divide-y divide-slate-100">
                             {promotionWorkspace.classes.map((item) => {
                               const selectedTargetClassId = getResolvedTargetClassId(item, mappingDrafts);
+                              const savedTargetClassId = item.action === 'GRADUATE' ? null : (item.targetClassId ?? null);
+                              const hasUnsavedTargetChange = selectedTargetClassId !== savedTargetClassId;
                               return (
                                 <tr key={item.sourceClassId} className="align-top">
                                   <td className="px-4 py-4">
@@ -1263,7 +1489,9 @@ export const AcademicYearPage = () => {
                                     )}
                                   </td>
                                   <td className="px-4 py-4">
-                                    {item.validation.errors.length === 0 && item.validation.warnings.length === 0 ? (
+                                    {hasUnsavedTargetChange ? (
+                                      <div className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">Perubahan tujuan kelas belum disimpan.</div>
+                                    ) : item.validation.errors.length === 0 && item.validation.warnings.length === 0 ? (
                                       <span className="inline-flex rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-700">Siap</span>
                                     ) : (
                                       <div className="space-y-2">
