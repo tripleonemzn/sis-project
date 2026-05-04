@@ -5,12 +5,12 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-05-04 13:07 WIB
-- Current status: data lama perangkat ajar `CUSTOM_1` sudah dibersihkan dari DB, dan backend review paket perangkat ajar sekarang hanya menampilkan dokumen dari program aktif yang berlaku. Label mapel pada daftar/detail review juga sudah memakai fallback `subjects.name` berdasarkan `subjectId`, sehingga paket KGB2G071 terbaca sebagai `Network Client Server`, bukan `Mapel belum terbaca`.
+- Last updated: 2026-05-04 13:20 WIB
+- Current status: approval Kurikulum perangkat ajar sekarang otomatis meneruskan paket ke Kepala Sekolah. Tidak ada lagi langkah manual `Ajukan ke Kepala Sekolah` setelah Kurikulum menekan `Setujui Paket`; status langsung menjadi `SUBMITTED_TO_PRINCIPAL` dan muncul di menu Principal `PERANGKAT AJAR > Persetujuan Perangkat Ajar`.
 - Objective/task aktif:
-  - Menjadikan review perangkat ajar sebagai alur paket: Guru kirim paket mapel lengkap ke Kurikulum, Kurikulum setujui/kembalikan, Kurikulum ajukan ke Kepala Sekolah, Kepala Sekolah setujui final, lalu print dokumen menampilkan QR tanda tangan guru dan kepala sekolah.
+  - Menjadikan review perangkat ajar sebagai alur paket: Guru kirim paket mapel lengkap ke Kurikulum, Kurikulum setujui/kembalikan, paket yang disetujui otomatis masuk ke Kepala Sekolah, Kepala Sekolah setujui final, lalu print dokumen menampilkan QR tanda tangan guru dan kepala sekolah.
 - Batch terakhir selesai:
-  - `Teaching resource review stale entry cleanup and subject label fallback`
+  - `Teaching resource review auto-submit to principal`
 - Progress fitur remedial keseluruhan:
   - `100%`
 - Progress presensi terpadu saat ini:
@@ -26,38 +26,36 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
-  - Commit: `ee37ead`
-  - Title: `fix(teaching-resources): keep review packages current`
+  - Commit: `5295590`
+  - Title: `fix(teaching-resources): auto forward curriculum approval`
   - Summary:
-    - DB cleanup: entry lama `CUSTOM_1` pada active year `2025/2026` dihapus; verifikasi DB menunjukkan `customCount 0`
-    - paket review kini menyusun `entryIds`, status, dan daftar detail dari program aktif/current saja agar entry lama tidak muncul lagi di modal review
-    - label mapel paket review kini fallback ke tabel `subjects` berdasarkan `subjectId` ketika tag `subject:*` tidak tersedia
-    - detail dokumen review memfilter entry nonaktif/tidak ada di konfigurasi program agar sidebar detail hanya berisi menu perangkat ajar yang sedang berlaku
+    - action `APPROVE` Kurikulum kini menyimpan meta status `SUBMITTED_TO_PRINCIPAL`, sekaligus mengisi `principalSubmittedAt` dan `principalSubmittedBy`
+    - tombol manual `Ajukan ke Kepala Sekolah` di tab Kurikulum dihapus dari UI karena alur sudah otomatis
+    - data paket KGB2G071 yang telanjur `CURRICULUM_APPROVED` di-upgrade menjadi `SUBMITTED_TO_PRINCIPAL`
 - Area/file disentuh:
   - `backend/src/controllers/teachingResourceProgram.controller.ts`
+  - `frontend/src/pages/teacher/learning-resources/LearningResourceReviewSubmissionPage.tsx`
   - `docs/CODEX_CONTINUITY.md`
 - Verifikasi batch ini:
   - `git diff --check`
   - `cd backend && npm run build`
+  - `cd frontend && npm run build`
   - DB verification script:
-    - active year `2025/2026`
-    - `CUSTOM_1` remaining count `0`
-    - KGB2G071 `XII TKJ` entries now `6`: `ATP`, `CP`, `KKTP`, `MATRIKS_SEBARAN`, `PROMES`, `PROTA`
-    - subject source: `Network Client Server`
+    - KGB2G071 `XII TKJ` entries `CP`, `ATP`, `PROTA`, `PROMES`, `KKTP`, `MATRIKS_SEBARAN` sekarang `entryStatus APPROVED` dan `packageStatus SUBMITTED_TO_PRINCIPAL`
   - `cd backend && npm run service:restart`
   - `cd backend && npm run service:health` -> `Backend:200`, `Backend API:200`
-  - `curl -I -s https://siskgb2.id/teacher/learning-resources/review-submissions | head -n 1` -> `HTTP/1.1 200 OK`
+  - `cd frontend && npm run deploy`
   - `curl -I -s 'https://siskgb2.id/teacher/learning-resources/review-submissions?view=curriculum' | head -n 1` -> `HTTP/1.1 200 OK`
   - `curl -I -s 'https://siskgb2.id/principal/learning-resources/review-submissions?view=principal' | head -n 1` -> `HTTP/1.1 200 OK`
 - Publish/live status:
-  - Web tidak berubah pada batch ini
+  - Web sudah deploy live
   - Backend sudah reload dan health check sukses
   - Tidak ada perubahan mobile pada batch ini
 - Remaining work:
-  - QA manual end-to-end workflow paket review tetap direkomendasikan: Kurikulum buka `Review Detail`, isi komentar paket/dokumen, minta revisi atau setujui, ajukan ke Kepala Sekolah, lalu Kepala Sekolah setujui final.
+  - QA manual end-to-end workflow paket review tetap direkomendasikan: Kurikulum buka `Review Detail`, isi komentar paket/dokumen, minta revisi atau setujui, lalu Kepala Sekolah menerima paket otomatis dan menyetujui final.
   - QA manual print final setelah approval tetap direkomendasikan untuk memastikan QR tanda tangan guru dan kepala sekolah muncul sesuai status final.
 - Residual risk:
-  - Risiko rendah; perubahan backend hanya memperbaiki serializer paket review dan menambah query subject ringan berbasis daftar `subjectId` unik dari rows yang sudah dibatasi.
+  - Risiko rendah; perubahan hanya memindahkan status workflow pada aksi approval Kurikulum dan UI tombol terkait, tanpa endpoint/query berat baru.
 
 ## Status Saat Ini
 
