@@ -2850,6 +2850,45 @@ export const ExamEditorPage = () => {
     const activeQuestionReviewExpanded = Boolean(activeQuestion?.id && expandedReviewNotes[activeQuestion.id]);
     const hasBlueprintReferenceOptions = Object.values(blueprintReferenceOptionsByField).some((options) => options.length > 0);
 
+    const getResolvedBlueprintReferenceValue = (
+        field: BlueprintReferenceField,
+        option: BlueprintReferenceOption,
+    ): string => {
+        const snapshot = option.snapshot || {};
+
+        if (field === 'competency') {
+            return (
+                getSnapshotValue(snapshot, ['capaian_pembelajaran', 'kompetensi', 'elemen']) ||
+                option.value
+            );
+        }
+
+        if (field === 'learningObjective') {
+            return getSnapshotValue(snapshot, ['tujuan_pembelajaran']) || option.value;
+        }
+
+        if (field === 'materialScope') {
+            return getSnapshotValue(snapshot, ['materi_pokok', 'konten_materi']) || option.value;
+        }
+
+        if (field === 'indicator') {
+            return (
+                getSnapshotValue(snapshot, ['indikator_ketercapaian', 'indikator_ketercapaian_tp', 'iktp', 'indikator']) ||
+                option.value
+            );
+        }
+
+        return option.value;
+    };
+
+    const getCurrentBlueprintFieldValue = (field: BlueprintReferenceField): string => {
+        if (field === 'competency') return String(activeQuestionBlueprint.competency || '').trim();
+        if (field === 'learningObjective') return String(activeQuestionBlueprint.learningObjective || '').trim();
+        if (field === 'indicator') return String(activeQuestionBlueprint.indicator || '').trim();
+        if (field === 'materialScope') return String(activeQuestionBlueprint.materialScope || '').trim();
+        return '';
+    };
+
     const applyBlueprintReferenceOption = (
         qId: string,
         field: BlueprintReferenceField,
@@ -2863,15 +2902,11 @@ export const ExamEditorPage = () => {
         const nextBlueprint: QuestionBlueprint = { ...currentBlueprint };
 
         if (field === 'competency') {
-            nextBlueprint.competency =
-                getSnapshotValue(snapshot, ['capaian_pembelajaran', 'kompetensi', 'elemen']) ||
-                selectedOption.value;
+            nextBlueprint.competency = getResolvedBlueprintReferenceValue(field, selectedOption);
         }
 
         if (field === 'learningObjective') {
-            nextBlueprint.learningObjective =
-                getSnapshotValue(snapshot, ['tujuan_pembelajaran']) ||
-                selectedOption.value;
+            nextBlueprint.learningObjective = getResolvedBlueprintReferenceValue(field, selectedOption);
             const materialFromSnapshot = getSnapshotValue(snapshot, ['materi_pokok', 'konten_materi']);
             if (materialFromSnapshot) {
                 nextBlueprint.materialScope = materialFromSnapshot;
@@ -2879,15 +2914,11 @@ export const ExamEditorPage = () => {
         }
 
         if (field === 'materialScope') {
-            nextBlueprint.materialScope =
-                getSnapshotValue(snapshot, ['materi_pokok', 'konten_materi']) ||
-                selectedOption.value;
+            nextBlueprint.materialScope = getResolvedBlueprintReferenceValue(field, selectedOption);
         }
 
         if (field === 'indicator') {
-            nextBlueprint.indicator =
-                getSnapshotValue(snapshot, ['indikator_ketercapaian', 'indikator_ketercapaian_tp', 'iktp', 'indikator']) ||
-                selectedOption.value;
+            nextBlueprint.indicator = getResolvedBlueprintReferenceValue(field, selectedOption);
         }
 
         updateQuestion(qId, { blueprint: nextBlueprint });
@@ -2899,18 +2930,30 @@ export const ExamEditorPage = () => {
         placeholder: string,
     ) => {
         const options = blueprintReferenceOptionsByField[field];
-        if (!activeQuestion?.id || options.length === 0) return null;
+        if (!activeQuestion?.id) return null;
+        const currentValue = getCurrentBlueprintFieldValue(field);
+        const matchedOption = options.find(
+            (option) => getResolvedBlueprintReferenceValue(field, option).trim() === currentValue,
+        );
+        const hasCurrentOnlyValue = Boolean(currentValue && !matchedOption);
+        const selectValue = matchedOption?.optionKey || (hasCurrentOnlyValue ? '__CURRENT__' : '');
         return (
             <select
-                value=""
+                value={selectValue}
+                disabled={options.length === 0}
                 onChange={(event) => {
                     const optionKey = event.target.value;
-                    if (!optionKey) return;
+                    if (!optionKey || optionKey === '__CURRENT__') return;
                     applyBlueprintReferenceOption(activeQuestion.id, field, optionKey);
                 }}
-                className="mb-2 w-full rounded-xl border border-blue-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-blue-500 focus:outline-none"
+                className="w-full rounded-2xl border border-blue-200 bg-white px-4 py-3 text-sm leading-6 text-slate-700 shadow-sm focus:border-blue-500 focus:outline-none disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"
             >
-                <option value="">{placeholder}</option>
+                <option value="">{options.length > 0 ? placeholder : 'Referensi perangkat ajar belum tersedia'}</option>
+                {hasCurrentOnlyValue ? (
+                    <option value="__CURRENT__">
+                        {`Nilai tersimpan: ${currentValue.length > 120 ? `${currentValue.slice(0, 120)}...` : currentValue}`}
+                    </option>
+                ) : null}
                 {options.map((option) => (
                     <option key={option.optionKey} value={option.optionKey}>
                         {buildReferenceOptionText(option)}
@@ -4599,53 +4642,25 @@ export const ExamEditorPage = () => {
                                             <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-blue-700">
                                                 Kompetensi/Capaian
                                             </p>
-                                            {renderBlueprintReferenceSelect('competency', 'Ambil Kompetensi/CP dari perangkat ajar')}
-                                            <textarea
-                                                value={activeQuestionBlueprint.competency || ''}
-                                                onChange={(e) => updateQuestionBlueprintField(activeQuestion.id, 'competency', e.target.value)}
-                                                rows={3}
-                                                placeholder="Tulis kompetensi atau capaian yang menjadi dasar butir soal."
-                                                className="w-full rounded-2xl border border-blue-200 bg-white px-4 py-3 text-sm leading-6 text-slate-700 focus:border-blue-500 focus:outline-none"
-                                            />
+                                            {renderBlueprintReferenceSelect('competency', 'Pilih Kompetensi/CP dari perangkat ajar')}
                                         </div>
                                         <div>
                                             <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-blue-700">
                                                 Tujuan Pembelajaran
                                             </p>
-                                            {renderBlueprintReferenceSelect('learningObjective', 'Ambil TP dari ATP/Prota')}
-                                            <textarea
-                                                value={activeQuestionBlueprint.learningObjective || ''}
-                                                onChange={(e) => updateQuestionBlueprintField(activeQuestion.id, 'learningObjective', e.target.value)}
-                                                rows={3}
-                                                placeholder="Tulis tujuan pembelajaran yang ingin dicapai."
-                                                className="w-full rounded-2xl border border-blue-200 bg-white px-4 py-3 text-sm leading-6 text-slate-700 focus:border-blue-500 focus:outline-none"
-                                            />
+                                            {renderBlueprintReferenceSelect('learningObjective', 'Pilih TP dari ATP/Prota')}
                                         </div>
                                         <div>
                                             <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-blue-700">
                                                 Indikator Soal
                                             </p>
-                                            {renderBlueprintReferenceSelect('indicator', 'Ambil IKTP dari KKTP')}
-                                            <textarea
-                                                value={activeQuestionBlueprint.indicator || ''}
-                                                onChange={(e) => updateQuestionBlueprintField(activeQuestion.id, 'indicator', e.target.value)}
-                                                rows={3}
-                                                placeholder="Tulis indikator yang dipakai untuk menilai butir soal."
-                                                className="w-full rounded-2xl border border-blue-200 bg-white px-4 py-3 text-sm leading-6 text-slate-700 focus:border-blue-500 focus:outline-none"
-                                            />
+                                            {renderBlueprintReferenceSelect('indicator', 'Pilih IKTP dari KKTP')}
                                         </div>
                                         <div>
                                             <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-blue-700">
                                                 Ruang Lingkup Materi
                                             </p>
-                                            {renderBlueprintReferenceSelect('materialScope', 'Ambil materi dari ATP/CP')}
-                                            <textarea
-                                                value={activeQuestionBlueprint.materialScope || ''}
-                                                onChange={(e) => updateQuestionBlueprintField(activeQuestion.id, 'materialScope', e.target.value)}
-                                                rows={3}
-                                                placeholder="Tulis ruang lingkup materi yang dibahas."
-                                                className="w-full rounded-2xl border border-blue-200 bg-white px-4 py-3 text-sm leading-6 text-slate-700 focus:border-blue-500 focus:outline-none"
-                                            />
+                                            {renderBlueprintReferenceSelect('materialScope', 'Pilih materi dari ATP/CP')}
                                         </div>
                                         <div>
                                             <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-blue-700">
