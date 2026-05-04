@@ -5,12 +5,12 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-05-04 17:29 WIB
-- Current status: Follow-up UX jurnal mengajar sudah selesai dan live di backend, web, serta mobile OTA. Sesi jurnal sekarang digabung per blok mengajar berurutan, misalnya `Jam ke 1-4`, lengkap dengan jumlah JP dan rentang waktu dari konfigurasi jam sekolah jika tersedia.
+- Last updated: 2026-05-04 17:54 WIB
+- Current status: Follow-up grouping jurnal/jadwal mengajar sudah selesai dan live di backend, web, serta mobile OTA. Root cause grouping yang salah pada akun contoh `KGB2G071` ditutup: jurnal sekarang memakai `jam mengajar efektif` yang sama dengan dashboard, sehingga slot mentah yang melewati non-mengajar seperti upacara/istirahat tetap tampil sebagai blok operasional benar.
 - Objective/task aktif:
   - Mengembangkan fitur `Jurnal Mengajar Guru` yang terhubung ke jadwal mengajar, perangkat ajar, dan presensi mapel sebagai pondasi monitoring kurikulum serta supervisi kepsek.
 - Batch terakhir selesai:
-  - `Teaching journal block session compaction`
+  - `Teaching journal effective schedule block alignment`
 - Progress fitur jurnal mengajar guru:
   - `100%` keseluruhan roadmap
   - `100%` Batch 1 foundation backend
@@ -19,24 +19,25 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` Batch 4 monitoring kurikulum
   - `100%` Batch 5 supervisi/ringkasan kepsek
 - Last completed repo work:
-  - Commit: `8c0e467`
-  - Title: `fix(teaching-journal): compact teaching blocks`
+  - Commit: `de92324`
+  - Title: `fix(teaching-journal): align schedule block grouping`
   - Summary:
-    - endpoint `GET /api/teaching-journals/sessions` sekarang mengelompokkan schedule entry berurutan dengan kelas/mapel/guru/ruang yang sama menjadi satu blok jurnal
-    - endpoint `GET /api/teaching-journals/monitoring` memakai blok yang sama untuk hitungan monitoring guru, wakakur, dan kepsek agar 4 JP tidak tampil sebagai 4 sesi terpisah
-    - payload sesi/issue menambah metadata `periodStart`, `periodEnd`, `periodLabel`, `jpCount`, `timeRange`, dan `scheduleEntryIds`
-    - tampilan web guru, wakakur, dan kepsek menampilkan label ringkas seperti `Jam ke 1-4`, `4 JP`, dan rentang waktu
-    - tampilan mobile guru, wakakur, dan kepsek mengikuti label ringkas yang sama
+    - endpoint `GET /api/teaching-journals/sessions` dan `GET /api/teaching-journals/monitoring` kini mengelompokkan sesi berdasarkan `jam mengajar efektif`, bukan raw `period`
+    - endpoint `GET /api/schedules` kini menyertakan `periodTime` agar jadwal lengkap mobile bisa menampilkan rentang waktu tanpa query tambahan
+    - jadwal lengkap web guru dan jadwal mobile sekarang menampilkan blok ringkas per kelas/mapel/ruang yang sama, bukan rincian satu baris per jam pelajaran
+    - halaman jurnal guru web merapikan kolom `Jam` agar label `Jam ke 1-4`, `4 JP`, dan rentang waktu tidak menumpuk
+    - tombol dekoratif `Muat Ulang` pada halaman jurnal web guru, monitoring Wakakur, dan supervisi Kepsek dihapus; tombol retry saat error tetap dipertahankan
+    - sample DB `KGB2G071` hari Senin sudah tervalidasi menjadi `Jam ke 1-4` XII TKJ 1 pukul `07.30 - 10.00`, lalu `Jam ke 5-8` XII TKJ 4 pukul `10.00 - 12.00`
 - Area/file disentuh:
   - `backend/src/controllers/teachingJournal.controller.ts`
-  - `frontend/src/services/teachingJournal.service.ts`
+  - `backend/src/controllers/schedule.controller.ts`
+  - `frontend/src/services/schedule.service.ts`
+  - `frontend/src/pages/teacher/TeacherSchedulePage.tsx`
   - `frontend/src/pages/teacher/TeacherTeachingJournalPage.tsx`
   - `frontend/src/pages/teacher/wakasek/TeachingJournalMonitoringPage.tsx`
   - `frontend/src/pages/principal/PrincipalTeachingJournalSupervisionPage.tsx`
-  - `mobile-app/src/features/teachingJournals/types.ts`
-  - `mobile-app/app/(app)/teacher/teaching-journals.tsx`
-  - `mobile-app/app/(app)/teacher/wakakur-journal-monitoring.tsx`
-  - `mobile-app/app/(app)/principal/monitoring/teaching-journals.tsx`
+  - `mobile-app/src/features/schedule/types.ts`
+  - `mobile-app/app/(app)/schedule.tsx`
   - `docs/CODEX_CONTINUITY.md`
 - Verifikasi batch ini:
   - `git diff --check`
@@ -44,24 +45,26 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `cd frontend && npm run build`
   - `cd mobile-app && npm run typecheck`
   - `cd mobile-app && npm run audit:parity:check`
+  - DB sanity sample `KGB2G071` Senin -> `Jam ke 1-4` XII TKJ 1 dan `Jam ke 5-8` XII TKJ 4 sesuai dashboard/mobile
   - `cd backend && npm run service:restart`
   - `cd backend && npm run service:health` -> `Backend:200`, `Backend API:200`
   - `cd frontend && npm run deploy`
   - `curl -I -s https://siskgb2.id/teacher/teaching-journals | head -n 1` -> `HTTP/1.1 200 OK`
+  - `curl -I -s https://siskgb2.id/teacher/schedule | head -n 1` -> `HTTP/1.1 200 OK`
   - `curl -I -s https://siskgb2.id/teacher/wakasek/teaching-journal-monitoring | head -n 1` -> `HTTP/1.1 200 OK`
   - `curl -I -s https://siskgb2.id/principal/monitoring/teaching-journals | head -n 1` -> `HTTP/1.1 200 OK`
-  - `cd mobile-app && npm run update:pilot-live:auto -- "Jurnal Mengajar lebih ringkas. Silakan perbarui untuk menikmati fitur terbaru."`
+  - `cd mobile-app && npm run update:pilot-live:auto -- "Jadwal dan Jurnal Mengajar lebih ringkas. Silakan perbarui untuk menikmati fitur terbaru."`
 - Publish/live status:
   - Backend sudah reload dan health check `200`
   - Web sudah deploy live
   - Mobile OTA `pilot-live` sudah publish
-  - OTA update group ID: `9dfa4244-3af8-4d63-a505-c43d92f5e265`
-  - Android update ID: `019df289-3199-7941-b6a4-b1c43ea60580`
+  - OTA update group ID: `b21d0702-ba8d-490b-a58e-3ff1f042ab3b`
+  - Android update ID: `019df29f-8656-78dc-81b5-891b8aa9a3b9`
   - Push notification OTA terkirim: `recipients=85`, `sent=85`, `failed=0`, `stale=0`
 - Remaining work:
-  - Tidak ada sisa pekerjaan untuk follow-up ringkas blok jurnal ini.
+  - Tidak ada sisa pekerjaan untuk follow-up grouping jurnal/jadwal mengajar ini.
 - Residual risk:
-  - Risiko rendah-menengah karena endpoint backend jurnal berubah dari basis per jam pelajaran ke basis blok tampilan. Guardrail tetap ada: rentang tanggal maksimal 63 hari, tidak ada polling baru, tidak ada migration, tidak ada query tanpa batas baru.
+  - Risiko rendah-menengah karena endpoint backend jurnal berubah dari basis raw period ke basis jam mengajar efektif. Guardrail tetap ada: rentang tanggal maksimal 63 hari, tidak ada polling baru, tidak ada migration, tidak ada query tanpa batas baru.
   - Untuk edit jurnal blok, sistem memakai journal existing pertama pada blok bila ada; jika belum ada, jurnal baru disimpan pada schedule entry pertama dalam blok.
 
 ## Status Saat Ini
