@@ -112,6 +112,7 @@ const STRICT_WEB_PARITY_KEYS = new Set<string>([
   'teacher-bk-permissions',
   'teacher-bk-counselings',
   'principal-dashboard',
+  'principal-teaching-journal-supervision',
   'principal-committee-approvals',
   'principal-reports',
   'principal-attendance',
@@ -764,6 +765,11 @@ const ROLE_MENUS: Record<string, RoleMenuItem[]> = {
       route: '/principal/monitoring/operations',
     },
     {
+      key: 'principal-teaching-journal-supervision',
+      label: 'Supervisi Jurnal Mengajar',
+      route: '/principal/monitoring/teaching-journals',
+    },
+    {
       key: 'principal-reports',
       label: 'Rapor & Ranking',
       route: '/principal/academic/reports',
@@ -1284,7 +1290,7 @@ const ROLE_MENU_GROUPS: Record<string, GroupDefinition[]> = {
     {
       key: 'monitoring',
       label: 'MONITORING',
-      menuKeys: ['principal-monitoring', 'principal-committee-approvals'],
+      menuKeys: ['principal-monitoring', 'principal-teaching-journal-supervision', 'principal-committee-approvals'],
     },
     { key: 'academic', label: 'AKADEMIK', menuKeys: ['principal-reports', 'principal-attendance'] },
     { key: 'finance', label: 'KEUANGAN', menuKeys: ['principal-finance-requests'] },
@@ -1573,7 +1579,7 @@ function buildPrincipalGroups(menus: RoleMenuItem[]) {
   };
 
   pushGroup('dashboard', 'Dashboard', ['principal-dashboard', 'principal-email', 'principal-own-presence']);
-  pushGroup('monitoring', 'MONITORING', ['principal-monitoring', 'principal-committee-approvals']);
+  pushGroup('monitoring', 'MONITORING', ['principal-monitoring', 'principal-teaching-journal-supervision', 'principal-committee-approvals']);
   pushGroup('academic', 'AKADEMIK', ['principal-reports', 'principal-attendance']);
   pushGroup('exams', 'UJIAN', ['principal-exam-reports']);
   pushGroup('finance', 'KEUANGAN', ['principal-finance-requests']);

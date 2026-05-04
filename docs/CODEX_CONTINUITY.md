@@ -5,68 +5,55 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-05-04 16:46 WIB
-- Current status: Batch 4 monitoring kurikulum untuk fitur `Jurnal Mengajar Guru` sudah selesai dan live di backend, web, serta mobile OTA. Wakakur/Sekretaris Kurikulum sekarang punya menu `Monitoring Jurnal Mengajar` untuk melihat kepatuhan pengisian jurnal, mismatch presensi mapel, dan coverage referensi perangkat ajar per guru/per kelas/per tindak lanjut.
+- Last updated: 2026-05-04 17:08 WIB
+- Current status: Batch 5 supervisi/ringkasan kepsek untuk fitur `Jurnal Mengajar Guru` sudah selesai di source dan web live. Kepala Sekolah sekarang punya menu `Supervisi Jurnal Mengajar` untuk melihat ringkasan prioritas supervisi guru berdasarkan jurnal, presensi mapel, dan coverage perangkat ajar. Mobile screen sudah dibuat dan lolos verifikasi; OTA `pilot-live` masih perlu dipublish setelah commit/push source Batch 5.
 - Objective/task aktif:
   - Mengembangkan fitur `Jurnal Mengajar Guru` yang terhubung ke jadwal mengajar, perangkat ajar, dan presensi mapel sebagai pondasi monitoring kurikulum serta supervisi kepsek.
 - Batch terakhir selesai:
-  - `Teaching journal curriculum monitoring`
+  - `Teaching journal principal supervision`
 - Progress fitur jurnal mengajar guru:
-  - `80%` keseluruhan roadmap
+  - `100%` keseluruhan roadmap
   - `100%` Batch 1 foundation backend
   - `100%` Batch 2 teacher input web/mobile
   - `100%` Batch 3 integrasi referensi perangkat ajar di form jurnal
   - `100%` Batch 4 monitoring kurikulum
-  - `0%` Batch 5 supervisi/ringkasan kepsek
+  - `100%` Batch 5 supervisi/ringkasan kepsek
 - Last completed repo work:
-  - Commit: `26c486a`
-  - Title: `feat(teaching-journal): add curriculum monitoring`
+  - Commit: `pending`
+  - Title: `feat(teaching-journal): add principal supervision`
   - Summary:
-    - menambah endpoint backend `GET /api/teaching-journals/monitoring` dengan akses terbatas untuk Admin, Kepala Sekolah, Wakakur, dan Sekretaris Kurikulum
-    - endpoint monitoring menghitung sesi jadwal aktif pada tahun ajaran aktif, skip libur akademik, membandingkan jurnal dengan presensi mapel, dan mengukur coverage referensi perangkat ajar
-    - endpoint dibatasi aman: rentang maksimal 63 hari, issue rows maksimal 80, tanpa polling, tanpa websocket, tanpa query global besar
-    - menambah halaman web `Monitoring Jurnal Mengajar` di sidebar Wakakur dengan tab `Minggu Ini`, `30 Hari`, `Rentang Manual` dan tabel `Per Guru`, `Per Kelas`, `Perlu Ditindaklanjuti`
-    - route lama `Monitoring Jurnal PKL` untuk Humas tetap dipertahankan agar fitur PKL tidak tertimpa
-    - menambah screen mobile native `Monitoring Jurnal Mengajar` untuk Wakakur/Sekretaris Kurikulum dengan ringkasan, filter tanggal, pencarian, dan row-list table-like
+    - menambah halaman web Kepala Sekolah `Supervisi Jurnal Mengajar` di grup sidebar `MONITORING`
+    - halaman web memakai endpoint monitoring existing `GET /api/teaching-journals/monitoring`, tab tanggal `Minggu Ini`, `30 Hari`, `Rentang Manual`, pencarian, summary card, dan table view `Prioritas Guru`, `Kelas Perhatian`, `Temuan Supervisi`
+    - menambah breadcrumb dan route principal `/principal/monitoring/teaching-journals`
+    - menambah screen mobile principal `/principal/monitoring/teaching-journals` dengan label, struktur tab, filter tanggal, pencarian, dan ringkasan yang parity dengan web
+    - menambah menu mobile role Kepala Sekolah `Supervisi Jurnal Mengajar`
+    - tidak ada backend baru di Batch 5; akses principal sudah memakai kontrak endpoint Batch 4 sehingga blast radius rendah
 - Area/file disentuh:
-  - `backend/src/controllers/teachingJournal.controller.ts`
-  - `backend/src/routes/teachingJournal.routes.ts`
-  - `frontend/src/App.tsx`
   - `frontend/src/components/layout/Sidebar.tsx`
   - `frontend/src/layouts/DashboardLayout.tsx`
-  - `frontend/src/pages/teacher/wakasek/JournalMonitoringPage.tsx`
-  - `frontend/src/pages/teacher/wakasek/TeachingJournalMonitoringPage.tsx`
-  - `frontend/src/services/teachingJournal.service.ts`
-  - `mobile-app/app/(app)/teacher/wakakur-journal-monitoring.tsx`
+  - `frontend/src/pages/principal/PrincipalDashboard.tsx`
+  - `frontend/src/pages/principal/PrincipalTeachingJournalSupervisionPage.tsx`
+  - `mobile-app/app/(app)/principal/monitoring/teaching-journals.tsx`
   - `mobile-app/src/features/dashboard/roleMenu.ts`
-  - `mobile-app/src/features/teachingJournals/teachingJournalApi.ts`
-  - `mobile-app/src/features/teachingJournals/types.ts`
   - `docs/CODEX_CONTINUITY.md`
 - Verifikasi batch ini:
   - `git diff --check`
-  - `cd backend && npm run build`
   - `cd frontend && npm run build`
   - `cd mobile-app && npm run typecheck`
   - `cd mobile-app && npm run audit:parity:check`
-  - `cd backend && npm run service:restart`
-  - `cd backend && npm run service:health`
   - `cd frontend && npm run deploy`
-  - `curl -I -s https://siskgb2.id/teacher/wakasek/teaching-journal-monitoring` -> `HTTP/1.1 200 OK`
-  - `curl -I -s https://siskgb2.id/teacher/wakasek/journal-monitoring` -> `HTTP/1.1 200 OK`
-  - `curl -s -o /dev/null -w 'API public:%{http_code}\n' https://siskgb2.id/api/public/foto-kegiatan` -> `API public:200`
-  - `cd mobile-app && npm run update:pilot-live:auto -- "Monitoring Jurnal Mengajar. Silakan perbarui untuk menikmati fitur terbaru."`
+  - `curl -I -s https://siskgb2.id/principal/monitoring/teaching-journals | head -n 1` -> `HTTP/1.1 200 OK`
 - Publish/live status:
   - Web sudah deploy live
-  - Backend sudah reload dan health check `200`
-  - Mobile OTA `pilot-live` sudah publish
-  - OTA update group ID: `5080d09c-1bc1-4b55-af7b-0ba3ebe0a634`
-  - Android update ID: `019df261-9ca8-7eb5-9845-a439ea955fe3`
-  - Push notification OTA terkirim: `recipients=84`, `sent=84`, `failed=0`, `stale=0`
+  - Backend tidak diubah pada Batch 5, sehingga tidak ada restart backend baru
+  - Mobile OTA `pilot-live` belum dipublish pada catatan ini; publish setelah source commit/push
 - Remaining work:
-  - Batch 5: buat ringkasan supervisi kepsek
+  - Publish OTA mobile `pilot-live`
+  - Update commit hash dan detail OTA di handoff final Batch 5
 - Residual risk:
-  - Risiko rendah-menengah karena ada endpoint monitoring baru, tetapi guardrail sudah dipasang: akses role/duty terbatas, tahun ajaran aktif sebagai source of truth, rentang tanggal maksimal 63 hari, issue rows maksimal 80, `staleTime` 60 detik di consumer, dan tidak ada polling agresif.
-  - Endpoint monitoring mengandalkan kesesuaian `Attendance` mapel existing terhadap `scheduleEntryId`, `teacherAssignmentId`, atau fallback `classId/subjectId/date`. Jika data presensi lama belum punya relasi jadwal lengkap, mismatch tetap ditampilkan sebagai sinyal tindak lanjut, bukan mengubah data.
+  - Risiko rendah karena Batch 5 hanya menambah consumer web/mobile untuk endpoint monitoring existing.
+  - Query frontend/mobile memakai `staleTime` 60 detik, tanpa polling agresif, dan issue rows dibatasi `80`.
+  - Endpoint monitoring tetap mengandalkan kualitas relasi presensi mapel existing. Mismatch ditampilkan sebagai sinyal supervisi, bukan mengubah data.
 
 ## Status Saat Ini
 

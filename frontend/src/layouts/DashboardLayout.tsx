@@ -1147,6 +1147,7 @@ const resolveTeacherCommitteeBreadcrumbGroup = (user: User | null): string => {
   if (role === 'principal') {
     const mapping: Record<string, { label: string; group?: string }> = {
       'monitoring/operations': { label: 'Operasional Harian', group: 'MONITORING' },
+      'monitoring/teaching-journals': { label: 'Supervisi Jurnal Mengajar', group: 'MONITORING' },
       'monitoring/bpbk': { label: 'Ringkasan BP/BK', group: 'MONITORING' },
       'work-program-approvals': { label: 'Persetujuan Program Kerja', group: 'MONITORING' },
       'committee-approvals': { label: 'Persetujuan Panitia', group: 'MONITORING' },

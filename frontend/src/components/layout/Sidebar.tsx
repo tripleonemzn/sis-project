@@ -1066,6 +1066,7 @@ export const getMenuItems = (
         icon: Activity,
         children: [
           { label: 'Operasional Harian', path: '/principal/monitoring/operations', icon: Activity },
+          { label: 'Supervisi Jurnal Mengajar', path: '/principal/monitoring/teaching-journals', icon: ClipboardCheck },
           { label: 'Persetujuan Panitia', path: '/principal/committee-approvals', icon: ShieldAlert },
         ],
       },

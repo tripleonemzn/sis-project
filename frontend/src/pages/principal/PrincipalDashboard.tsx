@@ -61,6 +61,7 @@ import { ReportCardsPage } from '../admin/academic/ReportCardsPage';
 import { UserProfilePage } from '../common/UserProfilePage';
 import WorkProgramApprovalsPage from '../teacher/wakasek/curriculum/WorkProgramApprovalsPage';
 import CommitteeApprovalPage from './CommitteeApprovalPage';
+import PrincipalTeachingJournalSupervisionPage from './PrincipalTeachingJournalSupervisionPage';
 import { OsisElectionMonitoringPage } from '../common/OsisElectionMonitoringPage';
 import { getMenuItems, type MenuItem } from '../../components/layout/Sidebar';
 import type { User } from '../../types/auth';
@@ -6471,6 +6472,7 @@ export const PrincipalDashboard = () => {
       <Route path="overview" element={<PrincipalHomePage />} />
       <Route path="monitoring" element={<Navigate to="monitoring/operations" replace />} />
       <Route path="monitoring/operations" element={<PrincipalOperationalMonitoringPage />} />
+      <Route path="monitoring/teaching-journals" element={<PrincipalTeachingJournalSupervisionPage />} />
       <Route path="monitoring/bpbk" element={<PrincipalBpBkMonitoringPage />} />
       <Route path="monitoring/osis" element={<OsisElectionMonitoringPage />} />
       <Route path="academic" element={<Navigate to="academic/reports" replace />} />
