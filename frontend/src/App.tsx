@@ -552,7 +552,11 @@ function App() {
             </Route>
             <Route path="principal/learning-resources/review-submissions" element={
               <RoleRoute allowedRoles={['PRINCIPAL']}>
-                <LearningResourceReviewSubmissionPage />
+                <LearningResourceReviewSubmissionPage
+                  lockedView="principal"
+                  title="Persetujuan Perangkat Ajar"
+                  description="Review paket perangkat ajar final yang sudah disetujui Kurikulum."
+                />
               </RoleRoute>
             } />
             <Route path="principal/*" element={

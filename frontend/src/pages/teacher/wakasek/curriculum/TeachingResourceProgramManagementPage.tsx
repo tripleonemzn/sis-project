@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
-import { ArrowDown, ArrowUp, Pencil, Plus, Save, Trash2, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, ClipboardCheck, ListChecks, Pencil, Plus, Save, Trash2, X } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
+import UnderlineTabBar from '../../../../components/navigation/UnderlineTabBar';
 import {
   normalizeTeachingResourceProgramCode,
   teachingResourceProgramService,
@@ -24,6 +26,7 @@ import {
   type TeachingResourceTeacherRules,
 } from '../../../../services/teachingResourceProgram.service';
 import { useActiveAcademicYear } from '../../../../hooks/useActiveAcademicYear';
+import LearningResourceReviewSubmissionPage from '../../learning-resources/LearningResourceReviewSubmissionPage';
 
 type ProgramFormRow = {
   rowId: string;
@@ -50,6 +53,8 @@ type CreateProgramDraft = {
   targetClassLevels: string[];
   schema: TeachingResourceProgramSchema;
 };
+
+type WorkspaceTab = 'programs' | 'review';
 
 type ColumnOperationalRole =
   | 'MANUAL_FIELD'
@@ -94,6 +99,11 @@ const TARGET_CLASS_OPTIONS = [
   { value: 'X', label: 'X' },
   { value: 'XI', label: 'XI' },
   { value: 'XII', label: 'XII' },
+];
+
+const WORKSPACE_TABS = [
+  { id: 'programs', label: 'Daftar Program', icon: ListChecks },
+  { id: 'review', label: 'Review Perangkat Ajar', icon: ClipboardCheck },
 ];
 
 const DEFAULT_CUSTOM_DESCRIPTION = 'Program perangkat ajar tambahan sesuai kebijakan kurikulum.';
@@ -1828,7 +1838,9 @@ function validateProgramDraftSchema(draft: CreateProgramDraft): DraftSchemaIssue
 
 export default function TeachingResourceProgramManagementPage() {
   const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { data: activeYear, isLoading: isActiveYearLoading } = useActiveAcademicYear();
+  const activeWorkspaceTab: WorkspaceTab = searchParams.get('tab') === 'review' ? 'review' : 'programs';
   const [selectedAcademicYearId, setSelectedAcademicYearId] = useState<number | null>(null);
   const [rows, setRows] = useState<ProgramFormRow[]>([]);
   const [isDirty, setIsDirty] = useState(false);
@@ -1838,6 +1850,16 @@ export default function TeachingResourceProgramManagementPage() {
   const [createDraft, setCreateDraft] = useState<CreateProgramDraft>(createDefaultDraft(1));
   const [editingRowId, setEditingRowId] = useState<string | null>(null);
   const [pendingDeleteRow, setPendingDeleteRow] = useState<ProgramFormRow | null>(null);
+
+  const handleWorkspaceTabChange = (tabId: string) => {
+    const next = new URLSearchParams(searchParams);
+    if (tabId === 'review') {
+      next.set('tab', 'review');
+    } else {
+      next.delete('tab');
+    }
+    setSearchParams(next);
+  };
 
   useEffect(() => {
     const activeId = Number(activeYear?.id || activeYear?.academicYearId || 0);
@@ -2741,7 +2763,18 @@ export default function TeachingResourceProgramManagementPage() {
         </div>
       </div>
 
-      <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+      <div className="rounded-xl border border-gray-200 bg-white px-4 pt-2 shadow-sm">
+        <UnderlineTabBar
+          items={WORKSPACE_TABS}
+          activeId={activeWorkspaceTab}
+          onChange={handleWorkspaceTabChange}
+          className="border-b-0"
+          innerClassName="pb-0"
+        />
+      </div>
+
+      {activeWorkspaceTab === 'programs' ? (
+        <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-lg font-semibold text-gray-900">Daftar Program</h2>
           <div className="flex items-center gap-2">
@@ -2857,7 +2890,15 @@ export default function TeachingResourceProgramManagementPage() {
             </table>
           </div>
         )}
-      </div>
+        </div>
+      ) : (
+        <LearningResourceReviewSubmissionPage
+          lockedView="curriculum"
+          embedded
+          title="Review Perangkat Ajar"
+          description="Review paket perangkat ajar guru sebelum diteruskan ke Kepala Sekolah."
+        />
+      )}
 
       {isCreateModalOpen ? (
         <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-900/45 px-4 py-6">

@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocation } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { CheckCircle2, ClipboardCheck, Eye, FileCheck2, FileText, MessageSquare, Save, Send, ShieldCheck, X, XCircle } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import UnderlineTabBar from '../../../components/navigation/UnderlineTabBar';
 import { useActiveAcademicYear } from '../../../hooks/useActiveAcademicYear';
 import {
@@ -13,6 +14,13 @@ import {
 } from '../../../services/teachingResourceProgram.service';
 
 type ReviewView = 'mine' | 'curriculum' | 'principal';
+
+type LearningResourceReviewSubmissionPageProps = {
+  lockedView?: ReviewView;
+  embedded?: boolean;
+  title?: string;
+  description?: string;
+};
 
 const STATUS_LABEL: Record<TeachingResourcePackageStatus, string> = {
   INCOMPLETE: 'Belum lengkap',
@@ -125,13 +133,25 @@ function DocumentPreview({ entry }: { entry: TeachingResourceReviewPackageDetail
   );
 }
 
-export default function LearningResourceReviewSubmissionPage() {
+const REVIEW_TAB_ITEMS: Record<ReviewView, { id: ReviewView; label: string; icon: LucideIcon }> = {
+  mine: { id: 'mine', label: 'Paket Saya', icon: ClipboardCheck },
+  curriculum: { id: 'curriculum', label: 'Review Kurikulum', icon: FileCheck2 },
+  principal: { id: 'principal', label: 'Persetujuan Kepala Sekolah', icon: ShieldCheck },
+};
+
+export default function LearningResourceReviewSubmissionPage({
+  lockedView,
+  embedded = false,
+  title = 'Pengajuan Review Perangkat Ajar',
+  description = 'Kirim perangkat ajar sebagai satu paket mapel, lalu Kurikulum meneruskan paket final ke Kepala Sekolah.',
+}: LearningResourceReviewSubmissionPageProps = {}) {
   const queryClient = useQueryClient();
   const location = useLocation();
   const requestedView = useMemo<ReviewView>(() => {
+    if (lockedView) return lockedView;
     const view = new URLSearchParams(location.search).get('view');
     return view === 'curriculum' || view === 'principal' ? view : 'mine';
-  }, [location.search]);
+  }, [location.search, lockedView]);
   const [activeView, setActiveView] = useState<ReviewView>(requestedView);
   const [selectedPackage, setSelectedPackage] = useState<TeachingResourceReviewPackage | null>(null);
   const [selectedEntryId, setSelectedEntryId] = useState<number | null>(null);
@@ -176,16 +196,20 @@ export default function LearningResourceReviewSubmissionPage() {
   const canEditReviewComments = activeView === 'curriculum' && canCurriculumReview;
 
   const tabs = useMemo(
-    () => [
-      { id: 'mine', label: 'Paket Saya', icon: ClipboardCheck },
-      ...(canCurriculumReview || activeView === 'curriculum'
-        ? [{ id: 'curriculum', label: 'Review Kurikulum', icon: FileCheck2 }]
-        : []),
-      ...(canPrincipalReview || activeView === 'principal'
-        ? [{ id: 'principal', label: 'Persetujuan Kepala Sekolah', icon: ShieldCheck }]
-        : []),
-    ],
-    [activeView, canCurriculumReview, canPrincipalReview],
+    () => {
+      if (lockedView) return [REVIEW_TAB_ITEMS[lockedView]];
+      const isReviewerRoute = requestedView !== 'mine';
+      return [
+        ...(!isReviewerRoute ? [REVIEW_TAB_ITEMS.mine] : []),
+        ...(canCurriculumReview || activeView === 'curriculum'
+          ? [REVIEW_TAB_ITEMS.curriculum]
+          : []),
+        ...(canPrincipalReview || activeView === 'principal'
+          ? [REVIEW_TAB_ITEMS.principal]
+          : []),
+      ];
+    },
+    [activeView, canCurriculumReview, canPrincipalReview, lockedView, requestedView],
   );
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['teaching-resource-review-packages'] });
@@ -365,21 +389,23 @@ export default function LearningResourceReviewSubmissionPage() {
   };
 
   return (
-    <div className="w-full space-y-6 pb-20">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Pengajuan Review Perangkat Ajar</h1>
-        <p className="mt-1 text-sm text-gray-600">
-          Kirim perangkat ajar sebagai satu paket mapel, lalu Kurikulum meneruskan paket final ke Kepala Sekolah.
-        </p>
-      </div>
+    <div className={embedded ? 'w-full space-y-4' : 'w-full space-y-6 pb-20'}>
+      {!embedded ? (
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">{title}</h1>
+          <p className="mt-1 text-sm text-gray-600">{description}</p>
+        </div>
+      ) : null}
 
       <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-        <UnderlineTabBar
-          items={tabs}
-          activeId={activeView}
-          onChange={(id) => setActiveView(id as ReviewView)}
-          className="mb-4"
-        />
+        {tabs.length > 1 ? (
+          <UnderlineTabBar
+            items={tabs}
+            activeId={activeView}
+            onChange={(id) => setActiveView(id as ReviewView)}
+            className="mb-4"
+          />
+        ) : null}
 
         <div className="overflow-x-auto rounded-xl border border-gray-200">
           <table className="min-w-full divide-y divide-gray-200 text-sm">

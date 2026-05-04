@@ -659,7 +659,6 @@ export const getMenuItems = (
         children.push(
           { label: 'Kelola Kurikulum', path: '/teacher/wakasek/curriculum', icon: Layers },
           { label: 'Program Perangkat Ajar', path: '/teacher/wakasek/teaching-resource-programs', icon: BookOpen },
-          { label: 'Review Perangkat Ajar', path: '/teacher/learning-resources/review-submissions?view=curriculum', icon: ClipboardCheck },
           { label: 'Monitoring Jurnal Mengajar', path: '/teacher/wakasek/teaching-journal-monitoring', icon: ClipboardCheck },
           { label: 'Kelola Ujian', path: '/teacher/wakasek/exams', icon: FileQuestion },
           { label: 'Leger Nilai Akhir', path: '/teacher/wakasek/final-ledger', icon: Calculator },

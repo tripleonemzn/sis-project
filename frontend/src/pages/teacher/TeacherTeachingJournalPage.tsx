@@ -357,13 +357,16 @@ function formatSessionPeriod(session: TeachingJournalSession) {
   return session.periodLabel || `Jam ke ${session.period}`;
 }
 
-function formatSessionScheduleDetail(session: TeachingJournalSession) {
+function formatSessionTimeDetail(session: TeachingJournalSession) {
   const details = [
     session.timeRange || null,
     Number(session.jpCount || 0) > 1 ? `${session.jpCount} JP` : null,
-    session.room ? `Ruang ${session.room}` : null,
   ].filter(Boolean);
   return details.length ? details.join(' • ') : '-';
+}
+
+function formatSessionRoomDetail(session: TeachingJournalSession) {
+  return session.room ? `Ruang : ${session.room}` : null;
 }
 
 function emptyFormState(session?: TeachingJournalSession | null): JournalFormState {
@@ -754,52 +757,56 @@ export const TeacherTeachingJournalPage = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {filteredSessions.map((session, index) => (
-                  <tr key={session.sessionKey} className="hover:bg-gray-50">
-                    <td className="px-5 py-4 text-sm text-gray-500">{index + 1}</td>
-                    <td className="px-5 py-4">
-                      <p className="text-sm font-semibold text-gray-900">{formatDate(session.date)}</p>
-                      <p className="mt-0.5 text-xs text-gray-500">{session.dayOfWeek}</p>
-                    </td>
-                    <td className="px-5 py-4">
-                      <p className="text-sm font-semibold text-gray-900">{session.class.name}</p>
-                      <p className="mt-0.5 text-xs text-gray-500">{session.class.major?.name || session.class.level || '-'}</p>
-                    </td>
-                    <td className="px-5 py-4">
-                      <p className="text-sm font-medium text-gray-900">{session.subject.name}</p>
-                      <p className="mt-0.5 font-mono text-xs text-gray-500">{session.subject.code || '-'}</p>
-                    </td>
-                    <td className="px-5 py-4">
-                      <p className="text-sm font-semibold text-gray-900">{formatSessionPeriod(session)}</p>
-                      <p className="mt-0.5 text-xs text-gray-500">{formatSessionScheduleDetail(session)}</p>
-                    </td>
-                    <td className="px-5 py-4">
-                      <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${statusClass(session.journalStatus)}`}>
-                        {JOURNAL_STATUS_LABELS[session.journalStatus]}
-                      </span>
-                      {session.journal?.submittedAt ? (
-                        <p className="mt-1 text-xs text-gray-500">Kirim: {formatDateTime(session.journal.submittedAt)}</p>
-                      ) : null}
-                    </td>
-                    <td className="px-5 py-4">
-                      <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${attendanceClass(session.attendance.status)}`}>
-                        {session.attendance.status === 'RECORDED' ? 'Sudah Presensi' : 'Belum Presensi'}
-                      </span>
-                    </td>
-                    <td className="px-5 py-4">
-                      <div className="flex justify-end">
-                        <button
-                          type="button"
-                          onClick={() => openForm(session)}
-                          className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-blue-700"
-                        >
-                          <Edit3 className="h-3.5 w-3.5" />
-                          {session.journal ? 'Edit Jurnal' : 'Isi Jurnal'}
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                {filteredSessions.map((session, index) => {
+                  const roomDetail = formatSessionRoomDetail(session);
+                  return (
+                    <tr key={session.sessionKey} className="hover:bg-gray-50">
+                      <td className="px-5 py-4 text-sm text-gray-500">{index + 1}</td>
+                      <td className="px-5 py-4">
+                        <p className="text-sm font-semibold text-gray-900">{formatDate(session.date)}</p>
+                        <p className="mt-0.5 text-xs text-gray-500">{session.dayOfWeek}</p>
+                      </td>
+                      <td className="px-5 py-4">
+                        <p className="text-sm font-semibold text-gray-900">{session.class.name}</p>
+                        <p className="mt-0.5 text-xs text-gray-500">{session.class.major?.name || session.class.level || '-'}</p>
+                      </td>
+                      <td className="px-5 py-4">
+                        <p className="text-sm font-medium text-gray-900">{session.subject.name}</p>
+                        <p className="mt-0.5 font-mono text-xs text-gray-500">{session.subject.code || '-'}</p>
+                      </td>
+                      <td className="px-5 py-4">
+                        <p className="text-sm font-semibold text-gray-900">{formatSessionPeriod(session)}</p>
+                        <p className="mt-0.5 text-xs text-gray-500">{formatSessionTimeDetail(session)}</p>
+                        {roomDetail ? <p className="mt-0.5 text-xs text-gray-500">{roomDetail}</p> : null}
+                      </td>
+                      <td className="px-5 py-4">
+                        <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${statusClass(session.journalStatus)}`}>
+                          {JOURNAL_STATUS_LABELS[session.journalStatus]}
+                        </span>
+                        {session.journal?.submittedAt ? (
+                          <p className="mt-1 text-xs text-gray-500">Kirim: {formatDateTime(session.journal.submittedAt)}</p>
+                        ) : null}
+                      </td>
+                      <td className="px-5 py-4">
+                        <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${attendanceClass(session.attendance.status)}`}>
+                          {session.attendance.status === 'RECORDED' ? 'Sudah Presensi' : 'Belum Presensi'}
+                        </span>
+                      </td>
+                      <td className="px-5 py-4">
+                        <div className="flex justify-end">
+                          <button
+                            type="button"
+                            onClick={() => openForm(session)}
+                            className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-blue-700"
+                          >
+                            <Edit3 className="h-3.5 w-3.5" />
+                            {session.journal ? 'Edit Jurnal' : 'Isi Jurnal'}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
