@@ -25,6 +25,9 @@ import {
   TEACHING_MODE_LABELS,
   type TeachingJournalDeliveryStatus,
   type TeachingJournalMode,
+  type TeachingJournalProjectedReferenceOption,
+  type TeachingJournalReference,
+  type TeachingJournalReferenceProjectionRequest,
   type TeachingJournalSession,
   type TeachingJournalSessionStatus,
   type TeachingJournalStatus,
@@ -39,6 +42,7 @@ import { useAppTextScale } from '../../../src/theme/AppTextScaleProvider';
 
 type RangeTab = 'TODAY' | 'WEEK' | 'RECENT';
 type StatusFilter = 'ALL' | TeachingJournalSessionStatus;
+type JournalReferenceField = 'competency' | 'learningObjective' | 'materialScope' | 'indicator';
 
 type FormState = {
   teachingMode: TeachingJournalMode;
@@ -46,6 +50,12 @@ type FormState = {
   notes: string;
   obstacles: string;
   followUpPlan: string;
+  references: Record<JournalReferenceField, TeachingJournalReference | null>;
+};
+
+type JournalReferenceOption = TeachingJournalProjectedReferenceOption & {
+  field: JournalReferenceField;
+  optionKey: string;
 };
 
 const STATUS_OPTIONS: Array<{ value: StatusFilter; label: string }> = [
@@ -69,6 +79,59 @@ const MODE_OPTIONS: TeachingJournalMode[] = [
   'ENRICHMENT',
   'REMEDIAL',
   'ASSESSMENT',
+];
+
+const JOURNAL_REFERENCE_FIELDS: Array<{ field: JournalReferenceField; label: string; placeholder: string }> = [
+  { field: 'competency', label: 'Capaian/Kompetensi', placeholder: 'Pilih capaian/kompetensi' },
+  { field: 'learningObjective', label: 'Tujuan Pembelajaran', placeholder: 'Pilih tujuan pembelajaran' },
+  { field: 'materialScope', label: 'Materi', placeholder: 'Pilih materi ajar' },
+  { field: 'indicator', label: 'Indikator', placeholder: 'Pilih indikator ketercapaian' },
+];
+
+const JOURNAL_REFERENCE_PROGRAM_CODES = ['CP', 'ATP', 'PROTA', 'KKTP'];
+
+const JOURNAL_REFERENCE_REQUEST_CONFIGS: Array<{
+  field: JournalReferenceField;
+  requestKey: string;
+  sourceProgramCode: string;
+  candidates: string[];
+}> = [
+  {
+    field: 'competency',
+    requestKey: 'journal:competency:cp',
+    sourceProgramCode: 'CP',
+    candidates: ['capaian_pembelajaran', 'kompetensi', 'elemen'],
+  },
+  {
+    field: 'learningObjective',
+    requestKey: 'journal:learningObjective:atp',
+    sourceProgramCode: 'ATP',
+    candidates: ['tujuan_pembelajaran'],
+  },
+  {
+    field: 'learningObjective',
+    requestKey: 'journal:learningObjective:prota',
+    sourceProgramCode: 'PROTA',
+    candidates: ['tujuan_pembelajaran'],
+  },
+  {
+    field: 'materialScope',
+    requestKey: 'journal:materialScope:atp',
+    sourceProgramCode: 'ATP',
+    candidates: ['materi_pokok', 'konten_materi'],
+  },
+  {
+    field: 'materialScope',
+    requestKey: 'journal:materialScope:cp',
+    sourceProgramCode: 'CP',
+    candidates: ['konten_materi', 'materi_pokok'],
+  },
+  {
+    field: 'indicator',
+    requestKey: 'journal:indicator:kktp',
+    sourceProgramCode: 'KKTP',
+    candidates: ['indikator_ketercapaian', 'indikator_ketercapaian_tp', 'iktp', 'indikator'],
+  },
 ];
 
 function toIsoDateLocal(date: Date) {
@@ -137,6 +200,123 @@ function formatDateTime(value?: string | null) {
   });
 }
 
+function createEmptyReferenceMap(): Record<JournalReferenceField, TeachingJournalReference | null> {
+  return {
+    competency: null,
+    learningObjective: null,
+    materialScope: null,
+    indicator: null,
+  };
+}
+
+function normalizeReferenceToken(value: unknown) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9.]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+function splitReferenceLines(value: unknown) {
+  return String(value || '')
+    .split(/\r?\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+function fieldFromRequestKey(requestKey: string): JournalReferenceField | null {
+  const normalized = requestKey.toLowerCase();
+  if (normalized.includes(':competency:')) return 'competency';
+  if (normalized.includes(':learningobjective:')) return 'learningObjective';
+  if (normalized.includes(':materialscope:')) return 'materialScope';
+  if (normalized.includes(':indicator:')) return 'indicator';
+  return null;
+}
+
+function fieldFromSavedReference(reference: TeachingJournalReference): JournalReferenceField | null {
+  const snapshotField = String(reference.snapshot?.journal_reference_field || '').trim() as JournalReferenceField;
+  if (JOURNAL_REFERENCE_FIELDS.some((item) => item.field === snapshotField)) return snapshotField;
+
+  const tokenField = fieldFromRequestKey(String(reference.selectionToken || '').toLowerCase());
+  if (tokenField) return tokenField;
+
+  const sourceProgram = String(reference.sourceProgramCode || '').trim().toUpperCase();
+  const identity = normalizeReferenceToken(reference.sourceFieldIdentity);
+  if (sourceProgram === 'CP' && ['capaian_pembelajaran', 'kompetensi', 'elemen'].includes(identity)) return 'competency';
+  if (['ATP', 'PROTA'].includes(sourceProgram) && identity === 'tujuan_pembelajaran') return 'learningObjective';
+  if (['ATP', 'CP'].includes(sourceProgram) && ['materi_pokok', 'konten_materi'].includes(identity)) return 'materialScope';
+  if (sourceProgram === 'KKTP' && identity.includes('indikator')) return 'indicator';
+  return null;
+}
+
+function buildReferenceMap(references?: TeachingJournalReference[] | null) {
+  const map = createEmptyReferenceMap();
+  (references || []).forEach((reference) => {
+    const field = fieldFromSavedReference(reference);
+    if (!field || map[field]) return;
+    map[field] = reference;
+  });
+  return map;
+}
+
+function expandJournalReferenceOption(option: TeachingJournalProjectedReferenceOption): JournalReferenceOption[] {
+  const field = fieldFromRequestKey(option.requestKey);
+  if (!field) return [];
+  const lines = splitReferenceLines(option.value);
+  if (lines.length <= 1) {
+    return [
+      {
+        ...option,
+        field,
+        value: String(option.value || '').trim(),
+        label: String(option.value || option.label || '').trim(),
+        optionKey: `${option.requestKey}::${option.selectValue}`,
+      },
+    ];
+  }
+
+  return lines.map((line, index) => {
+    const lineSnapshot = Object.entries(option.snapshot || {}).reduce<Record<string, string>>((acc, [key, rawValue]) => {
+      const valueLines = splitReferenceLines(rawValue);
+      acc[key] = valueLines.length === lines.length ? valueLines[index] || '' : String(rawValue || '').trim();
+      return acc;
+    }, {});
+    return {
+      ...option,
+      field,
+      value: line,
+      label: line,
+      snapshot: lineSnapshot,
+      isAggregate: false,
+      lineCount: 1,
+      optionKey: `${option.requestKey}::${option.selectValue}::line-${index}`,
+    };
+  });
+}
+
+function createJournalReferenceFromOption(option: JournalReferenceOption): TeachingJournalReference {
+  return {
+    sourceProgramCode: option.sourceProgramCode,
+    sourceEntryId: option.sourceEntryId,
+    sourceFieldIdentity: option.sourceFieldIdentity || null,
+    selectionToken: option.optionKey,
+    value: String(option.value || '').trim(),
+    label: String(option.label || option.value || '').trim(),
+    snapshot: {
+      ...(option.snapshot || {}),
+      journal_reference_field: option.field,
+      source_entry_title: option.sourceEntryTitle || '',
+    },
+  };
+}
+
+function formatReferenceOptionLabel(option: JournalReferenceOption) {
+  const source = String(option.sourceProgramCode || '').trim();
+  const value = String(option.value || option.label || '').trim();
+  return source ? `${value} (${source})` : value;
+}
+
 function createInitialForm(session?: TeachingJournalSession | null): FormState {
   return {
     teachingMode: session?.journal?.teachingMode || 'REGULAR',
@@ -144,6 +324,7 @@ function createInitialForm(session?: TeachingJournalSession | null): FormState {
     notes: session?.journal?.notes || '',
     obstacles: session?.journal?.obstacles || '',
     followUpPlan: session?.journal?.followUpPlan || '',
+    references: buildReferenceMap(session?.journal?.references),
   };
 }
 
@@ -284,6 +465,73 @@ export default function TeacherTeachingJournalsScreen() {
   });
 
   const sessions = useMemo(() => sessionsQuery.data?.sessions || [], [sessionsQuery.data?.sessions]);
+  const selectedAcademicYearId = Number(sessionsQuery.data?.meta?.academicYear?.id || selectedSession?.journal?.academicYearId || 0);
+  const selectedReferenceContext = useMemo(() => {
+    if (!selectedSession) return null;
+    return {
+      subjectId: Number(selectedSession.subject?.id || 0),
+      classLevel: String(selectedSession.class?.level || selectedSession.class?.name || '').trim(),
+      programKeahlian: String(selectedSession.class?.major?.name || selectedSession.class?.major?.code || '').trim(),
+    };
+  }, [selectedSession]);
+  const referenceRequests = useMemo<TeachingJournalReferenceProjectionRequest[]>(() => {
+    if (!selectedReferenceContext?.subjectId) return [];
+    return JOURNAL_REFERENCE_REQUEST_CONFIGS.map((request) => ({
+      requestKey: `${request.requestKey}:subject-${selectedReferenceContext.subjectId}`,
+      sourceProgramCode: request.sourceProgramCode,
+      candidates: request.candidates,
+      matchBySubject: true,
+      matchByClassLevel: Boolean(selectedReferenceContext.classLevel),
+      matchByMajor: Boolean(selectedReferenceContext.programKeahlian),
+      matchByActiveSemester: false,
+      context: {
+        subjectId: selectedReferenceContext.subjectId,
+        classLevel: selectedReferenceContext.classLevel,
+        programKeahlian: selectedReferenceContext.programKeahlian,
+      },
+    }));
+  }, [selectedReferenceContext]);
+  const referencesQuery = useQuery({
+    queryKey: [
+      'mobile-teaching-journal-resource-references',
+      selectedAcademicYearId,
+      selectedReferenceContext?.subjectId || 0,
+      selectedReferenceContext?.classLevel || '',
+      selectedReferenceContext?.programKeahlian || '',
+    ],
+    enabled: Boolean(selectedSession && selectedAcademicYearId > 0 && referenceRequests.length > 0),
+    staleTime: 2 * 60 * 1000,
+    queryFn: () =>
+      teachingJournalApi.getReferenceEntries({
+        academicYearId: selectedAcademicYearId || undefined,
+        programCodes: JOURNAL_REFERENCE_PROGRAM_CODES,
+        limitPerProgram: 200,
+        includeRows: false,
+        referenceRequests,
+      }),
+  });
+  const referenceOptionsByField = useMemo<Record<JournalReferenceField, JournalReferenceOption[]>>(() => {
+    const map: Record<JournalReferenceField, JournalReferenceOption[]> = {
+      competency: [],
+      learningObjective: [],
+      materialScope: [],
+      indicator: [],
+    };
+    const pushedKeys = new Set<string>();
+    (referencesQuery.data?.programs || []).forEach((program) => {
+      (program.options || []).forEach((rawOption) => {
+        expandJournalReferenceOption(rawOption).forEach((option) => {
+          const value = String(option.value || '').trim();
+          if (!value) return;
+          const dedupeKey = `${option.field}::${option.sourceProgramCode}::${value}`.toLowerCase();
+          if (pushedKeys.has(dedupeKey)) return;
+          pushedKeys.add(dedupeKey);
+          map[option.field].push(option);
+        });
+      });
+    });
+    return map;
+  }, [referencesQuery.data?.programs]);
   const summary = useMemo(() => {
     return sessions.reduce(
       (acc, session) => {
@@ -300,8 +548,12 @@ export default function TeacherTeachingJournalsScreen() {
   const saveMutation = useMutation({
     mutationFn: async (nextStatus: TeachingJournalStatus) => {
       if (!selectedSession) throw new Error('Sesi jurnal belum dipilih.');
+      const references = Object.values(formState.references).filter((reference): reference is TeachingJournalReference =>
+        Boolean(reference?.sourceProgramCode && reference.value),
+      );
       return teachingJournalApi.upsertEntry({
         id: selectedSession.journal?.id,
+        academicYearId: selectedAcademicYearId || undefined,
         scheduleEntryId: selectedSession.scheduleEntryId,
         journalDate: selectedSession.date,
         teachingMode: formState.teachingMode,
@@ -310,6 +562,7 @@ export default function TeacherTeachingJournalsScreen() {
         notes: formState.notes,
         obstacles: formState.obstacles,
         followUpPlan: formState.followUpPlan,
+        references,
       });
     },
     onSuccess: async (_, nextStatus) => {
@@ -319,6 +572,57 @@ export default function TeacherTeachingJournalsScreen() {
     },
     onError: (error) => notifyApiError(error, 'Gagal menyimpan jurnal mengajar.'),
   });
+
+  const reviewed = selectedSession?.journalStatus === 'REVIEWED';
+
+  const updateReferenceField = (field: JournalReferenceField, optionKey: string) => {
+    if (!optionKey) {
+      setFormState((prev) => ({
+        ...prev,
+        references: {
+          ...prev.references,
+          [field]: null,
+        },
+      }));
+      return;
+    }
+    if (optionKey === '__CURRENT__') return;
+    const selectedOption = referenceOptionsByField[field].find((option) => option.optionKey === optionKey);
+    if (!selectedOption) return;
+    setFormState((prev) => ({
+      ...prev,
+      references: {
+        ...prev.references,
+        [field]: createJournalReferenceFromOption(selectedOption),
+      },
+    }));
+  };
+
+  const buildReferenceSelectOptions = (field: JournalReferenceField) => {
+    const selectedReference = formState.references[field];
+    const rawOptions = referenceOptionsByField[field] || [];
+    const matchedOption = rawOptions.find(
+      (option) =>
+        String(option.value || '').trim() === String(selectedReference?.value || '').trim() &&
+        String(option.sourceProgramCode || '').trim() === String(selectedReference?.sourceProgramCode || '').trim(),
+    );
+    const hasSavedOnlyValue = Boolean(selectedReference?.value && !matchedOption);
+    const options = [
+      { value: '', label: rawOptions.length > 0 ? 'Kosongkan pilihan' : 'Referensi belum tersedia' },
+      ...(hasSavedOnlyValue
+        ? [{ value: '__CURRENT__', label: `Nilai tersimpan: ${String(selectedReference?.value || '').slice(0, 90)}` }]
+        : []),
+      ...rawOptions.map((option) => ({
+        value: option.optionKey,
+        label: formatReferenceOptionLabel(option),
+      })),
+    ];
+    return {
+      value: matchedOption?.optionKey || (hasSavedOnlyValue ? '__CURRENT__' : ''),
+      options,
+      disabled: reviewed || (rawOptions.length === 0 && !hasSavedOnlyValue),
+    };
+  };
 
   if (isLoading) return <AppLoadingScreen message="Memuat jurnal..." />;
   if (!isAuthenticated) return <Redirect href="/welcome" />;
@@ -339,8 +643,6 @@ export default function TeacherTeachingJournalsScreen() {
       </ScrollView>
     );
   }
-
-  const reviewed = selectedSession?.journalStatus === 'REVIEWED';
 
   return (
     <>
@@ -526,6 +828,57 @@ export default function TeacherTeachingJournalsScreen() {
                   </Text>
                 </View>
               ) : null}
+
+              <View style={{ borderWidth: 1, borderColor: '#bfdbfe', backgroundColor: '#eff6ff', borderRadius: 14, padding: 12, marginBottom: 12 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 10 }}>
+                  <View
+                    style={{
+                      width: 34,
+                      height: 34,
+                      borderRadius: 999,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      backgroundColor: '#fff',
+                    }}
+                  >
+                    <Feather name="link-2" size={16} color={BRAND_COLORS.blue} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: BRAND_COLORS.textDark, fontSize: scaleFont(13), lineHeight: scaleLineHeight(18), fontWeight: '800' }}>
+                      Referensi Perangkat Ajar
+                    </Text>
+                    <Text style={{ color: '#64748b', fontSize: scaleFont(11), lineHeight: scaleLineHeight(16), marginTop: 2 }}>
+                      Opsional, dipakai untuk memantau coverage materi sesuai CP/ATP/KKTP.
+                    </Text>
+                  </View>
+                </View>
+                {referencesQuery.isError ? (
+                  <Text style={{ color: '#92400e', fontSize: scaleFont(11), lineHeight: scaleLineHeight(16), marginBottom: 8 }}>
+                    Referensi perangkat ajar belum bisa dimuat. Jurnal tetap bisa disimpan secara manual.
+                  </Text>
+                ) : null}
+                {referencesQuery.isFetching ? (
+                  <Text style={{ color: BRAND_COLORS.blue, fontSize: scaleFont(11), lineHeight: scaleLineHeight(16), marginBottom: 8, fontWeight: '700' }}>
+                    Memuat referensi perangkat ajar...
+                  </Text>
+                ) : null}
+                {JOURNAL_REFERENCE_FIELDS.map((item) => {
+                  const select = buildReferenceSelectOptions(item.field);
+                  return (
+                    <MobileSelectField
+                      key={item.field}
+                      label={item.label}
+                      value={select.value}
+                      options={select.options}
+                      onChange={(value) => updateReferenceField(item.field, value)}
+                      placeholder={item.placeholder}
+                      helperText={select.disabled && !reviewed ? 'Referensi belum tersedia untuk sesi ini.' : undefined}
+                      disabled={select.disabled}
+                      maxHeight={180}
+                    />
+                  );
+                })}
+              </View>
 
               <MobileSelectField
                 label="Mode Mengajar"

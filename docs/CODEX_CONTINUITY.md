@@ -5,37 +5,33 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-05-04 15:56 WIB
-- Current status: Batch 2 input guru untuk fitur `Jurnal Mengajar Guru` sudah live di web dan mobile. Guru sekarang punya menu `Jurnal Mengajar` untuk melihat sesi dari jadwal aktif, memfilter status/rentang waktu, melihat status presensi mapel, serta menyimpan draft atau mengirim jurnal per sesi.
+- Last updated: 2026-05-04 16:19 WIB
+- Current status: Batch 3 integrasi referensi perangkat ajar untuk fitur `Jurnal Mengajar Guru` sudah selesai di source dan web sudah deploy live. Form jurnal web/mobile kini punya picker `Capaian/Kompetensi`, `Tujuan Pembelajaran`, `Materi`, dan `Indikator` yang mengambil opsi dari Perangkat Ajar existing dan menyimpan pilihan ke `TeachingJournalReference`. OTA mobile akan dipublish setelah commit/push agar safety gate OTA berjalan dari worktree bersih.
 - Objective/task aktif:
   - Mengembangkan fitur `Jurnal Mengajar Guru` yang terhubung ke jadwal mengajar, perangkat ajar, dan presensi mapel sebagai pondasi monitoring kurikulum serta supervisi kepsek.
 - Batch terakhir selesai:
-  - `Teaching journal teacher input UI`
+  - `Teaching journal resource reference picker`
 - Progress fitur jurnal mengajar guru:
-  - `40%` keseluruhan roadmap
+  - `60%` keseluruhan roadmap
   - `100%` Batch 1 foundation backend
   - `100%` Batch 2 teacher input web/mobile
-  - `0%` Batch 3 integrasi referensi perangkat ajar di form jurnal
+  - `100%` Batch 3 integrasi referensi perangkat ajar di form jurnal
   - `0%` Batch 4 monitoring kurikulum
   - `0%` Batch 5 supervisi/ringkasan kepsek
 - Last completed repo work:
-  - Commit: `1ca0dfc`
-  - Title: `feat(teaching-journal): add teacher input UI`
+  - Commit: pending batch 3 commit
+  - Title: `feat(teaching-journal): add resource references`
   - Summary:
-    - menambah service web/mobile untuk endpoint `/api/teaching-journals`
-    - menambah halaman web guru `/teacher/teaching-journals` dengan tabel sesi, ringkasan status, filter rentang/status, dan modal input jurnal
-    - menambah screen mobile guru `/teacher/teaching-journals` dengan parity istilah, filter, list sesi compact, dan modal input jurnal
-    - menambah menu dan breadcrumb `Jurnal Mengajar` pada role guru
+    - menambah picker referensi perangkat ajar pada modal input jurnal guru di web
+    - menambah parity picker referensi perangkat ajar pada modal input jurnal guru di mobile
+    - memakai endpoint existing `/api/teaching-resources/entries/references` dengan scope guru, tahun ajaran aktif, mapel, tingkat, dan jurusan sesi
+    - menyimpan referensi pilihan ke payload `references` yang sudah didukung backend `TeachingJournalReference`
+    - tidak menambah migrasi, endpoint backend, polling, websocket, atau query global baru
 - Area/file disentuh:
-  - `frontend/src/App.tsx`
-  - `frontend/src/components/layout/Sidebar.tsx`
-  - `frontend/src/layouts/DashboardLayout.tsx`
   - `frontend/src/pages/teacher/TeacherTeachingJournalPage.tsx`
-  - `frontend/src/services/teachingJournal.service.ts`
   - `mobile-app/app/(app)/teacher/teaching-journals.tsx`
   - `mobile-app/src/features/teachingJournals/teachingJournalApi.ts`
   - `mobile-app/src/features/teachingJournals/types.ts`
-  - `mobile-app/src/features/dashboard/roleMenu.ts`
   - `docs/CODEX_CONTINUITY.md`
 - Verifikasi batch ini:
   - `git diff --check`
@@ -43,21 +39,16 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `cd mobile-app && npm run typecheck`
   - `cd mobile-app && npm run audit:parity:check`
   - `cd frontend && npm run deploy`
-  - `curl -I -s https://siskgb2.id/teacher/teaching-journals` -> `HTTP/1.1 200 OK`
-  - `cd mobile-app && npm run update:pilot-live:auto -- "Jurnal Mengajar Guru. Silakan perbarui untuk menikmati fitur terbaru."`
+  - OTA mobile belum dipublish pada catatan ini karena safety gate meminta worktree bersih; langkah berikutnya commit/push lalu rerun OTA.
 - Publish/live status:
   - Web sudah deploy live
-  - Mobile OTA `pilot-live` sudah publish
-  - OTA update group ID: `68d75b22-7872-4c83-b224-f5424a76d1ac`
-  - Android update ID: `019df231-72b0-753f-8479-e3181aed0189`
-  - Push notification OTA terkirim: `recipients=84`, `sent=84`, `failed=0`, `stale=0`
+  - Mobile OTA `pilot-live` pending setelah commit/push
 - Remaining work:
-  - Batch 3: sambungkan picker referensi perangkat ajar ke form jurnal
   - Batch 4: buat monitoring kurikulum berbasis kepatuhan dan coverage
   - Batch 5: buat ringkasan supervisi kepsek
 - Residual risk:
-  - Risiko rendah; Batch 2 hanya menambah consumer UI ke endpoint Batch 1, tidak menambah polling, realtime, atau query backend baru.
-  - Referensi perangkat ajar belum masuk form jurnal; itu sengaja ditahan untuk Batch 3 agar picker CP/TP/materi mengikuti pola yang sudah stabil dari perangkat ajar.
+  - Risiko rendah; batch ini memakai endpoint referensi perangkat ajar existing dengan `limitPerProgram=200`, `includeRows=false`, `staleTime` 2 menit, dan hanya aktif saat modal jurnal dibuka.
+  - Tidak ada perubahan backend runtime atau migration. Monitoring kurikulum belum dibuat; data referensi baru menjadi pondasi Batch 4.
 
 ## Status Saat Ini
 

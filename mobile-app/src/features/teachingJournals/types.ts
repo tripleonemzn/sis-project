@@ -3,6 +3,17 @@ export type TeachingJournalSessionStatus = TeachingJournalStatus | 'MISSING';
 export type TeachingJournalDeliveryStatus = 'COMPLETED' | 'PARTIAL' | 'NOT_DELIVERED' | 'RESCHEDULED';
 export type TeachingJournalMode = 'REGULAR' | 'SUBSTITUTE' | 'ENRICHMENT' | 'REMEDIAL' | 'ASSESSMENT';
 
+export type TeachingJournalReference = {
+  id?: number;
+  sourceProgramCode: string;
+  sourceEntryId?: number | null;
+  sourceFieldIdentity?: string | null;
+  selectionToken?: string | null;
+  value: string;
+  label?: string | null;
+  snapshot?: Record<string, unknown> | null;
+};
+
 export type TeachingJournalEntry = {
   id: number;
   academicYearId: number;
@@ -28,16 +39,7 @@ export type TeachingJournalEntry = {
   reviewNote?: string | null;
   createdAt: string;
   updatedAt: string;
-  references?: Array<{
-    id?: number;
-    sourceProgramCode: string;
-    sourceEntryId?: number | null;
-    sourceFieldIdentity?: string | null;
-    selectionToken?: string | null;
-    value: string;
-    label?: string | null;
-    snapshot?: Record<string, unknown> | null;
-  }>;
+  references?: TeachingJournalReference[];
 };
 
 export type TeachingJournalSession = {
@@ -111,6 +113,52 @@ export type UpsertTeachingJournalPayload = {
   notes?: string | null;
   obstacles?: string | null;
   followUpPlan?: string | null;
+  references?: TeachingJournalReference[];
+};
+
+export type TeachingJournalReferenceProjectionRequest = {
+  requestKey: string;
+  sourceProgramCode: string;
+  candidates: string[];
+  filterByContext?: boolean;
+  matchBySubject?: boolean;
+  matchByClassLevel?: boolean;
+  matchByMajor?: boolean;
+  matchByActiveSemester?: boolean;
+  context?: {
+    subjectId?: number;
+    classLevel?: string;
+    programKeahlian?: string;
+    semester?: string;
+  };
+};
+
+export type TeachingJournalProjectedReferenceOption = {
+  requestKey: string;
+  selectValue: string;
+  value: string;
+  label: string;
+  isAggregate?: boolean;
+  lineCount?: number;
+  sourceProgramCode: string;
+  sourceEntryId: number;
+  sourceEntryTitle?: string;
+  sourceFieldKey?: string;
+  sourceFieldIdentity?: string;
+  snapshot: Record<string, string>;
+};
+
+export type TeachingJournalReferenceEntriesPayload = {
+  academicYearId: number;
+  limitPerProgram: number;
+  teacherId: number | null;
+  programs: Array<{
+    programCode: string;
+    total: number;
+    limit: number;
+    loaded?: number;
+    options?: TeachingJournalProjectedReferenceOption[];
+  }>;
 };
 
 export const JOURNAL_STATUS_LABELS: Record<TeachingJournalSessionStatus, string> = {
