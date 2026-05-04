@@ -5,6 +5,46 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
+- Last updated: 2026-05-04 22:36 WIB
+- Current status: Batch 1 redesign UI fitur `Tahun Ajaran` role admin selesai, terverifikasi, dan web sudah live. Halaman sekarang dipisah menjadi tab standar `Daftar Tahun Ajaran`, `Tahun Ajaran Baru`, dan `Riwayat Proses`, dengan istilah teknis promotion/rollover diganti menjadi bahasa operasional sekolah.
+- Objective/task aktif:
+  - Menyederhanakan fitur tahun ajaran baru/promotion agar admin bisa melanjutkan data tahun ajaran lama ke tahun ajaran baru secara aman, bertahap, dan mudah dipahami.
+- Batch terakhir selesai:
+  - `Academic year promotion UX Batch 1`
+- Progress roadmap fitur tahun ajaran baru:
+  - `100%` Batch 1 UI/terminologi web admin
+  - `25%` total roadmap redesign tahun ajaran baru/promotion
+- Last completed repo work:
+  - Commit: belum dibuat saat handoff ini ditulis; commit batch ini harus dibuat setelah update continuity.
+  - Summary:
+    - halaman `Tahun Ajaran` memakai tab horizontal standar `UnderlineTabBar`
+    - daftar tahun ajaran tetap berada pada table view utama
+    - flow salin data tahun sebelumnya sekarang memakai istilah `Salin Data Tahun Sebelumnya`, `Tahun Ajaran Sumber`, `Tahun Ajaran Baru`, dan `Salin Data ke Tahun Baru`
+    - flow kenaikan siswa memakai istilah `Kenaikan & Kelulusan`, `Tujuan Kelas`, `Simpan Tujuan Kelas`, dan `Proses Kenaikan & Kelulusan`
+    - riwayat proses dipindah ke tab khusus `Riwayat Proses` berbentuk table view
+    - tidak ada perubahan backend, schema, endpoint, polling, atau data flow inti pada batch ini
+- Area/file disentuh:
+  - `frontend/src/pages/admin/academic/AcademicYearPage.tsx`
+  - `docs/CODEX_CONTINUITY.md`
+- Verifikasi batch ini:
+  - `cd frontend && npm run build`
+  - `cd frontend && npm run deploy`
+  - `curl -I -s https://siskgb2.id/admin/academic-years | head -n 5` -> `HTTP/1.1 200 OK`
+- Publish/live status:
+  - Web sudah deploy live.
+  - Backend tidak disentuh.
+  - Mobile OTA tidak dipublish karena batch ini hanya mengubah halaman web admin; tidak ada layar mobile admin yang relevan disentuh.
+- Remaining work:
+  - Batch 2: audit dan rapikan kontrak backend lama vs promotion v2, terutama endpoint legacy `POST /academic-years/:id/promote` agar tidak membingungkan atau berisiko dipakai jalur lama.
+  - Batch 3: desain/implement preflight yang lebih manusiawi untuk kenaikan kelas, kelulusan alumni, kelas kosong, wali kelas, guru mapel, duty, dan data lintas tahun.
+  - Batch 4: audit akses arsip lintas role dan pastikan data tahun ajaran lama hanya tampil sebagai arsip/historis, bukan workflow operasional aktif.
+  - Batch 5: parity mobile jika nanti ada screen/flow mobile terkait tahun ajaran/promotion yang perlu disediakan.
+- Residual risk:
+  - Risiko rendah karena batch ini frontend-only dan tidak menambah request agresif, endpoint baru, mutation baru, polling, atau migration.
+  - Diff file UI cukup besar karena satu halaman lama masih monolitik; batch berikutnya sebaiknya jangan sekalian refactor logic besar di file yang sama tanpa pemecahan komponen yang aman.
+
+## Update Sebelumnya
+
 - Last updated: 2026-05-04 18:50 WIB
 - Current status: Audit dan repair data paket remedial lama selesai. Ditemukan 2 paket remedial lama yang masih nyasar di `FORMATIF/Ulangan Harian`, lalu sudah dikoreksi ke `SBTS` dan diberi marker internal `Paket Remedial` agar tampil di tab remedial SBTS.
 - Objective/task aktif:
