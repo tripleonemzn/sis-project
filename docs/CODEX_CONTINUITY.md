@@ -5,8 +5,8 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-05-04 16:43 WIB
-- Current status: Batch 4 monitoring kurikulum untuk fitur `Jurnal Mengajar Guru` sudah selesai secara source, backend live, dan web live. Wakakur/Sekretaris Kurikulum sekarang punya menu `Monitoring Jurnal Mengajar` untuk melihat kepatuhan pengisian jurnal, mismatch presensi mapel, dan coverage referensi perangkat ajar per guru/per kelas/per tindak lanjut. Mobile parity sudah dibuat dan siap dipublish OTA setelah commit/push source batch ini.
+- Last updated: 2026-05-04 16:46 WIB
+- Current status: Batch 4 monitoring kurikulum untuk fitur `Jurnal Mengajar Guru` sudah selesai dan live di backend, web, serta mobile OTA. Wakakur/Sekretaris Kurikulum sekarang punya menu `Monitoring Jurnal Mengajar` untuk melihat kepatuhan pengisian jurnal, mismatch presensi mapel, dan coverage referensi perangkat ajar per guru/per kelas/per tindak lanjut.
 - Objective/task aktif:
   - Mengembangkan fitur `Jurnal Mengajar Guru` yang terhubung ke jadwal mengajar, perangkat ajar, dan presensi mapel sebagai pondasi monitoring kurikulum serta supervisi kepsek.
 - Batch terakhir selesai:
@@ -19,7 +19,7 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` Batch 4 monitoring kurikulum
   - `0%` Batch 5 supervisi/ringkasan kepsek
 - Last completed repo work:
-  - Commit: pending push
+  - Commit: `26c486a`
   - Title: `feat(teaching-journal): add curriculum monitoring`
   - Summary:
     - menambah endpoint backend `GET /api/teaching-journals/monitoring` dengan akses terbatas untuk Admin, Kepala Sekolah, Wakakur, dan Sekretaris Kurikulum
@@ -54,13 +54,14 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `curl -I -s https://siskgb2.id/teacher/wakasek/teaching-journal-monitoring` -> `HTTP/1.1 200 OK`
   - `curl -I -s https://siskgb2.id/teacher/wakasek/journal-monitoring` -> `HTTP/1.1 200 OK`
   - `curl -s -o /dev/null -w 'API public:%{http_code}\n' https://siskgb2.id/api/public/foto-kegiatan` -> `API public:200`
+  - `cd mobile-app && npm run update:pilot-live:auto -- "Monitoring Jurnal Mengajar. Silakan perbarui untuk menikmati fitur terbaru."`
 - Publish/live status:
   - Web sudah deploy live
   - Backend sudah reload dan health check `200`
-  - Mobile OTA `pilot-live` pending setelah source commit/push
-  - OTA update group ID: pending
-  - Android update ID: pending
-  - Push notification OTA: pending
+  - Mobile OTA `pilot-live` sudah publish
+  - OTA update group ID: `5080d09c-1bc1-4b55-af7b-0ba3ebe0a634`
+  - Android update ID: `019df261-9ca8-7eb5-9845-a439ea955fe3`
+  - Push notification OTA terkirim: `recipients=84`, `sent=84`, `failed=0`, `stale=0`
 - Remaining work:
   - Batch 5: buat ringkasan supervisi kepsek
 - Residual risk:
