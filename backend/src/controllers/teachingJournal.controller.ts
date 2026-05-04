@@ -8,6 +8,7 @@ const JOURNAL_DELIVERY_STATUS_VALUES = ['COMPLETED', 'PARTIAL', 'NOT_DELIVERED',
 const JOURNAL_MODE_VALUES = ['REGULAR', 'SUBSTITUTE', 'ENRICHMENT', 'REMEDIAL', 'ASSESSMENT'] as const;
 const DAY_OF_WEEK_BY_UTC_INDEX = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'] as const;
 const MAX_SESSION_RANGE_DAYS = 62;
+const MAX_MONITORING_ISSUE_ROWS = 80;
 
 const journalReferenceSchema = z.object({
   sourceProgramCode: z.string().trim().min(1).max(100),
@@ -29,6 +30,18 @@ const listTeachingJournalSessionsSchema = z.object({
   endDate: z.string().optional(),
   journalStatus: z.enum([...JOURNAL_STATUS_VALUES, 'MISSING']).optional(),
   deliveryStatus: z.enum(JOURNAL_DELIVERY_STATUS_VALUES).optional(),
+});
+
+const getTeachingJournalMonitoringSchema = z.object({
+  academicYearId: z.coerce.number().int().optional(),
+  teacherId: z.coerce.number().int().optional(),
+  teacherAssignmentId: z.coerce.number().int().optional(),
+  classId: z.coerce.number().int().optional(),
+  subjectId: z.coerce.number().int().optional(),
+  startDate: z.string().optional(),
+  endDate: z.string().optional(),
+  search: z.string().optional(),
+  issueLimit: z.coerce.number().int().min(1).max(MAX_MONITORING_ISSUE_ROWS).optional(),
 });
 
 const teachingJournalEntryIdSchema = z.object({
@@ -53,6 +66,19 @@ const upsertTeachingJournalEntrySchema = z.object({
 });
 
 const normalizeRole = (raw: unknown) => String(raw || '').trim().toUpperCase();
+const normalizeDuty = (raw: unknown) =>
+  String(raw || '')
+    .trim()
+    .toUpperCase()
+    .replace(/[\s-]+/g, '_');
+
+const JOURNAL_REFERENCE_FIELD_KEYS = ['competency', 'learningObjective', 'materialScope', 'indicator'] as const;
+
+const emptyMonitoringReferenceFields = () =>
+  JOURNAL_REFERENCE_FIELD_KEYS.reduce<Record<string, number>>((acc, key) => {
+    acc[key] = 0;
+    return acc;
+  }, {});
 
 const parseDateOnly = (raw: string): Date => {
   const normalized = String(raw || '').trim();
@@ -75,6 +101,36 @@ const addDays = (date: Date, amount: number) => {
 const normalizeNullableText = (raw: unknown) => {
   const value = String(raw || '').trim();
   return value ? value : null;
+};
+
+const toPercent = (part: number, total: number) => {
+  if (total <= 0) return 0;
+  return Math.round((part / total) * 1000) / 10;
+};
+
+const getReferenceFieldKey = (reference: { sourceProgramCode?: string | null; sourceFieldIdentity?: string | null; selectionToken?: string | null; snapshot?: unknown }) => {
+  const snapshot = reference.snapshot && typeof reference.snapshot === 'object' ? (reference.snapshot as Record<string, unknown>) : {};
+  const snapshotField = String(snapshot.journal_reference_field || '').trim();
+  if ((JOURNAL_REFERENCE_FIELD_KEYS as readonly string[]).includes(snapshotField)) return snapshotField;
+
+  const token = String(reference.selectionToken || '').toLowerCase();
+  if (token.includes(':competency:')) return 'competency';
+  if (token.includes(':learningobjective:')) return 'learningObjective';
+  if (token.includes(':materialscope:')) return 'materialScope';
+  if (token.includes(':indicator:')) return 'indicator';
+
+  const sourceProgramCode = String(reference.sourceProgramCode || '').trim().toUpperCase();
+  const fieldIdentity = String(reference.sourceFieldIdentity || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9.]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '');
+  if (sourceProgramCode === 'CP' && ['capaian_pembelajaran', 'kompetensi', 'elemen'].includes(fieldIdentity)) return 'competency';
+  if (['ATP', 'PROTA'].includes(sourceProgramCode) && fieldIdentity === 'tujuan_pembelajaran') return 'learningObjective';
+  if (['ATP', 'CP'].includes(sourceProgramCode) && ['materi_pokok', 'konten_materi'].includes(fieldIdentity)) return 'materialScope';
+  if (sourceProgramCode === 'KKTP' && fieldIdentity.includes('indikator')) return 'indicator';
+  return 'other';
 };
 
 const sanitizeReferenceSnapshot = (value: Record<string, unknown> | null | undefined) => {
@@ -121,6 +177,26 @@ const getOperationalAcademicYear = async (requestedAcademicYearId?: number) => {
   }
 
   return activeAcademicYear;
+};
+
+const assertCanMonitorTeachingJournals = async (actor: { id?: number; role?: string }) => {
+  const actorId = Number(actor?.id || 0);
+  const role = normalizeRole(actor?.role);
+  if (role === 'ADMIN' || role === 'PRINCIPAL') return;
+  if (role !== 'TEACHER' || actorId <= 0) {
+    throw new ApiError(403, 'Tidak memiliki akses monitoring jurnal mengajar.');
+  }
+
+  const profile = await prisma.user.findUnique({
+    where: { id: actorId },
+    select: {
+      additionalDuties: true,
+    },
+  });
+  const duties = (profile?.additionalDuties || []).map(normalizeDuty);
+  if (!duties.includes('WAKASEK_KURIKULUM') && !duties.includes('SEKRETARIS_KURIKULUM')) {
+    throw new ApiError(403, 'Monitoring jurnal mengajar hanya untuk Wakasek/Sekretaris Kurikulum.');
+  }
 };
 
 const resolveSessionDateRange = (startDate?: string, endDate?: string) => {
@@ -564,6 +640,370 @@ export const getTeachingJournalSessions = asyncHandler(async (req: Request, res:
         },
       },
       'Daftar sesi jurnal mengajar berhasil diambil',
+    ),
+  );
+});
+
+export const getTeachingJournalMonitoring = asyncHandler(async (req: Request, res: Response) => {
+  const query = getTeachingJournalMonitoringSchema.parse(req.query);
+  const actor = (req as any).user;
+  await assertCanMonitorTeachingJournals({ id: actor?.id, role: actor?.role });
+
+  const academicYear = await getOperationalAcademicYear(query.academicYearId);
+  const { startDate, endDate } = resolveSessionDateRange(query.startDate, query.endDate);
+  const keyword = String(query.search || '').trim().toLowerCase();
+  const issueLimit = Math.min(MAX_MONITORING_ISSUE_ROWS, Math.max(1, Number(query.issueLimit || 50)));
+
+  const scheduleEntries = await prisma.scheduleEntry.findMany({
+    where: {
+      academicYearId: academicYear.id,
+      ...(query.teacherAssignmentId ? { teacherAssignmentId: query.teacherAssignmentId } : {}),
+      ...(query.classId ? { classId: query.classId } : {}),
+      teacherAssignment: {
+        ...(query.teacherId ? { teacherId: query.teacherId } : {}),
+        ...(query.subjectId ? { subjectId: query.subjectId } : {}),
+      },
+    },
+    include: {
+      class: {
+        select: {
+          id: true,
+          name: true,
+          level: true,
+          major: {
+            select: {
+              id: true,
+              name: true,
+              code: true,
+            },
+          },
+        },
+      },
+      teacherAssignment: {
+        select: {
+          id: true,
+          teacherId: true,
+          subjectId: true,
+          teacher: {
+            select: {
+              id: true,
+              name: true,
+              username: true,
+            },
+          },
+          subject: {
+            select: {
+              id: true,
+              name: true,
+              code: true,
+            },
+          },
+        },
+      },
+    },
+    orderBy: [{ dayOfWeek: 'asc' }, { period: 'asc' }],
+  });
+
+  if (scheduleEntries.length === 0) {
+    res.status(200).json(
+      new ApiResponse(
+        200,
+        {
+          meta: {
+            academicYear: { id: academicYear.id, name: academicYear.name },
+            dateRange: { start: toDateKey(startDate), end: toDateKey(endDate) },
+            filters: {
+              teacherId: query.teacherId || null,
+              teacherAssignmentId: query.teacherAssignmentId || null,
+              classId: query.classId || null,
+              subjectId: query.subjectId || null,
+              search: query.search || null,
+            },
+          },
+          summary: {
+            expectedSessions: 0,
+            journalFilled: 0,
+            submittedSessions: 0,
+            reviewedSessions: 0,
+            draftSessions: 0,
+            missingSessions: 0,
+            attendanceRecorded: 0,
+            attendanceMismatch: 0,
+            referenceLinkedSessions: 0,
+            referenceFields: emptyMonitoringReferenceFields(),
+            latestJournalAt: null,
+            submittedAndReviewed: 0,
+            complianceRate: 0,
+            fillRate: 0,
+            attendanceRate: 0,
+            coverageRate: 0,
+          },
+          teacherRows: [],
+          classRows: [],
+          issueRows: [],
+        },
+        'Monitoring jurnal mengajar berhasil dimuat',
+      ),
+    );
+    return;
+  }
+
+  const holidayDateKeys = await buildHolidayDateKeySet(academicYear.id, startDate, endDate);
+  const scheduleEntryIds = scheduleEntries.map((entry) => entry.id);
+  const teacherAssignmentIds = Array.from(new Set(scheduleEntries.map((entry) => entry.teacherAssignmentId)));
+
+  const [journals, attendances] = await Promise.all([
+    prisma.teachingJournal.findMany({
+      where: {
+        academicYearId: academicYear.id,
+        scheduleEntryId: { in: scheduleEntryIds },
+        journalDate: {
+          gte: startDate,
+          lte: endDate,
+        },
+      },
+      include: {
+        references: true,
+      },
+    }),
+    prisma.attendance.findMany({
+      where: {
+        academicYearId: academicYear.id,
+        date: {
+          gte: startDate,
+          lte: endDate,
+        },
+        OR: [
+          { scheduleEntryId: { in: scheduleEntryIds } },
+          { teacherAssignmentId: { in: teacherAssignmentIds } },
+        ],
+      },
+      select: {
+        id: true,
+        date: true,
+        scheduleEntryId: true,
+        teacherAssignmentId: true,
+        classId: true,
+        subjectId: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    }),
+  ]);
+
+  const journalMap = new Map(journals.map((journal) => [`${journal.scheduleEntryId}|${toDateKey(journal.journalDate)}`, journal]));
+  const attendanceByScheduleDate = new Map<string, (typeof attendances)[number]>();
+  const attendanceByAssignmentDate = new Map<string, (typeof attendances)[number]>();
+  const attendanceByClassSubjectDate = new Map<string, (typeof attendances)[number]>();
+
+  attendances.forEach((attendance) => {
+    const dateKey = toDateKey(attendance.date);
+    if (attendance.scheduleEntryId) {
+      attendanceByScheduleDate.set(`${attendance.scheduleEntryId}|${dateKey}`, attendance);
+    }
+    if (attendance.teacherAssignmentId) {
+      attendanceByAssignmentDate.set(`${attendance.teacherAssignmentId}|${dateKey}`, attendance);
+    }
+    attendanceByClassSubjectDate.set(`${attendance.classId}|${attendance.subjectId}|${dateKey}`, attendance);
+  });
+
+  const createAggregate = () => ({
+    expectedSessions: 0,
+    journalFilled: 0,
+    submittedSessions: 0,
+    reviewedSessions: 0,
+    draftSessions: 0,
+    missingSessions: 0,
+    attendanceRecorded: 0,
+    attendanceMismatch: 0,
+    referenceLinkedSessions: 0,
+    referenceFields: emptyMonitoringReferenceFields(),
+    latestJournalAt: null as string | null,
+  });
+
+  const summary = createAggregate();
+  const teacherRows = new Map<number, ReturnType<typeof createAggregate> & { teacher: { id: number; name: string; username?: string | null } }>();
+  const classRows = new Map<number, ReturnType<typeof createAggregate> & { class: { id: number; name: string; level?: string | null; major?: { id: number; name: string; code?: string | null } | null } }>();
+  const issueRows: Array<Record<string, unknown>> = [];
+
+  const addMetrics = (target: ReturnType<typeof createAggregate>, metrics: {
+    journalStatus: string;
+    attendanceRecorded: boolean;
+    attendanceMismatch: boolean;
+    referenceCount: number;
+    referenceFieldCounts: Record<string, number>;
+    journalUpdatedAt?: string | null;
+  }) => {
+    target.expectedSessions += 1;
+    if (metrics.journalStatus !== 'MISSING') target.journalFilled += 1;
+    if (metrics.journalStatus === 'SUBMITTED') target.submittedSessions += 1;
+    if (metrics.journalStatus === 'REVIEWED') target.reviewedSessions += 1;
+    if (metrics.journalStatus === 'DRAFT') target.draftSessions += 1;
+    if (metrics.journalStatus === 'MISSING') target.missingSessions += 1;
+    if (metrics.attendanceRecorded) target.attendanceRecorded += 1;
+    if (metrics.attendanceMismatch) target.attendanceMismatch += 1;
+    if (metrics.referenceCount > 0) target.referenceLinkedSessions += 1;
+    Object.entries(metrics.referenceFieldCounts).forEach(([field, total]) => {
+      target.referenceFields[field] = Number(target.referenceFields[field] || 0) + Number(total || 0);
+    });
+    if (metrics.journalUpdatedAt && (!target.latestJournalAt || metrics.journalUpdatedAt > target.latestJournalAt)) {
+      target.latestJournalAt = metrics.journalUpdatedAt;
+    }
+  };
+
+  scheduleEntries.forEach((entry) => {
+    let cursor = startDate;
+    while (cursor.getTime() <= endDate.getTime()) {
+      const dateKey = toDateKey(cursor);
+      if (
+        DAY_OF_WEEK_BY_UTC_INDEX[cursor.getUTCDay()] === entry.dayOfWeek &&
+        !holidayDateKeys.has(dateKey)
+      ) {
+        const journal = journalMap.get(`${entry.id}|${dateKey}`) || null;
+        const attendance =
+          attendanceByScheduleDate.get(`${entry.id}|${dateKey}`) ||
+          attendanceByAssignmentDate.get(`${entry.teacherAssignmentId}|${dateKey}`) ||
+          attendanceByClassSubjectDate.get(`${entry.classId}|${entry.teacherAssignment.subjectId}|${dateKey}`) ||
+          null;
+        const journalStatus = journal ? journal.status : 'MISSING';
+        const referenceFieldCounts = emptyMonitoringReferenceFields();
+        let referenceCount = 0;
+        (journal?.references || []).forEach((reference) => {
+          referenceCount += 1;
+          const field = getReferenceFieldKey(reference);
+          if (field !== 'other') {
+            referenceFieldCounts[field] = Number(referenceFieldCounts[field] || 0) + 1;
+          }
+        });
+        const attendanceRecorded = Boolean(attendance);
+        const attendanceMismatch = (journalStatus === 'MISSING' && attendanceRecorded) || (journalStatus !== 'MISSING' && !attendanceRecorded);
+        const submittedOrReviewed = journalStatus === 'SUBMITTED' || journalStatus === 'REVIEWED';
+        const issueLabels = [
+          journalStatus === 'MISSING' ? 'Jurnal belum diisi' : '',
+          journalStatus !== 'MISSING' && !attendanceRecorded ? 'Presensi mapel belum ada' : '',
+          journalStatus === 'MISSING' && attendanceRecorded ? 'Presensi ada, jurnal belum ada' : '',
+          submittedOrReviewed && referenceCount === 0 ? 'Referensi perangkat ajar kosong' : '',
+        ].filter(Boolean);
+        const haystack = [
+          entry.teacherAssignment.teacher?.name || '',
+          entry.teacherAssignment.teacher?.username || '',
+          entry.class?.name || '',
+          entry.class?.major?.name || '',
+          entry.teacherAssignment.subject?.name || '',
+          entry.teacherAssignment.subject?.code || '',
+        ]
+          .join(' ')
+          .toLowerCase();
+
+        if (!keyword || haystack.includes(keyword)) {
+          const metrics = {
+            journalStatus,
+            attendanceRecorded,
+            attendanceMismatch,
+            referenceCount,
+            referenceFieldCounts,
+            journalUpdatedAt: journal?.updatedAt?.toISOString() || null,
+          };
+          addMetrics(summary, metrics);
+
+          const teacherId = entry.teacherAssignment.teacher.id;
+          if (!teacherRows.has(teacherId)) {
+            teacherRows.set(teacherId, {
+              ...createAggregate(),
+              teacher: entry.teacherAssignment.teacher,
+            });
+          }
+          addMetrics(teacherRows.get(teacherId)!, metrics);
+
+          const classId = entry.class.id;
+          if (!classRows.has(classId)) {
+            classRows.set(classId, {
+              ...createAggregate(),
+              class: entry.class,
+            });
+          }
+          addMetrics(classRows.get(classId)!, metrics);
+
+          if (issueLabels.length > 0 && issueRows.length < issueLimit) {
+            issueRows.push({
+              sessionKey: `${entry.id}|${dateKey}`,
+              date: dateKey,
+              dayOfWeek: entry.dayOfWeek,
+              period: entry.period,
+              room: entry.room,
+              teacher: entry.teacherAssignment.teacher,
+              class: entry.class,
+              subject: entry.teacherAssignment.subject,
+              journalStatus,
+              deliveryStatus: journal?.deliveryStatus || null,
+              attendanceStatus: attendanceRecorded ? 'RECORDED' : 'MISSING',
+              referenceCount,
+              issueLabels,
+              submittedAt: journal?.submittedAt?.toISOString() || null,
+              updatedAt: journal?.updatedAt?.toISOString() || null,
+            });
+          }
+        }
+      }
+      cursor = addDays(cursor, 1);
+    }
+  });
+
+  const formatAggregate = <T extends Record<string, unknown>>(row: ReturnType<typeof createAggregate> & T) => {
+    const submittedAndReviewed = row.submittedSessions + row.reviewedSessions;
+    return {
+      ...row,
+      submittedAndReviewed,
+      complianceRate: toPercent(submittedAndReviewed, row.expectedSessions),
+      fillRate: toPercent(row.journalFilled, row.expectedSessions),
+      attendanceRate: toPercent(row.attendanceRecorded, row.expectedSessions),
+      coverageRate: toPercent(row.referenceLinkedSessions, row.journalFilled),
+    };
+  };
+
+  const formattedTeacherRows = Array.from(teacherRows.values())
+    .map(formatAggregate)
+    .sort((a, b) => {
+      if (a.complianceRate !== b.complianceRate) return a.complianceRate - b.complianceRate;
+      if (a.missingSessions !== b.missingSessions) return b.missingSessions - a.missingSessions;
+      return String(a.teacher?.name || '').localeCompare(String(b.teacher?.name || ''));
+    });
+
+  const formattedClassRows = Array.from(classRows.values())
+    .map(formatAggregate)
+    .sort((a, b) => {
+      if (a.complianceRate !== b.complianceRate) return a.complianceRate - b.complianceRate;
+      if (a.missingSessions !== b.missingSessions) return b.missingSessions - a.missingSessions;
+      return String(a.class?.name || '').localeCompare(String(b.class?.name || ''), 'id', { numeric: true });
+    });
+
+  issueRows.sort((left, right) => {
+    const dateCompare = String(right.date || '').localeCompare(String(left.date || ''));
+    if (dateCompare !== 0) return dateCompare;
+    return Number(left.period || 0) - Number(right.period || 0);
+  });
+
+  res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        meta: {
+          academicYear: { id: academicYear.id, name: academicYear.name },
+          dateRange: { start: toDateKey(startDate), end: toDateKey(endDate) },
+          filters: {
+            teacherId: query.teacherId || null,
+            teacherAssignmentId: query.teacherAssignmentId || null,
+            classId: query.classId || null,
+            subjectId: query.subjectId || null,
+            search: keyword || null,
+          },
+        },
+        summary: formatAggregate(summary),
+        teacherRows: formattedTeacherRows,
+        classRows: formattedClassRows,
+        issueRows,
+      },
+      'Monitoring jurnal mengajar berhasil dimuat',
     ),
   );
 });

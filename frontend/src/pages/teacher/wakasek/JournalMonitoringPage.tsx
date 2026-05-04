@@ -1,15 +1,15 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { 
-  Search, 
-  Loader2, 
-  FileText, 
-  Building2, 
-  User, 
+import {
+  Search,
+  Loader2,
+  FileText,
+  Building2,
+  User,
   X,
   BookOpen,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
 } from 'lucide-react';
 import { internshipService } from '../../../services/internship.service';
 import { classService, type Class } from '../../../services/class.service';
@@ -93,16 +93,14 @@ const JournalMonitoringPage = () => {
   const [selectedInternship, setSelectedInternship] = useState<InternshipRow | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  // Fetch Classes for Filter
   const { data: classesData } = useQuery({
     queryKey: ['classes'],
     queryFn: async () => {
       const res = await classService.list({ limit: 100 });
       return res.data;
-    }
+    },
   });
 
-  // Fetch Internships
   const { data: internshipsData, isLoading } = useQuery({
     queryKey: ['all-internships', page, limit, search, selectedClassId],
     queryFn: async () => {
@@ -111,13 +109,12 @@ const JournalMonitoringPage = () => {
         limit,
         search,
         classId: selectedClassId ? Number(selectedClassId) : undefined,
-        status: 'APPROVED' // Only show active internships
+        status: 'APPROVED',
       });
       return res.data;
-    }
+    },
   });
 
-  // Fetch Journals for Selected Internship
   const { data: journalsData, isLoading: isLoadingJournals } = useQuery({
     queryKey: ['internship-journals', selectedInternship?.id],
     queryFn: async () => {
@@ -125,7 +122,7 @@ const JournalMonitoringPage = () => {
       const res = await internshipService.getJournals(selectedInternship.id);
       return res.data;
     },
-    enabled: !!selectedInternship?.id
+    enabled: !!selectedInternship?.id,
   });
 
   const handleViewJournals = (internship: InternshipRow) => {
@@ -152,80 +149,84 @@ const JournalMonitoringPage = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Monitoring Jurnal PKL</h1>
           <p className="text-gray-500">Pantau aktivitas jurnal harian siswa PKL</p>
         </div>
       </div>
 
-      {/* Filters */}
-      <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex flex-col md:flex-row gap-4 items-end md:items-center">
-        <div className="flex-1 relative w-full">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
+      <div className="flex flex-col gap-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm md:flex-row md:items-center">
+        <div className="relative w-full flex-1">
+          <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" />
           <input
             type="text"
             placeholder="Cari nama siswa atau NISN..."
-            className="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="w-full rounded-lg border border-gray-300 py-2 pl-10 pr-4 focus:border-transparent focus:ring-2 focus:ring-blue-500"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(event) => {
+              setSearch(event.target.value);
+              setPage(1);
+            }}
           />
         </div>
-        
-        <div className="flex flex-col sm:flex-row gap-4 w-full md:w-auto">
-          <div className="flex items-center gap-2 w-full sm:w-auto">
-            <span className="text-sm font-medium text-gray-700 whitespace-nowrap">Pilih Kelas:</span>
+
+        <div className="flex w-full flex-col gap-4 sm:flex-row md:w-auto">
+          <label className="flex w-full items-center gap-2 text-sm font-medium text-gray-700 sm:w-auto">
+            <span className="whitespace-nowrap">Pilih Kelas:</span>
             <select
-              className="w-full sm:w-48 px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-transparent focus:ring-2 focus:ring-blue-500 sm:w-48"
               value={selectedClassId}
-              onChange={(e) => setSelectedClassId(e.target.value)}
+              onChange={(event) => {
+                setSelectedClassId(event.target.value);
+                setPage(1);
+              }}
             >
               <option value="">Semua Kelas</option>
               {classes.map((cls) => (
                 <option key={cls.id} value={cls.id}>{cls.name}</option>
               ))}
             </select>
-          </div>
+          </label>
 
-          <div className="flex items-center gap-2 w-full sm:w-auto">
-            <span className="text-sm font-medium text-gray-700 whitespace-nowrap">Tampilkan:</span>
+          <label className="flex w-full items-center gap-2 text-sm font-medium text-gray-700 sm:w-auto">
+            <span className="whitespace-nowrap">Tampilkan:</span>
             <select
               value={limit}
-              onChange={(e) => {
-                setLimit(Number(e.target.value));
+              onChange={(event) => {
+                setLimit(Number(event.target.value));
                 setPage(1);
               }}
-              className="w-full sm:w-20 px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-transparent focus:ring-2 focus:ring-blue-500 sm:w-20"
             >
               <option value={10}>10</option>
               <option value={20}>20</option>
               <option value={35}>35</option>
               <option value={50}>50</option>
             </select>
-          </div>
+          </label>
         </div>
       </div>
 
-      {/* Table */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+      <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
+          <table className="w-full border-collapse text-left">
             <thead>
-              <tr className="bg-gray-50 border-b border-gray-200">
-                <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">NISN/NIS</th>
-                <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">NAMA SISWA</th>
-                <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Kelas</th>
-                <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Tempat PKL</th>
-                <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Alamat</th>
-                <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider text-right">Aksi</th>
+              <tr className="border-b border-gray-200 bg-gray-50">
+                <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wider text-gray-500">NISN/NIS</th>
+                <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wider text-gray-500">Nama Siswa</th>
+                <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wider text-gray-500">Kelas</th>
+                <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wider text-gray-500">Tempat PKL</th>
+                <th className="px-6 py-4 text-xs font-semibold uppercase tracking-wider text-gray-500">Alamat</th>
+                <th className="px-6 py-4 text-right text-xs font-semibold uppercase tracking-wider text-gray-500">Aksi</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
               {isLoading ? (
                 <tr>
                   <td colSpan={6} className="px-6 py-8 text-center">
-                    <div className="flex justify-center items-center gap-2 text-gray-500">
-                      <Loader2 className="w-5 h-5 animate-spin" />
+                    <div className="flex items-center justify-center gap-2 text-gray-500">
+                      <Loader2 className="h-5 w-5 animate-spin" />
                       Memuat data...
                     </div>
                   </td>
@@ -234,47 +235,45 @@ const JournalMonitoringPage = () => {
                 <tr>
                   <td colSpan={6} className="px-6 py-12 text-center text-gray-500">
                     <div className="flex flex-col items-center justify-center">
-                      <BookOpen className="w-12 h-12 text-gray-300 mb-3" />
+                      <BookOpen className="mb-3 h-12 w-12 text-gray-300" />
                       <p>Tidak ada data siswa PKL ditemukan.</p>
                     </div>
                   </td>
                 </tr>
               ) : (
                 internships.map((item) => (
-                  <tr key={item.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-6 py-4 text-gray-600 font-mono text-sm">
+                  <tr key={item.id} className="transition-colors hover:bg-gray-50">
+                    <td className="px-6 py-4 font-mono text-sm text-gray-600">
                       {item.student?.nisn || '-'}
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold text-xs">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-100 text-xs font-bold text-blue-600">
                           {item.student?.name?.charAt(0) || 'S'}
                         </div>
-                        <div>
-                          <p className="font-medium text-gray-900">{item.student?.name}</p>
-                        </div>
+                        <p className="font-medium text-gray-900">{item.student?.name}</p>
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-gray-600 text-sm">
+                    <td className="px-6 py-4 text-sm text-gray-600">
                       {item.student?.studentClass?.name || '-'}
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-2 text-gray-700">
-                        <Building2 className="w-4 h-4 text-gray-400" />
-                        <span className="text-sm truncate max-w-[200px]" title={item.industry?.name || undefined}>
+                        <Building2 className="h-4 w-4 text-gray-400" />
+                        <span className="max-w-[200px] truncate text-sm" title={item.industry?.name || undefined}>
                           {item.industry?.name || '-'}
                         </span>
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-gray-600 text-sm max-w-[200px] truncate" title={item.industry?.address || undefined}>
+                    <td className="max-w-[200px] truncate px-6 py-4 text-sm text-gray-600" title={item.industry?.address || undefined}>
                       {item.industry?.address || '-'}
                     </td>
                     <td className="px-6 py-4 text-right">
                       <button
                         onClick={() => handleViewJournals(item)}
-                        className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors"
+                        className="inline-flex items-center gap-2 rounded-lg bg-blue-50 px-3 py-1.5 text-sm font-medium text-blue-600 transition-colors hover:bg-blue-100"
                       >
-                        <FileText className="w-4 h-4" />
+                        <FileText className="h-4 w-4" />
                         Lihat Jurnal
                       </button>
                     </td>
@@ -285,19 +284,18 @@ const JournalMonitoringPage = () => {
           </table>
         </div>
 
-        {/* Pagination */}
-        {pagination && (
+        {pagination ? (
           <div className="flex items-center justify-between border-t border-gray-200 bg-white px-4 py-3 sm:px-6">
             <div className="flex flex-1 justify-between sm:hidden">
               <button
-                onClick={() => setPage(p => Math.max(1, p - 1))}
+                onClick={() => setPage((current) => Math.max(1, current - 1))}
                 disabled={page === 1}
                 className="relative inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
               >
                 Previous
               </button>
               <button
-                onClick={() => setPage(p => Math.min(pagination.totalPages, p + 1))}
+                onClick={() => setPage((current) => Math.min(pagination.totalPages, current + 1))}
                 disabled={page === pagination.totalPages}
                 className="relative ml-3 inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
               >
@@ -305,70 +303,65 @@ const JournalMonitoringPage = () => {
               </button>
             </div>
             <div className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
-              <div>
-                <p className="text-sm text-gray-700">
-                  Menampilkan <span className="font-medium">{((page - 1) * limit) + 1}</span> sampai <span className="font-medium">{Math.min(page * limit, pagination.total)}</span> dari <span className="font-medium">{pagination.total}</span> data
-                </p>
-              </div>
-              <div>
-                <nav className="isolate inline-flex -space-x-px rounded-md shadow-sm" aria-label="Pagination">
-                  <button
-                    onClick={() => setPage(p => Math.max(1, p - 1))}
-                    disabled={page === 1}
-                    className="relative inline-flex items-center rounded-l-md px-2 py-2 text-gray-400 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0 disabled:opacity-50"
-                  >
-                    <span className="sr-only">Previous</span>
-                    <ChevronLeft className="h-5 w-5" aria-hidden="true" />
-                  </button>
-                  <button
-                    onClick={() => setPage(p => Math.min(pagination.totalPages, p + 1))}
-                    disabled={page === pagination.totalPages}
-                    className="relative inline-flex items-center rounded-r-md px-2 py-2 text-gray-400 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0 disabled:opacity-50"
-                  >
-                    <span className="sr-only">Next</span>
-                    <ChevronRight className="h-5 w-5" aria-hidden="true" />
-                  </button>
-                </nav>
-              </div>
+              <p className="text-sm text-gray-700">
+                Menampilkan <span className="font-medium">{((page - 1) * limit) + 1}</span> sampai{' '}
+                <span className="font-medium">{Math.min(page * limit, pagination.total)}</span> dari{' '}
+                <span className="font-medium">{pagination.total}</span> data
+              </p>
+              <nav className="isolate inline-flex -space-x-px rounded-md shadow-sm" aria-label="Pagination">
+                <button
+                  onClick={() => setPage((current) => Math.max(1, current - 1))}
+                  disabled={page === 1}
+                  className="relative inline-flex items-center rounded-l-md px-2 py-2 text-gray-400 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0 disabled:opacity-50"
+                >
+                  <span className="sr-only">Previous</span>
+                  <ChevronLeft className="h-5 w-5" aria-hidden="true" />
+                </button>
+                <button
+                  onClick={() => setPage((current) => Math.min(pagination.totalPages, current + 1))}
+                  disabled={page === pagination.totalPages}
+                  className="relative inline-flex items-center rounded-r-md px-2 py-2 text-gray-400 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0 disabled:opacity-50"
+                >
+                  <span className="sr-only">Next</span>
+                  <ChevronRight className="h-5 w-5" aria-hidden="true" />
+                </button>
+              </nav>
             </div>
           </div>
-        )}
+        ) : null}
       </div>
 
-      {/* Journal Detail Modal */}
-      {isModalOpen && selectedInternship && (
+      {isModalOpen && selectedInternship ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/30 p-4 backdrop-blur-[2px]">
           <div className="flex max-h-[calc(100vh-7rem)] w-full max-w-5xl flex-col rounded-xl bg-white shadow-2xl">
-            {/* Modal Header */}
-            <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center bg-gray-50 rounded-t-xl">
+            <div className="flex items-center justify-between rounded-t-xl border-b border-gray-200 bg-gray-50 px-6 py-4">
               <div>
                 <h2 className="text-xl font-bold text-gray-900">Jurnal Kegiatan Siswa</h2>
-                <div className="flex items-center gap-2 text-sm text-gray-500 mt-1">
-                  <User className="w-4 h-4" />
+                <div className="mt-1 flex items-center gap-2 text-sm text-gray-500">
+                  <User className="h-4 w-4" />
                   <span>{selectedInternship.student?.name}</span>
                   <span className="mx-1">•</span>
-                  <Building2 className="w-4 h-4" />
+                  <Building2 className="h-4 w-4" />
                   <span>{selectedInternship.industry?.name}</span>
                 </div>
               </div>
-              <button 
+              <button
                 onClick={closeModal}
-                className="p-2 hover:bg-gray-200 rounded-full transition-colors text-gray-500"
+                className="rounded-full p-2 text-gray-500 transition-colors hover:bg-gray-200"
               >
-                <X className="w-6 h-6" />
+                <X className="h-6 w-6" />
               </button>
             </div>
 
-            {/* Modal Content */}
             <div className="flex-1 overflow-y-auto bg-gray-100 p-6">
               {isLoadingJournals ? (
-                <div className="flex flex-col items-center justify-center h-64 text-gray-500">
-                  <Loader2 className="w-8 h-8 animate-spin mb-3 text-blue-600" />
+                <div className="flex h-64 flex-col items-center justify-center text-gray-500">
+                  <Loader2 className="mb-3 h-8 w-8 animate-spin text-blue-600" />
                   <p>Memuat data jurnal...</p>
                 </div>
               ) : journals.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-64 text-gray-500 bg-white rounded-xl border border-dashed border-gray-300 p-8">
-                  <BookOpen className="w-16 h-16 text-gray-300 mb-4" />
+                <div className="flex h-64 flex-col items-center justify-center rounded-xl border border-dashed border-gray-300 bg-white p-8 text-gray-500">
+                  <BookOpen className="mb-4 h-16 w-16 text-gray-300" />
                   <p className="text-lg font-medium">Belum ada jurnal kegiatan</p>
                   <p className="text-sm">Siswa ini belum mengisi jurnal harian PKL.</p>
                 </div>
@@ -378,24 +371,12 @@ const JournalMonitoringPage = () => {
                     <table className="w-full min-w-[960px] text-left">
                       <thead className="bg-gray-50">
                         <tr className="border-b border-gray-200">
-                          <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">
-                            Tanggal
-                          </th>
-                          <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">
-                            Kegiatan
-                          </th>
-                          <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">
-                            Dokumentasi
-                          </th>
-                          <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">
-                            Feedback
-                          </th>
-                          <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">
-                            Status
-                          </th>
-                          <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">
-                            Diinput
-                          </th>
+                          <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">Tanggal</th>
+                          <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">Kegiatan</th>
+                          <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">Dokumentasi</th>
+                          <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">Feedback</th>
+                          <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">Status</th>
+                          <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">Diinput</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-100">
@@ -449,19 +430,18 @@ const JournalMonitoringPage = () => {
                 </div>
               )}
             </div>
-            
-            {/* Modal Footer */}
-            <div className="p-4 border-t border-gray-200 bg-gray-50 rounded-b-xl flex justify-end">
+
+            <div className="flex justify-end rounded-b-xl border-t border-gray-200 bg-gray-50 p-4">
               <button
                 onClick={closeModal}
-                className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium shadow-sm transition-colors"
+                className="rounded-lg border border-gray-300 bg-white px-4 py-2 font-medium text-gray-700 shadow-sm transition-colors hover:bg-gray-50"
               >
                 Tutup
               </button>
             </div>
           </div>
         </div>
-      )}
+      ) : null}
     </div>
   );
 };

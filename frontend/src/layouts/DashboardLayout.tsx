@@ -443,6 +443,7 @@ const resolveTeacherCommitteeBreadcrumbGroup = (user: User | null): string => {
       // WAKASEK KURIKULUM
       'wakasek/curriculum': { label: 'Kelola Kurikulum', group: 'WAKASEK KURIKULUM' },
       'wakasek/teaching-resource-programs': { label: 'Program Perangkat Ajar', group: 'WAKASEK KURIKULUM' },
+      'wakasek/teaching-journal-monitoring': { label: 'Monitoring Jurnal Mengajar', group: 'WAKASEK KURIKULUM' },
       'wakasek/final-ledger': { label: 'Leger Nilai Akhir', group: 'WAKASEK KURIKULUM' },
       'wakasek/consolidation': { label: 'Leger Nilai Akhir', group: 'WAKASEK KURIKULUM' },
       'wakasek/exams': { label: 'Kelola Ujian', group: 'WAKASEK KURIKULUM' },
@@ -453,6 +454,7 @@ const resolveTeacherCommitteeBreadcrumbGroup = (user: User | null): string => {
       'wakasek/performance': { label: 'Monitoring Kinerja', group: 'WAKASEK KURIKULUM' },
       'wakasek/work-program-approvals': { label: 'Persetujuan Program Kerja', group: 'WAKASEK KURIKULUM' },
       'wakasek/reports': { label: 'Laporan Akademik', group: 'WAKASEK KURIKULUM' },
+      'wakasek/journal-monitoring': { label: 'Monitoring Jurnal PKL', group: 'WAKASEK HUMAS' },
       committees: { label: 'Kepanitiaan', group: teacherCommitteeGroup },
       
       // WAKASEK KESISWAAN

@@ -100,6 +100,105 @@ export type TeachingJournalSessionsPayload = {
   };
 };
 
+export type TeachingJournalMonitoringAggregate = {
+  expectedSessions: number;
+  journalFilled: number;
+  submittedSessions: number;
+  reviewedSessions: number;
+  draftSessions: number;
+  missingSessions: number;
+  attendanceRecorded: number;
+  attendanceMismatch: number;
+  referenceLinkedSessions: number;
+  referenceFields: Record<string, number>;
+  latestJournalAt: string | null;
+  submittedAndReviewed: number;
+  complianceRate: number;
+  fillRate: number;
+  attendanceRate: number;
+  coverageRate: number;
+};
+
+export type TeachingJournalMonitoringTeacherRow = TeachingJournalMonitoringAggregate & {
+  teacher: {
+    id: number;
+    name: string;
+    username?: string | null;
+  };
+};
+
+export type TeachingJournalMonitoringClassRow = TeachingJournalMonitoringAggregate & {
+  class: {
+    id: number;
+    name: string;
+    level?: string | null;
+    major?: {
+      id: number;
+      name: string;
+      code?: string | null;
+    } | null;
+  };
+};
+
+export type TeachingJournalMonitoringIssueRow = {
+  sessionKey: string;
+  date: string;
+  dayOfWeek: string;
+  period: number;
+  room: string | null;
+  teacher: {
+    id: number;
+    name: string;
+    username?: string | null;
+  };
+  class: {
+    id: number;
+    name: string;
+    level?: string | null;
+    major?: {
+      id: number;
+      name: string;
+      code?: string | null;
+    } | null;
+  };
+  subject: {
+    id: number;
+    name: string;
+    code?: string | null;
+  };
+  journalStatus: TeachingJournalSessionStatus;
+  deliveryStatus?: TeachingJournalDeliveryStatus | null;
+  attendanceStatus: 'RECORDED' | 'MISSING';
+  referenceCount: number;
+  issueLabels: string[];
+  submittedAt?: string | null;
+  updatedAt?: string | null;
+};
+
+export type TeachingJournalMonitoringPayload = {
+  meta: {
+    academicYear: {
+      id: number;
+      name: string;
+    };
+    dateRange: {
+      start: string;
+      end: string;
+    };
+    filters: {
+      teacherId?: number | null;
+      teacherAssignmentId?: number | null;
+      classId?: number | null;
+      subjectId?: number | null;
+      search?: string | null;
+    };
+  };
+  summary: TeachingJournalMonitoringAggregate;
+  teacherRows: TeachingJournalMonitoringTeacherRow[];
+  classRows: TeachingJournalMonitoringClassRow[];
+  issueRows: TeachingJournalMonitoringIssueRow[];
+};
+
 export type TeachingJournalSessionQuery = {
   academicYearId?: number;
   teacherAssignmentId?: number;
@@ -109,6 +208,18 @@ export type TeachingJournalSessionQuery = {
   endDate?: string;
   journalStatus?: TeachingJournalSessionStatus;
   deliveryStatus?: TeachingJournalDeliveryStatus;
+};
+
+export type TeachingJournalMonitoringQuery = {
+  academicYearId?: number;
+  teacherId?: number;
+  teacherAssignmentId?: number;
+  classId?: number;
+  subjectId?: number;
+  startDate?: string;
+  endDate?: string;
+  search?: string;
+  issueLimit?: number;
 };
 
 export type UpsertTeachingJournalPayload = {
@@ -159,6 +270,13 @@ export const teachingJournalService = {
 
   async getEntry(id: number) {
     const response = await api.get<{ data: TeachingJournalEntry }>(`/teaching-journals/entries/${id}`);
+    return response.data.data;
+  },
+
+  async getMonitoring(params: TeachingJournalMonitoringQuery = {}) {
+    const response = await api.get<{ data: TeachingJournalMonitoringPayload }>('/teaching-journals/monitoring', {
+      params,
+    });
     return response.data.data;
   },
 

@@ -79,6 +79,7 @@ const TeachingResourceProgramManagementPage = lazy(() =>
 const StudentManagementHubPage = lazy(() => import("./pages/teacher/wakasek/StudentManagementHubPage"));
 const InternshipComponentPage = lazy(() => import("./pages/teacher/wakasek/InternshipComponentPage").then(m => ({ default: m.InternshipComponentPage })));
 const JournalMonitoringPage = lazy(() => import("./pages/teacher/wakasek/JournalMonitoringPage"));
+const TeachingJournalMonitoringPage = lazy(() => import("./pages/teacher/wakasek/TeachingJournalMonitoringPage"));
 const WorkProgramApprovalsPage = lazy(() =>
   import('./pages/teacher/wakasek/curriculum/WorkProgramApprovalsPage'),
 );
@@ -451,6 +452,7 @@ function App() {
             <Route path="wakasek/student-approvals" element={<BudgetApprovalPage />} />
             <Route path="wakasek/internship-components" element={<InternshipComponentPage />} />
             <Route path="wakasek/journal-monitoring" element={<JournalMonitoringPage />} />
+            <Route path="wakasek/teaching-journal-monitoring" element={<TeachingJournalMonitoringPage />} />
 
             <Route path="proctoring" element={<ProctorSchedulePage />} />
             <Route path="proctoring/:id" element={<ProctorMonitoringPage />} />

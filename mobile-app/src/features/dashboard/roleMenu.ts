@@ -85,6 +85,7 @@ const STRICT_WEB_PARITY_KEYS = new Set<string>([
   'teacher-wakasis-approvals-work-program',
   'teacher-wakakur-curriculum',
   'teacher-wakakur-exams',
+  'teacher-wakakur-journal-monitoring',
   'teacher-wakakur-performance',
   'teacher-wakakur-approvals',
   'teacher-wakakur-reports',
@@ -514,6 +515,11 @@ const ROLE_MENUS: Record<string, RoleMenuItem[]> = {
       key: 'teacher-wakakur-exams',
       label: 'Kelola Ujian',
       route: '/teacher/wakakur-exams',
+    },
+    {
+      key: 'teacher-wakakur-journal-monitoring',
+      label: 'Monitoring Jurnal Mengajar',
+      route: '/teacher/wakakur-journal-monitoring',
     },
     {
       key: 'teacher-wakakur-performance',
@@ -1167,6 +1173,7 @@ const ROLE_MENU_GROUPS: Record<string, GroupDefinition[]> = {
         'teacher-wakakur-curriculum',
         'teacher-wakakur-exams',
         'teacher-committee-events',
+        'teacher-wakakur-journal-monitoring',
         'teacher-wakakur-performance',
         'teacher-wakakur-approvals',
         'teacher-wakakur-reports',
@@ -1759,6 +1766,7 @@ function buildTeacherGroups(
         ...pickMenus(byKey, [
           'teacher-wakakur-curriculum',
           'teacher-wakakur-exams',
+          'teacher-wakakur-journal-monitoring',
           'teacher-wakakur-performance',
           'teacher-wakakur-approvals',
           'teacher-wakakur-reports',

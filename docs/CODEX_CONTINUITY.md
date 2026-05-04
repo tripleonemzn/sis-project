@@ -5,54 +5,67 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-05-04 16:22 WIB
-- Current status: Batch 3 integrasi referensi perangkat ajar untuk fitur `Jurnal Mengajar Guru` sudah live di web dan mobile. Form jurnal web/mobile kini punya picker `Capaian/Kompetensi`, `Tujuan Pembelajaran`, `Materi`, dan `Indikator` yang mengambil opsi dari Perangkat Ajar existing dan menyimpan pilihan ke `TeachingJournalReference`.
+- Last updated: 2026-05-04 16:43 WIB
+- Current status: Batch 4 monitoring kurikulum untuk fitur `Jurnal Mengajar Guru` sudah selesai secara source, backend live, dan web live. Wakakur/Sekretaris Kurikulum sekarang punya menu `Monitoring Jurnal Mengajar` untuk melihat kepatuhan pengisian jurnal, mismatch presensi mapel, dan coverage referensi perangkat ajar per guru/per kelas/per tindak lanjut. Mobile parity sudah dibuat dan siap dipublish OTA setelah commit/push source batch ini.
 - Objective/task aktif:
   - Mengembangkan fitur `Jurnal Mengajar Guru` yang terhubung ke jadwal mengajar, perangkat ajar, dan presensi mapel sebagai pondasi monitoring kurikulum serta supervisi kepsek.
 - Batch terakhir selesai:
-  - `Teaching journal resource reference picker`
+  - `Teaching journal curriculum monitoring`
 - Progress fitur jurnal mengajar guru:
-  - `60%` keseluruhan roadmap
+  - `80%` keseluruhan roadmap
   - `100%` Batch 1 foundation backend
   - `100%` Batch 2 teacher input web/mobile
   - `100%` Batch 3 integrasi referensi perangkat ajar di form jurnal
-  - `0%` Batch 4 monitoring kurikulum
+  - `100%` Batch 4 monitoring kurikulum
   - `0%` Batch 5 supervisi/ringkasan kepsek
 - Last completed repo work:
-  - Commit: `4a5eab5`
-  - Title: `feat(teaching-journal): add resource references`
+  - Commit: pending push
+  - Title: `feat(teaching-journal): add curriculum monitoring`
   - Summary:
-    - menambah picker referensi perangkat ajar pada modal input jurnal guru di web
-    - menambah parity picker referensi perangkat ajar pada modal input jurnal guru di mobile
-    - memakai endpoint existing `/api/teaching-resources/entries/references` dengan scope guru, tahun ajaran aktif, mapel, tingkat, dan jurusan sesi
-    - menyimpan referensi pilihan ke payload `references` yang sudah didukung backend `TeachingJournalReference`
-    - tidak menambah migrasi, endpoint backend, polling, websocket, atau query global baru
+    - menambah endpoint backend `GET /api/teaching-journals/monitoring` dengan akses terbatas untuk Admin, Kepala Sekolah, Wakakur, dan Sekretaris Kurikulum
+    - endpoint monitoring menghitung sesi jadwal aktif pada tahun ajaran aktif, skip libur akademik, membandingkan jurnal dengan presensi mapel, dan mengukur coverage referensi perangkat ajar
+    - endpoint dibatasi aman: rentang maksimal 63 hari, issue rows maksimal 80, tanpa polling, tanpa websocket, tanpa query global besar
+    - menambah halaman web `Monitoring Jurnal Mengajar` di sidebar Wakakur dengan tab `Minggu Ini`, `30 Hari`, `Rentang Manual` dan tabel `Per Guru`, `Per Kelas`, `Perlu Ditindaklanjuti`
+    - route lama `Monitoring Jurnal PKL` untuk Humas tetap dipertahankan agar fitur PKL tidak tertimpa
+    - menambah screen mobile native `Monitoring Jurnal Mengajar` untuk Wakakur/Sekretaris Kurikulum dengan ringkasan, filter tanggal, pencarian, dan row-list table-like
 - Area/file disentuh:
-  - `frontend/src/pages/teacher/TeacherTeachingJournalPage.tsx`
-  - `mobile-app/app/(app)/teacher/teaching-journals.tsx`
+  - `backend/src/controllers/teachingJournal.controller.ts`
+  - `backend/src/routes/teachingJournal.routes.ts`
+  - `frontend/src/App.tsx`
+  - `frontend/src/components/layout/Sidebar.tsx`
+  - `frontend/src/layouts/DashboardLayout.tsx`
+  - `frontend/src/pages/teacher/wakasek/JournalMonitoringPage.tsx`
+  - `frontend/src/pages/teacher/wakasek/TeachingJournalMonitoringPage.tsx`
+  - `frontend/src/services/teachingJournal.service.ts`
+  - `mobile-app/app/(app)/teacher/wakakur-journal-monitoring.tsx`
+  - `mobile-app/src/features/dashboard/roleMenu.ts`
   - `mobile-app/src/features/teachingJournals/teachingJournalApi.ts`
   - `mobile-app/src/features/teachingJournals/types.ts`
   - `docs/CODEX_CONTINUITY.md`
 - Verifikasi batch ini:
   - `git diff --check`
+  - `cd backend && npm run build`
   - `cd frontend && npm run build`
   - `cd mobile-app && npm run typecheck`
   - `cd mobile-app && npm run audit:parity:check`
+  - `cd backend && npm run service:restart`
+  - `cd backend && npm run service:health`
   - `cd frontend && npm run deploy`
-  - `curl -I -s https://siskgb2.id/teacher/teaching-journals` -> `HTTP/1.1 200 OK`
-  - `cd mobile-app && npm run update:pilot-live:auto -- "Jurnal Mengajar Guru. Silakan perbarui untuk menikmati fitur terbaru."`
+  - `curl -I -s https://siskgb2.id/teacher/wakasek/teaching-journal-monitoring` -> `HTTP/1.1 200 OK`
+  - `curl -I -s https://siskgb2.id/teacher/wakasek/journal-monitoring` -> `HTTP/1.1 200 OK`
+  - `curl -s -o /dev/null -w 'API public:%{http_code}\n' https://siskgb2.id/api/public/foto-kegiatan` -> `API public:200`
 - Publish/live status:
   - Web sudah deploy live
-  - Mobile OTA `pilot-live` sudah publish
-  - OTA update group ID: `493496e0-8c72-46f6-abe4-daa8d0d0c7b1`
-  - Android update ID: `019df24b-7802-728e-a845-7e060268e615`
-  - Push notification OTA terkirim: `recipients=84`, `sent=84`, `failed=0`, `stale=0`
+  - Backend sudah reload dan health check `200`
+  - Mobile OTA `pilot-live` pending setelah source commit/push
+  - OTA update group ID: pending
+  - Android update ID: pending
+  - Push notification OTA: pending
 - Remaining work:
-  - Batch 4: buat monitoring kurikulum berbasis kepatuhan dan coverage
   - Batch 5: buat ringkasan supervisi kepsek
 - Residual risk:
-  - Risiko rendah; batch ini memakai endpoint referensi perangkat ajar existing dengan `limitPerProgram=200`, `includeRows=false`, `staleTime` 2 menit, dan hanya aktif saat modal jurnal dibuka.
-  - Tidak ada perubahan backend runtime atau migration. Monitoring kurikulum belum dibuat; data referensi baru menjadi pondasi Batch 4.
+  - Risiko rendah-menengah karena ada endpoint monitoring baru, tetapi guardrail sudah dipasang: akses role/duty terbatas, tahun ajaran aktif sebagai source of truth, rentang tanggal maksimal 63 hari, issue rows maksimal 80, `staleTime` 60 detik di consumer, dan tidak ada polling agresif.
+  - Endpoint monitoring mengandalkan kesesuaian `Attendance` mapel existing terhadap `scheduleEntryId`, `teacherAssignmentId`, atau fallback `classId/subjectId/date`. Jika data presensi lama belum punya relasi jadwal lengkap, mismatch tetap ditampilkan sebagai sinyal tindak lanjut, bukan mengubah data.
 
 ## Status Saat Ini
 

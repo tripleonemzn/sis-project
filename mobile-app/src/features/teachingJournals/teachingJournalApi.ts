@@ -1,6 +1,8 @@
 import { apiClient } from '../../lib/api/client';
 import type {
   TeachingJournalEntry,
+  TeachingJournalMonitoringPayload,
+  TeachingJournalMonitoringQuery,
   TeachingJournalReferenceEntriesPayload,
   TeachingJournalReferenceProjectionRequest,
   TeachingJournalSessionQuery,
@@ -22,6 +24,13 @@ type EntryResponse = {
   data: TeachingJournalEntry;
 };
 
+type MonitoringResponse = {
+  statusCode: number;
+  success: boolean;
+  message: string;
+  data: TeachingJournalMonitoringPayload;
+};
+
 type ReferenceEntriesResponse = {
   statusCode: number;
   success: boolean;
@@ -32,6 +41,13 @@ type ReferenceEntriesResponse = {
 export const teachingJournalApi = {
   async listSessions(params: TeachingJournalSessionQuery = {}) {
     const response = await apiClient.get<SessionsResponse>('/teaching-journals/sessions', {
+      params,
+    });
+    return response.data.data;
+  },
+
+  async getMonitoring(params: TeachingJournalMonitoringQuery = {}) {
+    const response = await apiClient.get<MonitoringResponse>('/teaching-journals/monitoring', {
       params,
     });
     return response.data.data;
