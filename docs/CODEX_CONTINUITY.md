@@ -5,6 +5,47 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
+- Last updated: 2026-05-05 05:26 WIB
+- Current status: Batch 2 kontrak backend fitur `Tahun Ajaran Baru` selesai, terverifikasi, dan backend sudah direstart sehat. Endpoint legacy `POST /academic-years/:id/promote` yang dulu bisa memindahkan siswa langsung sekarang dinonaktifkan aman dengan respons `410 Gone`, sehingga jalur lama tidak bisa lagi mengubah data production.
+- Objective/task aktif:
+  - Menyederhanakan fitur tahun ajaran baru/promotion agar admin bisa melanjutkan data tahun ajaran lama ke tahun ajaran baru secara aman, bertahap, dan mudah dipahami.
+- Batch terakhir selesai:
+  - `Academic year promotion backend contract Batch 2`
+- Progress roadmap fitur tahun ajaran baru:
+  - `100%` Batch 1 UI/terminologi web admin
+  - `100%` Batch 2 guard kontrak backend legacy vs v2
+  - `45%` total roadmap redesign tahun ajaran baru/promotion
+- Last completed repo work:
+  - Commit: `fbddf21`
+  - Title: `fix(academic): disable legacy promotion endpoint`
+  - Summary:
+    - endpoint legacy `POST /academic-years/:id/promote` tidak lagi melakukan mutasi `classId` siswa atau status alumni
+    - jika endpoint lama terpanggil, backend mengembalikan `410 Gone` dengan arahan memakai alur baru `Salin Data Tahun Sebelumnya`, `Tujuan Kelas`, lalu `Proses Kenaikan & Kelulusan`
+    - response message backend di area salin data/kenaikan dirapikan dari istilah teknis `promotion/rollover` menjadi bahasa operasional sekolah
+    - tidak ada perubahan schema, migration, query berat, polling, atau data flow frontend/mobile
+- Area/file disentuh:
+  - `backend/src/controllers/academicYear.controller.ts`
+  - `backend/src/routes/academicYear.routes.ts`
+  - `docs/CODEX_CONTINUITY.md`
+- Verifikasi batch ini:
+  - `git diff --check`
+  - `cd backend && npm run build`
+  - `cd backend && npm run service:restart`
+  - `cd backend && npm run service:health` -> `Backend:200`, `Backend API:200`
+- Publish/live status:
+  - Backend sudah restart live dan health check normal.
+  - Web tidak dideploy karena batch ini tidak mengubah frontend.
+  - Mobile OTA tidak dipublish karena batch ini tidak mengubah kode mobile.
+- Remaining work:
+  - Batch 3: desain/implement preflight yang lebih manusiawi untuk kenaikan kelas, kelulusan alumni, kelas kosong, wali kelas, guru mapel, duty, dan data lintas tahun.
+  - Batch 4: audit akses arsip lintas role dan pastikan data tahun ajaran lama hanya tampil sebagai arsip/historis, bukan workflow operasional aktif.
+  - Batch 5: parity mobile jika nanti ada screen/flow mobile terkait tahun ajaran/promotion yang perlu disediakan.
+- Residual risk:
+  - Risiko rendah karena perubahan justru menutup endpoint destruktif lama dan tidak menambah beban runtime baru.
+  - Endpoint legacy belum diuji langsung dengan token admin dari client karena batch ini cukup diverifikasi lewat build dan health check service; perilakunya eksplisit dari controller yang hanya throw `ApiError(410)`.
+
+## Update Sebelumnya
+
 - Last updated: 2026-05-04 22:36 WIB
 - Current status: Batch 1 redesign UI fitur `Tahun Ajaran` role admin selesai, terverifikasi, dan web sudah live. Halaman sekarang dipisah menjadi tab standar `Daftar Tahun Ajaran`, `Tahun Ajaran Baru`, dan `Riwayat Proses`, dengan istilah teknis promotion/rollover diganti menjadi bahasa operasional sekolah.
 - Objective/task aktif:
