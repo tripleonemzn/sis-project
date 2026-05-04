@@ -5,8 +5,8 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-05-04 17:26 WIB
-- Current status: Follow-up UX jurnal mengajar sudah selesai di source dan lolos verifikasi dasar. Sesi jurnal sekarang digabung per blok mengajar berurutan, misalnya `Jam ke 1-4`, lengkap dengan jumlah JP dan rentang waktu dari konfigurasi jam sekolah jika tersedia. Publish live backend/web dan OTA mobile masih perlu dijalankan setelah commit/push source ini.
+- Last updated: 2026-05-04 17:29 WIB
+- Current status: Follow-up UX jurnal mengajar sudah selesai dan live di backend, web, serta mobile OTA. Sesi jurnal sekarang digabung per blok mengajar berurutan, misalnya `Jam ke 1-4`, lengkap dengan jumlah JP dan rentang waktu dari konfigurasi jam sekolah jika tersedia.
 - Objective/task aktif:
   - Mengembangkan fitur `Jurnal Mengajar Guru` yang terhubung ke jadwal mengajar, perangkat ajar, dan presensi mapel sebagai pondasi monitoring kurikulum serta supervisi kepsek.
 - Batch terakhir selesai:
@@ -19,7 +19,7 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` Batch 4 monitoring kurikulum
   - `100%` Batch 5 supervisi/ringkasan kepsek
 - Last completed repo work:
-  - Commit: `pending`
+  - Commit: `8c0e467`
   - Title: `fix(teaching-journal): compact teaching blocks`
   - Summary:
     - endpoint `GET /api/teaching-journals/sessions` sekarang mengelompokkan schedule entry berurutan dengan kelas/mapel/guru/ruang yang sama menjadi satu blok jurnal
@@ -44,14 +44,22 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `cd frontend && npm run build`
   - `cd mobile-app && npm run typecheck`
   - `cd mobile-app && npm run audit:parity:check`
+  - `cd backend && npm run service:restart`
+  - `cd backend && npm run service:health` -> `Backend:200`, `Backend API:200`
+  - `cd frontend && npm run deploy`
+  - `curl -I -s https://siskgb2.id/teacher/teaching-journals | head -n 1` -> `HTTP/1.1 200 OK`
+  - `curl -I -s https://siskgb2.id/teacher/wakasek/teaching-journal-monitoring | head -n 1` -> `HTTP/1.1 200 OK`
+  - `curl -I -s https://siskgb2.id/principal/monitoring/teaching-journals | head -n 1` -> `HTTP/1.1 200 OK`
+  - `cd mobile-app && npm run update:pilot-live:auto -- "Jurnal Mengajar lebih ringkas. Silakan perbarui untuk menikmati fitur terbaru."`
 - Publish/live status:
-  - Belum publish pada catatan ini; backend/web/OTA perlu dipublish setelah source commit/push.
+  - Backend sudah reload dan health check `200`
+  - Web sudah deploy live
+  - Mobile OTA `pilot-live` sudah publish
+  - OTA update group ID: `9dfa4244-3af8-4d63-a505-c43d92f5e265`
+  - Android update ID: `019df289-3199-7941-b6a4-b1c43ea60580`
+  - Push notification OTA terkirim: `recipients=85`, `sent=85`, `failed=0`, `stale=0`
 - Remaining work:
-  - Commit/push source
-  - Restart backend dan health check
-  - Deploy web
-  - Publish OTA mobile `pilot-live`
-  - Update commit hash dan detail publish di handoff final
+  - Tidak ada sisa pekerjaan untuk follow-up ringkas blok jurnal ini.
 - Residual risk:
   - Risiko rendah-menengah karena endpoint backend jurnal berubah dari basis per jam pelajaran ke basis blok tampilan. Guardrail tetap ada: rentang tanggal maksimal 63 hari, tidak ada polling baru, tidak ada migration, tidak ada query tanpa batas baru.
   - Untuk edit jurnal blok, sistem memakai journal existing pertama pada blok bila ada; jika belum ada, jurnal baru disimpan pada schedule entry pertama dalam blok.
