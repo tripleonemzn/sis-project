@@ -15,7 +15,8 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` Batch 1 UI/terminologi web admin
   - `25%` total roadmap redesign tahun ajaran baru/promotion
 - Last completed repo work:
-  - Commit: belum dibuat saat handoff ini ditulis; commit batch ini harus dibuat setelah update continuity.
+  - Commit: `780a237`
+  - Title: `feat(admin): simplify academic year promotion workflow`
   - Summary:
     - halaman `Tahun Ajaran` memakai tab horizontal standar `UnderlineTabBar`
     - daftar tahun ajaran tetap berada pada table view utama
