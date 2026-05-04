@@ -152,13 +152,27 @@ Dokumen ini adalah policy kerja default untuk setiap sesi baru yang mengerjakan 
    - Hindari UI yang ambigu, terlalu teknis, atau berbeda makna antar platform.
    - Istilah yang sudah pernah dirapikan agar nyaman dibaca user harus dipertahankan konsisten.
    - Jika web menggunakan pola yang lebih jelas, mobile harus mengikuti arah yang sama, bukan membuat interpretasi baru sendiri.
+   - Setiap halaman menu wajib memakai standar **page shell** yang seragam:
+     - judul halaman wajib ada, sesuai nama menu dan fungsi halaman yang sedang dibuka
+     - tepat di bawah judul wajib ada deskripsi singkat dengan bahasa mudah dipahami yang menjelaskan fungsi halaman atau aksi utama user
+     - judul halaman dan deskripsi harus menjadi identitas halaman, bukan diganti oleh card/notice pertama
+     - jarak kiri-kanan area konten harus mengikuti ritme layout aplikasi yang sudah stabil seperti halaman `Presensi Siswa`: konten tidak menempel sidebar, tidak terlalu mepet tepi kanan, dan konsisten antar role
+     - gunakan page header, breadcrumb, spacing, dan padding yang seragam antara halaman web satu dengan lainnya
+     - jangan menambahkan label/card dekoratif `Tahun Ajaran Aktif` di isi halaman operasional karena source of truth tahun ajaran sudah tampil di header global aplikasi
+     - jangan menambahkan tombol `Muat Ulang`, `Refresh`, atau aksi sejenis sebagai elemen default halaman; refresh data harus mengikuti mekanisme state/query yang aman, kecuali user meminta eksplisit atau ada kebutuhan operasional khusus seperti monitor/display real-time
    - Untuk halaman isi menu sidebar di web, gunakan standar **data-first table view** sebagai default:
      - dashboard boleh tetap memakai card visual, chart, shortcut, dan summary karena fungsinya ringkasan
      - halaman operasional/list/detail data dari sidebar seperti presensi, daftar siswa/guru, nilai, leger, perizinan, jadwal, approval, inventaris, laporan, dan monitoring data harus default berupa tabel atau table-like view
+     - semua halaman yang menampilkan banyak data wajib memakai tabel/table-like view yang mudah discan, bukan card list, kecuali kontennya memang bukan data berkolom atau user meminta eksplisit
+     - bahasa pada judul kolom, empty state, status, helper text, dan aksi tabel harus user-friendly, ringkas, dan mudah dipahami oleh guru/staf/siswa, bukan istilah teknis internal
      - jangan memakai card list sebagai default untuk data tabular kecuali kontennya memang bukan data berkolom atau user meminta eksplisit
      - card tetap boleh dipakai untuk statistik ringkas, quick action, panduan/notice, empty state, monitor/display khusus seperti QR monitor, dan container form/modal
      - jika data punya konteks besar yang berbeda, pisahkan tabel berdasarkan konteks operasional yang jelas seperti tingkat, kelas, jurusan, program, semester, atau status; jangan mencampur semuanya dalam satu card/list panjang yang sulit discan
      - table view wajib punya struktur minimal yang konsisten: page header, tab/filter/action bar bila diperlukan, table section, pagination/limit bila data bisa besar, empty state, loading state, dan modal/drawer untuk tambah/edit/detail
+   - Parity web-mobile untuk halaman dan menu wajib dijaga 1:1:
+     - istilah, nama menu, urutan menu, nama tab, status, filter, dan arti aksi harus sama antara web dan mobile
+     - jika web memakai urutan tab/menu tertentu, mobile harus mengikuti urutan tersebut kecuali user meminta desain lintas-platform baru
+     - jangan membuat label alternatif di mobile yang maknanya sama tetapi berbeda istilah dari web
    - Untuk halaman data di mobile, pertahankan parity makna dengan web tetapi gunakan pola responsif:
      - jika kolom sedikit, boleh memakai tabel horizontal/compact
      - jika kolom banyak, gunakan row-list table compact atau expandable row yang tetap terasa sebagai data table, bukan card dekoratif
