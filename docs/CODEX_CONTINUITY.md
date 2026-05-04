@@ -5,8 +5,8 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-05-04 17:08 WIB
-- Current status: Batch 5 supervisi/ringkasan kepsek untuk fitur `Jurnal Mengajar Guru` sudah selesai di source dan web live. Kepala Sekolah sekarang punya menu `Supervisi Jurnal Mengajar` untuk melihat ringkasan prioritas supervisi guru berdasarkan jurnal, presensi mapel, dan coverage perangkat ajar. Mobile screen sudah dibuat dan lolos verifikasi; OTA `pilot-live` masih perlu dipublish setelah commit/push source Batch 5.
+- Last updated: 2026-05-04 17:11 WIB
+- Current status: Batch 5 supervisi/ringkasan kepsek untuk fitur `Jurnal Mengajar Guru` sudah selesai dan live di web serta mobile OTA. Kepala Sekolah sekarang punya menu `Supervisi Jurnal Mengajar` untuk melihat ringkasan prioritas supervisi guru berdasarkan jurnal, presensi mapel, dan coverage perangkat ajar.
 - Objective/task aktif:
   - Mengembangkan fitur `Jurnal Mengajar Guru` yang terhubung ke jadwal mengajar, perangkat ajar, dan presensi mapel sebagai pondasi monitoring kurikulum serta supervisi kepsek.
 - Batch terakhir selesai:
@@ -19,7 +19,7 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` Batch 4 monitoring kurikulum
   - `100%` Batch 5 supervisi/ringkasan kepsek
 - Last completed repo work:
-  - Commit: `pending`
+  - Commit: `0bb4ac8`
   - Title: `feat(teaching-journal): add principal supervision`
   - Summary:
     - menambah halaman web Kepala Sekolah `Supervisi Jurnal Mengajar` di grup sidebar `MONITORING`
@@ -43,13 +43,16 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `cd mobile-app && npm run audit:parity:check`
   - `cd frontend && npm run deploy`
   - `curl -I -s https://siskgb2.id/principal/monitoring/teaching-journals | head -n 1` -> `HTTP/1.1 200 OK`
+  - `cd mobile-app && npm run update:pilot-live:auto -- "Supervisi Jurnal Mengajar. Silakan perbarui untuk menikmati fitur terbaru."`
 - Publish/live status:
   - Web sudah deploy live
   - Backend tidak diubah pada Batch 5, sehingga tidak ada restart backend baru
-  - Mobile OTA `pilot-live` belum dipublish pada catatan ini; publish setelah source commit/push
+  - Mobile OTA `pilot-live` sudah publish
+  - OTA update group ID: `653bd2cf-f8d7-461d-a4ae-c0b3371d4070`
+  - Android update ID: `019df278-7ca0-7176-95f7-b3dac7ee8b31`
+  - Push notification OTA terkirim: `recipients=84`, `sent=84`, `failed=0`, `stale=0`
 - Remaining work:
-  - Publish OTA mobile `pilot-live`
-  - Update commit hash dan detail OTA di handoff final Batch 5
+  - Tidak ada batch jurnal mengajar yang tersisa pada roadmap saat ini.
 - Residual risk:
   - Risiko rendah karena Batch 5 hanya menambah consumer web/mobile untuk endpoint monitoring existing.
   - Query frontend/mobile memakai `staleTime` 60 detik, tanpa polling agresif, dan issue rows dibatasi `80`.
