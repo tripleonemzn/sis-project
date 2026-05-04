@@ -3842,9 +3842,41 @@ function parseReviewPackageEntryIds(raw: unknown) {
   return Array.from(new Set(values.map((item) => Number(item || 0)).filter((id) => Number.isFinite(id) && id > 0)));
 }
 
+async function loadTeachingResourceSubjectLabels(rows: Pick<TeachingResourcePackageEntryRow, 'subjectId'>[]) {
+  const subjectIds = Array.from(
+    new Set(rows.map((entry) => Number(entry.subjectId || 0)).filter((id) => Number.isFinite(id) && id > 0)),
+  );
+  if (subjectIds.length === 0) return new Map<number, string>();
+
+  const subjects = await prisma.subject.findMany({
+    where: { id: { in: subjectIds } },
+    select: { id: true, name: true, code: true },
+  });
+
+  const labels = new Map<number, string>();
+  subjects.forEach((subject) => {
+    const label = String(subject.name || subject.code || '').trim();
+    if (label) labels.set(Number(subject.id), label);
+  });
+  return labels;
+}
+
+function readTeachingResourceSubjectLabelFromRows(rows: TeachingResourcePackageEntryRow[], subjectLabelsById: Map<number, string>) {
+  const tagLabel = rows
+    .flatMap((entry) => entry.tags || [])
+    .map((tag) => String(tag || ''))
+    .find((tag) => tag.startsWith('subject:'));
+  if (tagLabel) return tagLabel.replace(/^subject:/, '').trim() || null;
+
+  const subjectEntry = rows.find((entry) => Number(entry.subjectId || 0) > 0 && subjectLabelsById.has(Number(entry.subjectId)));
+  if (!subjectEntry?.subjectId) return null;
+  return subjectLabelsById.get(Number(subjectEntry.subjectId)) || null;
+}
+
 function serializeTeachingResourcePackages(
   rows: TeachingResourcePackageEntryRow[],
   programs: TeachingResourceProgramPayload[],
+  subjectLabelsById: Map<number, string> = new Map(),
 ) {
   const programByCode = new Map(programs.map((program) => [normalizeProgramCode(program.code), program]));
   const groups = new Map<string, TeachingResourcePackageEntryRow[]>();
@@ -3869,8 +3901,13 @@ function serializeTeachingResourcePackages(
       const requiredPrograms = programs
         .filter((program) => program.isActive && program.showOnTeacherMenu && programMatchesClassLevel(program, classLevel))
         .sort((a, b) => Number(a.order || 0) - Number(b.order || 0));
+      const requiredProgramCodes = new Set(requiredPrograms.map((program) => normalizeProgramCode(program.code)));
+      const packageRowsForCurrentPrograms = requiredProgramCodes.size
+        ? packageRows.filter((entry) => requiredProgramCodes.has(normalizeProgramCode(entry.programCode)))
+        : packageRows;
+      const relevantRows = packageRowsForCurrentPrograms.length > 0 ? packageRowsForCurrentPrograms : packageRows;
       const entriesByProgram = new Map<string, TeachingResourcePackageEntryRow[]>();
-      packageRows.forEach((entry) => {
+      relevantRows.forEach((entry) => {
         const code = normalizeProgramCode(entry.programCode);
         const current = entriesByProgram.get(code) || [];
         current.push(entry);
@@ -3893,7 +3930,7 @@ function serializeTeachingResourcePackages(
       });
 
       const isComplete = requiredItems.length > 0 && requiredItems.every((item) => item.isComplete);
-      const metaStatuses = packageRows
+      const metaStatuses = relevantRows
         .map((entry) => normalizePackageStatus(readReviewPackageMeta(entry.content).status))
         .filter((status): status is TeachingResourcePackageStatus => Boolean(status));
       const strongestMetaStatus = metaStatuses.sort((a, b) => packageStatusRank(b) - packageStatusRank(a))[0] || null;
@@ -3904,12 +3941,12 @@ function serializeTeachingResourcePackages(
             ? 'READY'
             : 'INCOMPLETE';
 
-      const latestEntry = [...packageRows].sort((a, b) => Number(b.updatedAt) - Number(a.updatedAt))[0] || first;
+      const latestEntry = [...relevantRows].sort((a, b) => Number(b.updatedAt) - Number(a.updatedAt))[0] || first;
       const latestMeta = readReviewPackageMeta(latestEntry?.content);
-      const subjectLabel = String(latestEntry?.tags?.find((tag) => String(tag).startsWith('subject:')) || '').replace(
-        /^subject:/,
-        '',
-      );
+      const subjectLabel = readTeachingResourceSubjectLabelFromRows(relevantRows, subjectLabelsById);
+      const entryIds = requiredItems
+        .map((item) => Number(item.entryId || 0))
+        .filter((entryId) => Number.isFinite(entryId) && entryId > 0);
 
       return {
         packageKey,
@@ -3921,8 +3958,8 @@ function serializeTeachingResourcePackages(
         subjectLabel: subjectLabel || null,
         classLevel: first?.classLevel || null,
         className: first?.className || null,
-        entryIds: packageRows.map((entry) => entry.id),
-        totalDocuments: packageRows.length,
+        entryIds: entryIds.length > 0 ? entryIds : relevantRows.map((entry) => entry.id),
+        totalDocuments: requiredItems.length || relevantRows.length,
         requiredDocuments: requiredItems.length,
         completedDocuments: requiredItems.filter((item) => item.isComplete).length,
         missingDocuments: requiredItems.filter((item) => !item.isComplete),
@@ -4039,7 +4076,8 @@ export const getTeachingResourceReviewPackages = asyncHandler(async (req: Reques
     }) as Promise<TeachingResourcePackageEntryRow[]>,
   ]);
 
-  const allPackages = serializeTeachingResourcePackages(rows, programs);
+  const subjectLabelsById = await loadTeachingResourceSubjectLabels(rows);
+  const allPackages = serializeTeachingResourcePackages(rows, programs, subjectLabelsById);
   const packages =
     view === 'principal'
       ? allPackages.filter((item) => ['SUBMITTED_TO_PRINCIPAL', 'PRINCIPAL_APPROVED'].includes(item.status))
@@ -4093,6 +4131,8 @@ function serializeTeachingResourceReviewPackageDetailEntries(
   const latestByProgram = new Map<string, TeachingResourcePackageEntryRow>();
   rows.forEach((entry) => {
     const code = normalizeProgramCode(entry.programCode);
+    const program = programByCode.get(code);
+    if (!program?.isActive || !program.showOnTeacherMenu) return;
     const current = latestByProgram.get(code);
     if (!current || Number(entry.updatedAt) > Number(current.updatedAt)) {
       latestByProgram.set(code, entry);
@@ -4160,7 +4200,8 @@ export const getTeachingResourceReviewPackageDetail = asyncHandler(async (req: R
   });
 
   const programs = await loadPrograms(Number(rows[0]?.academicYearId || 0));
-  const [pkg] = serializeTeachingResourcePackages(rows, programs);
+  const subjectLabelsById = await loadTeachingResourceSubjectLabels(rows);
+  const [pkg] = serializeTeachingResourcePackages(rows, programs, subjectLabelsById);
   if (!pkg) throw new ApiError(404, 'Paket perangkat ajar tidak ditemukan.');
 
   return res.status(200).json(
@@ -4238,7 +4279,8 @@ export const saveTeachingResourceReviewPackageFeedback = asyncHandler(async (req
 
   const updatedRows = await loadPackageRowsFromEntryIds(rows.map((entry) => entry.id));
   const programs = await loadPrograms(Number(rows[0]?.academicYearId || 0));
-  const [pkg] = serializeTeachingResourcePackages(updatedRows, programs);
+  const subjectLabelsById = await loadTeachingResourceSubjectLabels(updatedRows);
+  const [pkg] = serializeTeachingResourcePackages(updatedRows, programs, subjectLabelsById);
 
   return res.status(200).json(
     new ApiResponse(
@@ -4263,7 +4305,8 @@ export const submitTeachingResourceReviewPackage = asyncHandler(async (req: Requ
   }
 
   const programs = await loadPrograms(Number(rows[0]?.academicYearId || 0));
-  const [pkg] = serializeTeachingResourcePackages(rows, programs);
+  const subjectLabelsById = await loadTeachingResourceSubjectLabels(rows);
+  const [pkg] = serializeTeachingResourcePackages(rows, programs, subjectLabelsById);
   if (!pkg || pkg.status === 'INCOMPLETE') {
     throw new ApiError(400, 'Paket belum lengkap. Lengkapi semua dokumen perangkat ajar sebelum dikirim.');
   }
@@ -4285,7 +4328,8 @@ export const submitTeachingResourceReviewPackage = asyncHandler(async (req: Requ
   });
 
   const updatedRows = await loadPackageRowsFromEntryIds(rows.map((entry) => entry.id));
-  const [updatedPackage] = serializeTeachingResourcePackages(updatedRows, programs);
+  const updatedSubjectLabelsById = await loadTeachingResourceSubjectLabels(updatedRows);
+  const [updatedPackage] = serializeTeachingResourcePackages(updatedRows, programs, updatedSubjectLabelsById);
   return res.status(200).json(new ApiResponse(200, updatedPackage, 'Paket perangkat ajar berhasil dikirim ke Kurikulum.'));
 });
 
@@ -4301,7 +4345,8 @@ export const reviewTeachingResourcePackageByCurriculum = asyncHandler(async (req
   if (!['APPROVE', 'REJECT'].includes(action)) throw new ApiError(400, 'Aksi review tidak valid.');
 
   const programs = await loadPrograms(Number(rows[0]?.academicYearId || 0));
-  const [pkg] = serializeTeachingResourcePackages(rows, programs);
+  const subjectLabelsById = await loadTeachingResourceSubjectLabels(rows);
+  const [pkg] = serializeTeachingResourcePackages(rows, programs, subjectLabelsById);
   if (!pkg || !['SUBMITTED_TO_CURRICULUM', 'REVISION_REQUESTED', 'CURRICULUM_APPROVED'].includes(pkg.status)) {
     throw new ApiError(400, 'Paket belum berada pada tahap review Kurikulum.');
   }
@@ -4324,7 +4369,8 @@ export const reviewTeachingResourcePackageByCurriculum = asyncHandler(async (req
   });
 
   const updatedRows = await loadPackageRowsFromEntryIds(rows.map((entry) => entry.id));
-  const [updatedPackage] = serializeTeachingResourcePackages(updatedRows, programs);
+  const updatedSubjectLabelsById = await loadTeachingResourceSubjectLabels(updatedRows);
+  const [updatedPackage] = serializeTeachingResourcePackages(updatedRows, programs, updatedSubjectLabelsById);
   return res
     .status(200)
     .json(new ApiResponse(200, updatedPackage, action === 'APPROVE' ? 'Paket disetujui Kurikulum.' : 'Paket dikembalikan untuk revisi.'));
@@ -4339,7 +4385,8 @@ export const submitTeachingResourcePackageToPrincipal = asyncHandler(async (req:
 
   const rows = await loadPackageRowsFromEntryIds(Array.isArray(req.body?.entryIds) ? req.body.entryIds : []);
   const programs = await loadPrograms(Number(rows[0]?.academicYearId || 0));
-  const [pkg] = serializeTeachingResourcePackages(rows, programs);
+  const subjectLabelsById = await loadTeachingResourceSubjectLabels(rows);
+  const [pkg] = serializeTeachingResourcePackages(rows, programs, subjectLabelsById);
   if (!pkg || !['CURRICULUM_APPROVED', 'SUBMITTED_TO_PRINCIPAL', 'PRINCIPAL_APPROVED'].includes(pkg.status)) {
     throw new ApiError(400, 'Paket harus disetujui Kurikulum sebelum diajukan ke Kepala Sekolah.');
   }
@@ -4356,7 +4403,8 @@ export const submitTeachingResourcePackageToPrincipal = asyncHandler(async (req:
   });
 
   const updatedRows = await loadPackageRowsFromEntryIds(rows.map((entry) => entry.id));
-  const [updatedPackage] = serializeTeachingResourcePackages(updatedRows, programs);
+  const updatedSubjectLabelsById = await loadTeachingResourceSubjectLabels(updatedRows);
+  const [updatedPackage] = serializeTeachingResourcePackages(updatedRows, programs, updatedSubjectLabelsById);
   return res.status(200).json(new ApiResponse(200, updatedPackage, 'Paket berhasil diajukan ke Kepala Sekolah.'));
 });
 
@@ -4371,7 +4419,8 @@ export const reviewTeachingResourcePackageByPrincipal = asyncHandler(async (req:
 
   const rows = await loadPackageRowsFromEntryIds(Array.isArray(req.body?.entryIds) ? req.body.entryIds : []);
   const programs = await loadPrograms(Number(rows[0]?.academicYearId || 0));
-  const [pkg] = serializeTeachingResourcePackages(rows, programs);
+  const subjectLabelsById = await loadTeachingResourceSubjectLabels(rows);
+  const [pkg] = serializeTeachingResourcePackages(rows, programs, subjectLabelsById);
   if (!pkg || !['SUBMITTED_TO_PRINCIPAL', 'PRINCIPAL_APPROVED'].includes(pkg.status)) {
     throw new ApiError(400, 'Paket belum diajukan ke Kepala Sekolah.');
   }
@@ -4406,7 +4455,8 @@ export const reviewTeachingResourcePackageByPrincipal = asyncHandler(async (req:
   });
 
   const updatedRows = await loadPackageRowsFromEntryIds(rows.map((entry) => entry.id));
-  const [updatedPackage] = serializeTeachingResourcePackages(updatedRows, programs);
+  const updatedSubjectLabelsById = await loadTeachingResourceSubjectLabels(updatedRows);
+  const [updatedPackage] = serializeTeachingResourcePackages(updatedRows, programs, updatedSubjectLabelsById);
   return res
     .status(200)
     .json(new ApiResponse(200, updatedPackage, action === 'APPROVE' ? 'Paket disetujui Kepala Sekolah.' : 'Paket dikembalikan untuk revisi.'));
