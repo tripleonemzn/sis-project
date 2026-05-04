@@ -354,6 +354,19 @@ function attendanceClass(status: 'RECORDED' | 'MISSING') {
     : 'border-slate-200 bg-slate-50 text-slate-600';
 }
 
+function formatSessionPeriod(session: TeachingJournalSession) {
+  return session.periodLabel || `Jam ke ${session.period}`;
+}
+
+function formatSessionScheduleDetail(session: TeachingJournalSession) {
+  const details = [
+    session.timeRange || null,
+    Number(session.jpCount || 0) > 1 ? `${session.jpCount} JP` : null,
+    session.room ? `Ruang ${session.room}` : null,
+  ].filter(Boolean);
+  return details.length ? details.join(' • ') : '-';
+}
+
 function emptyFormState(session?: TeachingJournalSession | null): JournalFormState {
   return {
     teachingMode: session?.journal?.teachingMode || 'REGULAR',
@@ -769,8 +782,8 @@ export const TeacherTeachingJournalPage = () => {
                       <p className="mt-0.5 font-mono text-xs text-gray-500">{session.subject.code || '-'}</p>
                     </td>
                     <td className="px-5 py-4">
-                      <p className="text-sm font-semibold text-gray-900">Jam {session.period}</p>
-                      <p className="mt-0.5 text-xs text-gray-500">{session.room || '-'}</p>
+                      <p className="text-sm font-semibold text-gray-900">{formatSessionPeriod(session)}</p>
+                      <p className="mt-0.5 text-xs text-gray-500">{formatSessionScheduleDetail(session)}</p>
                     </td>
                     <td className="px-5 py-4">
                       <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${statusClass(session.journalStatus)}`}>
@@ -812,7 +825,7 @@ export const TeacherTeachingJournalPage = () => {
               <div>
                 <h2 className="text-lg font-bold text-gray-900">Jurnal Mengajar</h2>
                 <p className="mt-1 text-sm text-gray-500">
-                  {formatDate(selectedSession.date)} • {selectedSession.class.name} • {selectedSession.subject.name}
+                  {formatDate(selectedSession.date)} • {selectedSession.class.name} • {selectedSession.subject.name} • {formatSessionPeriod(selectedSession)}
                 </p>
               </div>
               <button

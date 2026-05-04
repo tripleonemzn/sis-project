@@ -335,6 +335,19 @@ function statusColor(status: TeachingJournalSessionStatus) {
   return { bg: '#fee2e2', border: '#fecaca', text: '#991b1b' };
 }
 
+function formatSessionPeriod(session: TeachingJournalSession) {
+  return session.periodLabel || `Jam ke ${session.period}`;
+}
+
+function formatSessionScheduleDetail(session: TeachingJournalSession) {
+  const details = [
+    session.timeRange || null,
+    Number(session.jpCount || 0) > 1 ? `${session.jpCount} JP` : null,
+    session.room ? `Ruang ${session.room}` : null,
+  ].filter(Boolean);
+  return details.length ? details.join(' • ') : '-';
+}
+
 function SummaryPill({ label, value, color }: { label: string; value: number; color: string }) {
   const { scaleFont, scaleLineHeight } = useAppTextScale();
   return (
@@ -380,7 +393,10 @@ function SessionRow({ session, onPress }: { session: TeachingJournalSession; onP
               {session.subject.name}
             </Text>
             <Text style={{ color: '#64748b', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginTop: 2 }}>
-              {session.class.name} • Jam {session.period} • {session.room || '-'}
+              {session.class.name} • {formatSessionPeriod(session)}
+            </Text>
+            <Text style={{ color: '#64748b', fontSize: scaleFont(11), lineHeight: scaleLineHeight(16), marginTop: 1 }}>
+              {formatSessionScheduleDetail(session)}
             </Text>
           </View>
           <View
@@ -801,7 +817,7 @@ export default function TeacherTeachingJournalsScreen() {
                   Jurnal Mengajar
                 </Text>
                 <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginTop: 2 }}>
-                  {selectedSession ? `${formatDate(selectedSession.date)} • ${selectedSession.class.name}` : '-'}
+                  {selectedSession ? `${formatDate(selectedSession.date)} • ${selectedSession.class.name} • ${formatSessionPeriod(selectedSession)}` : '-'}
                 </Text>
               </View>
               <Pressable

@@ -123,6 +123,19 @@ function formatNumber(value: number) {
   return Number(value || 0).toLocaleString('id-ID');
 }
 
+function formatIssuePeriod(row: TeachingJournalMonitoringIssueRow) {
+  return row.periodLabel || `Jam ke ${row.period}`;
+}
+
+function formatIssueScheduleDetail(row: TeachingJournalMonitoringIssueRow) {
+  const details = [
+    row.timeRange || null,
+    Number(row.jpCount || 0) > 1 ? `${row.jpCount} JP` : null,
+    row.room ? `Ruang ${row.room}` : null,
+  ].filter(Boolean);
+  return details.length ? details.join(' • ') : '-';
+}
+
 function rateColor(rate: number) {
   if (rate >= 90) return '#16a34a';
   if (rate >= 70) return '#f59e0b';
@@ -363,7 +376,10 @@ function IssueRow({
   return (
     <View style={{ borderWidth: 1, borderColor: '#fecdd3', borderRadius: 14, backgroundColor: '#fff', padding: 12 }}>
       <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '800', ...sectionTitleTextStyle }}>
-        {formatDate(row.date)} - Jam {row.period}
+        {formatDate(row.date)} - {formatIssuePeriod(row)}
+      </Text>
+      <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 3, ...helperTextStyle }}>
+        {formatIssueScheduleDetail(row)}
       </Text>
       <Text style={{ color: BRAND_COLORS.textMuted, marginTop: 3, ...bodyTextStyle }}>
         {row.teacher.name} - {row.class.name} - {row.subject.name}

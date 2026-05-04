@@ -5,12 +5,12 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-05-04 17:11 WIB
-- Current status: Batch 5 supervisi/ringkasan kepsek untuk fitur `Jurnal Mengajar Guru` sudah selesai dan live di web serta mobile OTA. Kepala Sekolah sekarang punya menu `Supervisi Jurnal Mengajar` untuk melihat ringkasan prioritas supervisi guru berdasarkan jurnal, presensi mapel, dan coverage perangkat ajar.
+- Last updated: 2026-05-04 17:26 WIB
+- Current status: Follow-up UX jurnal mengajar sudah selesai di source dan lolos verifikasi dasar. Sesi jurnal sekarang digabung per blok mengajar berurutan, misalnya `Jam ke 1-4`, lengkap dengan jumlah JP dan rentang waktu dari konfigurasi jam sekolah jika tersedia. Publish live backend/web dan OTA mobile masih perlu dijalankan setelah commit/push source ini.
 - Objective/task aktif:
   - Mengembangkan fitur `Jurnal Mengajar Guru` yang terhubung ke jadwal mengajar, perangkat ajar, dan presensi mapel sebagai pondasi monitoring kurikulum serta supervisi kepsek.
 - Batch terakhir selesai:
-  - `Teaching journal principal supervision`
+  - `Teaching journal block session compaction`
 - Progress fitur jurnal mengajar guru:
   - `100%` keseluruhan roadmap
   - `100%` Batch 1 foundation backend
@@ -19,44 +19,42 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` Batch 4 monitoring kurikulum
   - `100%` Batch 5 supervisi/ringkasan kepsek
 - Last completed repo work:
-  - Commit: `0bb4ac8`
-  - Title: `feat(teaching-journal): add principal supervision`
+  - Commit: `pending`
+  - Title: `fix(teaching-journal): compact teaching blocks`
   - Summary:
-    - menambah halaman web Kepala Sekolah `Supervisi Jurnal Mengajar` di grup sidebar `MONITORING`
-    - halaman web memakai endpoint monitoring existing `GET /api/teaching-journals/monitoring`, tab tanggal `Minggu Ini`, `30 Hari`, `Rentang Manual`, pencarian, summary card, dan table view `Prioritas Guru`, `Kelas Perhatian`, `Temuan Supervisi`
-    - menambah breadcrumb dan route principal `/principal/monitoring/teaching-journals`
-    - menambah screen mobile principal `/principal/monitoring/teaching-journals` dengan label, struktur tab, filter tanggal, pencarian, dan ringkasan yang parity dengan web
-    - menambah menu mobile role Kepala Sekolah `Supervisi Jurnal Mengajar`
-    - tidak ada backend baru di Batch 5; akses principal sudah memakai kontrak endpoint Batch 4 sehingga blast radius rendah
+    - endpoint `GET /api/teaching-journals/sessions` sekarang mengelompokkan schedule entry berurutan dengan kelas/mapel/guru/ruang yang sama menjadi satu blok jurnal
+    - endpoint `GET /api/teaching-journals/monitoring` memakai blok yang sama untuk hitungan monitoring guru, wakakur, dan kepsek agar 4 JP tidak tampil sebagai 4 sesi terpisah
+    - payload sesi/issue menambah metadata `periodStart`, `periodEnd`, `periodLabel`, `jpCount`, `timeRange`, dan `scheduleEntryIds`
+    - tampilan web guru, wakakur, dan kepsek menampilkan label ringkas seperti `Jam ke 1-4`, `4 JP`, dan rentang waktu
+    - tampilan mobile guru, wakakur, dan kepsek mengikuti label ringkas yang sama
 - Area/file disentuh:
-  - `frontend/src/components/layout/Sidebar.tsx`
-  - `frontend/src/layouts/DashboardLayout.tsx`
-  - `frontend/src/pages/principal/PrincipalDashboard.tsx`
+  - `backend/src/controllers/teachingJournal.controller.ts`
+  - `frontend/src/services/teachingJournal.service.ts`
+  - `frontend/src/pages/teacher/TeacherTeachingJournalPage.tsx`
+  - `frontend/src/pages/teacher/wakasek/TeachingJournalMonitoringPage.tsx`
   - `frontend/src/pages/principal/PrincipalTeachingJournalSupervisionPage.tsx`
+  - `mobile-app/src/features/teachingJournals/types.ts`
+  - `mobile-app/app/(app)/teacher/teaching-journals.tsx`
+  - `mobile-app/app/(app)/teacher/wakakur-journal-monitoring.tsx`
   - `mobile-app/app/(app)/principal/monitoring/teaching-journals.tsx`
-  - `mobile-app/src/features/dashboard/roleMenu.ts`
   - `docs/CODEX_CONTINUITY.md`
 - Verifikasi batch ini:
   - `git diff --check`
+  - `cd backend && npm run build`
   - `cd frontend && npm run build`
   - `cd mobile-app && npm run typecheck`
   - `cd mobile-app && npm run audit:parity:check`
-  - `cd frontend && npm run deploy`
-  - `curl -I -s https://siskgb2.id/principal/monitoring/teaching-journals | head -n 1` -> `HTTP/1.1 200 OK`
-  - `cd mobile-app && npm run update:pilot-live:auto -- "Supervisi Jurnal Mengajar. Silakan perbarui untuk menikmati fitur terbaru."`
 - Publish/live status:
-  - Web sudah deploy live
-  - Backend tidak diubah pada Batch 5, sehingga tidak ada restart backend baru
-  - Mobile OTA `pilot-live` sudah publish
-  - OTA update group ID: `653bd2cf-f8d7-461d-a4ae-c0b3371d4070`
-  - Android update ID: `019df278-7ca0-7176-95f7-b3dac7ee8b31`
-  - Push notification OTA terkirim: `recipients=84`, `sent=84`, `failed=0`, `stale=0`
+  - Belum publish pada catatan ini; backend/web/OTA perlu dipublish setelah source commit/push.
 - Remaining work:
-  - Tidak ada batch jurnal mengajar yang tersisa pada roadmap saat ini.
+  - Commit/push source
+  - Restart backend dan health check
+  - Deploy web
+  - Publish OTA mobile `pilot-live`
+  - Update commit hash dan detail publish di handoff final
 - Residual risk:
-  - Risiko rendah karena Batch 5 hanya menambah consumer web/mobile untuk endpoint monitoring existing.
-  - Query frontend/mobile memakai `staleTime` 60 detik, tanpa polling agresif, dan issue rows dibatasi `80`.
-  - Endpoint monitoring tetap mengandalkan kualitas relasi presensi mapel existing. Mismatch ditampilkan sebagai sinyal supervisi, bukan mengubah data.
+  - Risiko rendah-menengah karena endpoint backend jurnal berubah dari basis per jam pelajaran ke basis blok tampilan. Guardrail tetap ada: rentang tanggal maksimal 63 hari, tidak ada polling baru, tidak ada migration, tidak ada query tanpa batas baru.
+  - Untuk edit jurnal blok, sistem memakai journal existing pertama pada blok bila ada; jika belum ada, jurnal baru disimpan pada schedule entry pertama dalam blok.
 
 ## Status Saat Ini
 

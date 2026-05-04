@@ -252,6 +252,99 @@ const buildHolidayDateKeySet = async (academicYearId: number, startDate: Date, e
   return holidayDateKeys;
 };
 
+const getJsonObject = (value: unknown): Record<string, unknown> => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  return value as Record<string, unknown>;
+};
+
+const getNestedConfigValue = (map: Record<string, unknown>, dayKey: string, period: number) => {
+  const dayValues = getJsonObject(map[dayKey]);
+  const defaultValues = getJsonObject(map.DEFAULT);
+  const key = String(period);
+  return dayValues[key] ?? defaultValues[key] ?? null;
+};
+
+const getPeriodTimeValue = (configObject: Record<string, unknown>, dayKey: string, period: number) => {
+  const periodTimes = getJsonObject(configObject.periodTimes);
+  const rawValue = getNestedConfigValue(periodTimes, dayKey, period);
+  const value = typeof rawValue === 'string' ? rawValue.trim() : '';
+  return value || null;
+};
+
+const extractPeriodTimeBoundary = (rawValue: string | null, side: 'start' | 'end') => {
+  if (!rawValue) return null;
+  const parts = rawValue
+    .split('-')
+    .map((value) => value.trim())
+    .filter(Boolean);
+  if (!parts.length) return rawValue.trim() || null;
+  return side === 'start' ? parts[0] : parts[parts.length - 1];
+};
+
+type TeachingJournalScheduleEntryBlockItem = {
+  id: number;
+  dayOfWeek: string;
+  period: number;
+  room: string | null;
+  classId: number;
+  teacherAssignmentId: number;
+  teacherAssignment: {
+    subjectId: number;
+  };
+};
+
+const sameTeachingBlock = (
+  left: TeachingJournalScheduleEntryBlockItem,
+  right: TeachingJournalScheduleEntryBlockItem,
+) =>
+  left.dayOfWeek === right.dayOfWeek &&
+  left.period + 1 === right.period &&
+  left.classId === right.classId &&
+  left.teacherAssignmentId === right.teacherAssignmentId &&
+  left.teacherAssignment.subjectId === right.teacherAssignment.subjectId &&
+  String(left.room || '').trim() === String(right.room || '').trim();
+
+const groupScheduleEntriesIntoBlocks = <T extends TeachingJournalScheduleEntryBlockItem>(entries: T[]) => {
+  const blocks: T[][] = [];
+  const sortedEntries = [...entries].sort((left, right) => {
+    if (left.dayOfWeek !== right.dayOfWeek) return left.dayOfWeek.localeCompare(right.dayOfWeek);
+    return left.period - right.period;
+  });
+
+  sortedEntries.forEach((entry) => {
+    const activeBlock = blocks[blocks.length - 1];
+    const previous = activeBlock?.[activeBlock.length - 1] || null;
+    if (activeBlock && previous && sameTeachingBlock(previous, entry)) {
+      activeBlock.push(entry);
+      return;
+    }
+    blocks.push([entry]);
+  });
+
+  return blocks;
+};
+
+const buildTeachingBlockMeta = (
+  entries: TeachingJournalScheduleEntryBlockItem[],
+  scheduleTimeConfig: Record<string, unknown>,
+) => {
+  const first = entries[0];
+  const last = entries[entries.length - 1] || first;
+  const periodStart = Number(first?.period || 0);
+  const periodEnd = Number(last?.period || periodStart);
+  const start = extractPeriodTimeBoundary(getPeriodTimeValue(scheduleTimeConfig, first?.dayOfWeek || '', periodStart), 'start');
+  const end = extractPeriodTimeBoundary(getPeriodTimeValue(scheduleTimeConfig, last?.dayOfWeek || '', periodEnd), 'end');
+
+  return {
+    periodStart,
+    periodEnd,
+    periodLabel: periodStart === periodEnd ? `Jam ke ${periodStart}` : `Jam ke ${periodStart}-${periodEnd}`,
+    jpCount: Math.max(1, entries.length),
+    timeRange: start && end ? `${start} - ${end}` : start || end || null,
+    scheduleEntryIds: entries.map((entry) => entry.id),
+  };
+};
+
 const formatJournalEntry = (entry: {
   id: number;
   academicYearId: number;
@@ -509,7 +602,7 @@ export const getTeachingJournalSessions = asyncHandler(async (req: Request, res:
   const scheduleEntryIds = scheduleEntries.map((entry) => entry.id);
   const teacherAssignmentIds = Array.from(new Set(scheduleEntries.map((entry) => entry.teacherAssignmentId)));
 
-  const [journals, attendances] = await Promise.all([
+  const [journals, attendances, scheduleTimeConfig] = await Promise.all([
     prisma.teachingJournal.findMany({
       where: {
         academicYearId: academicYear.id,
@@ -547,7 +640,12 @@ export const getTeachingJournalSessions = asyncHandler(async (req: Request, res:
         updatedAt: true,
       },
     }),
+    prisma.scheduleTimeConfig.findUnique({
+      where: { academicYearId: academicYear.id },
+      select: { config: true },
+    }),
   ]);
+  const scheduleTimeConfigObject = getJsonObject(scheduleTimeConfig?.config);
 
   const journalMap = new Map(journals.map((journal) => [`${journal.scheduleEntryId}|${toDateKey(journal.journalDate)}`, journal]));
   const attendanceByScheduleDate = new Map<string, (typeof attendances)[number]>();
@@ -565,38 +663,54 @@ export const getTeachingJournalSessions = asyncHandler(async (req: Request, res:
     attendanceByClassSubjectDate.set(`${attendance.classId}|${attendance.subjectId}|${dateKey}`, attendance);
   });
 
-  const sessions = scheduleEntries.flatMap((entry) => {
-    const rows: Array<Record<string, unknown>> = [];
-    let cursor = startDate;
-    while (cursor.getTime() <= endDate.getTime()) {
-      const dateKey = toDateKey(cursor);
-      if (
-        DAY_OF_WEEK_BY_UTC_INDEX[cursor.getUTCDay()] === entry.dayOfWeek &&
-        !holidayDateKeys.has(dateKey)
-      ) {
-        const journal = journalMap.get(`${entry.id}|${dateKey}`) || null;
-        const attendance =
-          attendanceByScheduleDate.get(`${entry.id}|${dateKey}`) ||
-          attendanceByAssignmentDate.get(`${entry.teacherAssignmentId}|${dateKey}`) ||
-          attendanceByClassSubjectDate.get(`${entry.classId}|${entry.teacherAssignment.subjectId}|${dateKey}`) ||
-          null;
-        const journalStatus = journal ? journal.status : 'MISSING';
-        if (query.journalStatus && query.journalStatus !== journalStatus) {
-          cursor = addDays(cursor, 1);
-          continue;
-        }
+  const resolveJournalForBlock = (entries: typeof scheduleEntries, dateKey: string) =>
+    entries
+      .map((entry) => journalMap.get(`${entry.id}|${dateKey}`) || null)
+      .find(Boolean) || null;
 
-        rows.push({
-          sessionKey: `${entry.id}|${dateKey}`,
+  const resolveAttendanceForBlock = (entries: typeof scheduleEntries, dateKey: string) =>
+    entries
+      .map((entry) =>
+        attendanceByScheduleDate.get(`${entry.id}|${dateKey}`) ||
+        attendanceByAssignmentDate.get(`${entry.teacherAssignmentId}|${dateKey}`) ||
+        attendanceByClassSubjectDate.get(`${entry.classId}|${entry.teacherAssignment.subjectId}|${dateKey}`) ||
+        null,
+      )
+      .find(Boolean) || null;
+
+  const sessions: Array<Record<string, unknown>> = [];
+  let cursor = startDate;
+  while (cursor.getTime() <= endDate.getTime()) {
+    const dateKey = toDateKey(cursor);
+    if (!holidayDateKeys.has(dateKey)) {
+      const dayOfWeek = DAY_OF_WEEK_BY_UTC_INDEX[cursor.getUTCDay()];
+      const dayEntries = scheduleEntries.filter((entry) => entry.dayOfWeek === dayOfWeek);
+      groupScheduleEntriesIntoBlocks(dayEntries).forEach((blockEntries) => {
+        const firstEntry = blockEntries[0];
+        if (!firstEntry) return;
+        const blockMeta = buildTeachingBlockMeta(blockEntries, scheduleTimeConfigObject);
+        const journal = resolveJournalForBlock(blockEntries, dateKey);
+        const attendance = resolveAttendanceForBlock(blockEntries, dateKey);
+        const journalStatus = journal ? journal.status : 'MISSING';
+        if (query.journalStatus && query.journalStatus !== journalStatus) return;
+
+        sessions.push({
+          sessionKey: `block:${dateKey}:${blockMeta.scheduleEntryIds.join('-')}`,
           date: dateKey,
-          dayOfWeek: entry.dayOfWeek,
-          period: entry.period,
-          room: entry.room,
-          teacher: entry.teacherAssignment.teacher,
-          class: entry.class,
-          subject: entry.teacherAssignment.subject,
-          teacherAssignmentId: entry.teacherAssignmentId,
-          scheduleEntryId: entry.id,
+          dayOfWeek: firstEntry.dayOfWeek,
+          period: blockMeta.periodStart,
+          periodStart: blockMeta.periodStart,
+          periodEnd: blockMeta.periodEnd,
+          periodLabel: blockMeta.periodLabel,
+          jpCount: blockMeta.jpCount,
+          timeRange: blockMeta.timeRange,
+          room: firstEntry.room,
+          teacher: firstEntry.teacherAssignment.teacher,
+          class: firstEntry.class,
+          subject: firstEntry.teacherAssignment.subject,
+          teacherAssignmentId: firstEntry.teacherAssignmentId,
+          scheduleEntryId: journal?.scheduleEntryId || firstEntry.id,
+          scheduleEntryIds: blockMeta.scheduleEntryIds,
           journalStatus,
           journal: journal ? formatJournalEntry(journal) : null,
           attendance: attendance
@@ -613,11 +727,10 @@ export const getTeachingJournalSessions = asyncHandler(async (req: Request, res:
                 editedAt: null,
               },
         });
-      }
-      cursor = addDays(cursor, 1);
+      });
     }
-    return rows;
-  });
+    cursor = addDays(cursor, 1);
+  }
 
   sessions.sort((left, right) => {
     const dateCompare = String(left.date || '').localeCompare(String(right.date || ''));
@@ -752,7 +865,7 @@ export const getTeachingJournalMonitoring = asyncHandler(async (req: Request, re
   const scheduleEntryIds = scheduleEntries.map((entry) => entry.id);
   const teacherAssignmentIds = Array.from(new Set(scheduleEntries.map((entry) => entry.teacherAssignmentId)));
 
-  const [journals, attendances] = await Promise.all([
+  const [journals, attendances, scheduleTimeConfig] = await Promise.all([
     prisma.teachingJournal.findMany({
       where: {
         academicYearId: academicYear.id,
@@ -789,7 +902,12 @@ export const getTeachingJournalMonitoring = asyncHandler(async (req: Request, re
         updatedAt: true,
       },
     }),
+    prisma.scheduleTimeConfig.findUnique({
+      where: { academicYearId: academicYear.id },
+      select: { config: true },
+    }),
   ]);
+  const scheduleTimeConfigObject = getJsonObject(scheduleTimeConfig?.config);
 
   const journalMap = new Map(journals.map((journal) => [`${journal.scheduleEntryId}|${toDateKey(journal.journalDate)}`, journal]));
   const attendanceByScheduleDate = new Map<string, (typeof attendances)[number]>();
@@ -851,20 +969,33 @@ export const getTeachingJournalMonitoring = asyncHandler(async (req: Request, re
     }
   };
 
-  scheduleEntries.forEach((entry) => {
-    let cursor = startDate;
-    while (cursor.getTime() <= endDate.getTime()) {
-      const dateKey = toDateKey(cursor);
-      if (
-        DAY_OF_WEEK_BY_UTC_INDEX[cursor.getUTCDay()] === entry.dayOfWeek &&
-        !holidayDateKeys.has(dateKey)
-      ) {
-        const journal = journalMap.get(`${entry.id}|${dateKey}`) || null;
-        const attendance =
-          attendanceByScheduleDate.get(`${entry.id}|${dateKey}`) ||
-          attendanceByAssignmentDate.get(`${entry.teacherAssignmentId}|${dateKey}`) ||
-          attendanceByClassSubjectDate.get(`${entry.classId}|${entry.teacherAssignment.subjectId}|${dateKey}`) ||
-          null;
+  const resolveJournalForBlock = (entries: typeof scheduleEntries, dateKey: string) =>
+    entries
+      .map((entry) => journalMap.get(`${entry.id}|${dateKey}`) || null)
+      .find(Boolean) || null;
+
+  const resolveAttendanceForBlock = (entries: typeof scheduleEntries, dateKey: string) =>
+    entries
+      .map((entry) =>
+        attendanceByScheduleDate.get(`${entry.id}|${dateKey}`) ||
+        attendanceByAssignmentDate.get(`${entry.teacherAssignmentId}|${dateKey}`) ||
+        attendanceByClassSubjectDate.get(`${entry.classId}|${entry.teacherAssignment.subjectId}|${dateKey}`) ||
+        null,
+      )
+      .find(Boolean) || null;
+
+  let cursor = startDate;
+  while (cursor.getTime() <= endDate.getTime()) {
+    const dateKey = toDateKey(cursor);
+    if (!holidayDateKeys.has(dateKey)) {
+      const dayOfWeek = DAY_OF_WEEK_BY_UTC_INDEX[cursor.getUTCDay()];
+      const dayEntries = scheduleEntries.filter((entry) => entry.dayOfWeek === dayOfWeek);
+      groupScheduleEntriesIntoBlocks(dayEntries).forEach((blockEntries) => {
+        const entry = blockEntries[0];
+        if (!entry) return;
+        const blockMeta = buildTeachingBlockMeta(blockEntries, scheduleTimeConfigObject);
+        const journal = resolveJournalForBlock(blockEntries, dateKey);
+        const attendance = resolveAttendanceForBlock(blockEntries, dateKey);
         const journalStatus = journal ? journal.status : 'MISSING';
         const referenceFieldCounts = emptyMonitoringReferenceFields();
         let referenceCount = 0;
@@ -926,10 +1057,15 @@ export const getTeachingJournalMonitoring = asyncHandler(async (req: Request, re
 
           if (issueLabels.length > 0 && issueRows.length < issueLimit) {
             issueRows.push({
-              sessionKey: `${entry.id}|${dateKey}`,
+              sessionKey: `block:${dateKey}:${blockMeta.scheduleEntryIds.join('-')}`,
               date: dateKey,
               dayOfWeek: entry.dayOfWeek,
-              period: entry.period,
+              period: blockMeta.periodStart,
+              periodStart: blockMeta.periodStart,
+              periodEnd: blockMeta.periodEnd,
+              periodLabel: blockMeta.periodLabel,
+              jpCount: blockMeta.jpCount,
+              timeRange: blockMeta.timeRange,
               room: entry.room,
               teacher: entry.teacherAssignment.teacher,
               class: entry.class,
@@ -944,10 +1080,10 @@ export const getTeachingJournalMonitoring = asyncHandler(async (req: Request, re
             });
           }
         }
-      }
-      cursor = addDays(cursor, 1);
+      });
     }
-  });
+    cursor = addDays(cursor, 1);
+  }
 
   const formatAggregate = <T extends Record<string, unknown>>(row: ReturnType<typeof createAggregate> & T) => {
     const submittedAndReviewed = row.submittedSessions + row.reviewedSessions;

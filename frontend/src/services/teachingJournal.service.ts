@@ -49,6 +49,11 @@ export type TeachingJournalSession = {
   date: string;
   dayOfWeek: string;
   period: number;
+  periodStart?: number;
+  periodEnd?: number;
+  periodLabel?: string | null;
+  jpCount?: number;
+  timeRange?: string | null;
   room: string | null;
   teacher: {
     id: number;
@@ -72,6 +77,7 @@ export type TeachingJournalSession = {
   };
   teacherAssignmentId: number;
   scheduleEntryId: number;
+  scheduleEntryIds?: number[];
   journalStatus: TeachingJournalSessionStatus;
   journal: TeachingJournalEntry | null;
   attendance: {
@@ -145,6 +151,11 @@ export type TeachingJournalMonitoringIssueRow = {
   date: string;
   dayOfWeek: string;
   period: number;
+  periodStart?: number;
+  periodEnd?: number;
+  periodLabel?: string | null;
+  jpCount?: number;
+  timeRange?: string | null;
   room: string | null;
   teacher: {
     id: number;

@@ -117,6 +117,19 @@ function issueBadgeClass(label: string) {
   return 'border-rose-100 bg-rose-50 text-rose-700';
 }
 
+function formatIssuePeriod(row: TeachingJournalMonitoringIssueRow) {
+  return row.periodLabel || `Jam ke ${row.period}`;
+}
+
+function formatIssueScheduleDetail(row: TeachingJournalMonitoringIssueRow) {
+  const details = [
+    row.timeRange || null,
+    Number(row.jpCount || 0) > 1 ? `${row.jpCount} JP` : null,
+    row.room ? `Ruang ${row.room}` : null,
+  ].filter(Boolean);
+  return details.length ? details.join(' • ') : '-';
+}
+
 function SummaryCard({
   label,
   value,
@@ -311,7 +324,7 @@ export default function TeachingJournalMonitoringPage() {
             <td className="px-5 py-4 text-sm text-gray-500">{index + 1}</td>
             <td className="px-5 py-4">
               <p className="text-sm font-semibold text-gray-900">{formatDate(row.date)}</p>
-              <p className="text-xs text-gray-500">Jam {row.period} • {row.room || '-'}</p>
+              <p className="text-xs text-gray-500">{formatIssuePeriod(row)} • {formatIssueScheduleDetail(row)}</p>
             </td>
             <td className="px-5 py-4">
               <p className="text-sm font-semibold text-gray-900">{row.teacher.name}</p>
