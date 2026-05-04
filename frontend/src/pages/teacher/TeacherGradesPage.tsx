@@ -1,8 +1,13 @@
 import { useState, useEffect, useMemo, useRef, type WheelEvent } from 'react';
 import { ClipboardList, Loader2, RotateCcw, Save, X } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import { useNavigate } from 'react-router-dom';
 import { gradeService } from '../../services/grade.service';
-import { examService, type ExamPacket } from '../../services/exam.service';
+import {
+  examService,
+  isRemedialExamPacket,
+  type ExamPacket,
+} from '../../services/exam.service';
 import type {
   GradeComponent,
   RemedialScoreEntry,
@@ -423,6 +428,51 @@ const resolveReadableComponentLabel = (component?: GradeComponent | null, fallba
 
 const normalizeSlotCode = (raw: unknown): string => String(raw || '').trim().toUpperCase();
 
+const resolveRemedialProgramCode = (entry?: RemedialScoreEntry | null): string => {
+  const candidates = [
+    entry?.reportSlotCode,
+    entry?.reportSlot,
+    entry?.componentCode,
+    entry?.componentTypeCode,
+    entry?.componentType,
+    entry?.sourceLabel,
+  ];
+
+  for (const candidate of candidates) {
+    const normalized = normalizeSlotCode(candidate).replace(/[^A-Z0-9]+/g, '_').replace(/_+/g, '_').replace(/^_+|_+$/g, '');
+    if (!normalized) continue;
+    if (normalized.startsWith('NF') || normalized.includes('FORMATIF') || normalized === 'FORMATIVE') return 'FORMATIF';
+    if (normalized.includes('SBTS') || normalized.includes('MIDTERM') || normalized === 'PTS' || normalized === 'UTS') return 'SBTS';
+    if (normalized.includes('SAS') || normalized === 'PAS' || normalized === 'FINAL_ODD') return 'SAS';
+    if (normalized.includes('SAT') || normalized === 'PAT' || normalized === 'FINAL_EVEN') return 'SAT';
+    if (normalized === 'FINAL') return entry?.semester === 'EVEN' ? 'SAT' : 'SAS';
+    if (normalized === 'US_THEORY' || normalized === 'US_PRACTICE') return normalized;
+  }
+
+  return 'FORMATIF';
+};
+
+const resolveRemedialPacketType = (programCode: string): string => {
+  const normalized = normalizeSlotCode(programCode);
+  if (normalized === 'SBTS') return 'SBTS';
+  if (normalized === 'SAS') return 'SAS';
+  if (normalized === 'SAT') return 'SAT';
+  if (normalized === 'US_THEORY' || normalized === 'US_PRACTICE') return normalized;
+  return 'FORMATIF';
+};
+
+const resolveRemedialFixedSemester = (programCode: string): 'ODD' | 'EVEN' | null => {
+  const normalized = normalizeSlotCode(programCode);
+  if (normalized === 'SAS') return 'ODD';
+  if (normalized === 'SAT') return 'EVEN';
+  return null;
+};
+
+const getPacketScheduleCount = (packet: ExamPacket): number => {
+  const count = Number(packet._count?.schedules ?? packet.schedules?.length ?? 0);
+  return Number.isFinite(count) ? count : 0;
+};
+
 const isUsTheorySlot = (raw: unknown): boolean => {
   const normalized = normalizeSlotCode(raw);
   return normalized === 'US_THEORY' || normalized === 'US_TEORY';
@@ -749,6 +799,7 @@ const isRemedialRowSelectable = (row: RemedialScoreEntry) =>
   !row.isComplete && row.remedialEligibility?.canSelectForActivity === true;
 
 export const TeacherGradesPage = () => {
+  const navigate = useNavigate();
   const { data: activeAcademicYear } = useActiveAcademicYear();
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -1671,10 +1722,12 @@ export const TeacherGradesPage = () => {
     const requestId = ++remedialPacketRequestRef.current;
     try {
       setRemedialExamPacketsLoading(true);
+      const remedialProgramCode = resolveRemedialProgramCode(entry);
       const response = await examService.getPackets({
         subjectId: entry.subjectId,
         academicYearId: entry.academicYearId,
         semester: entry.semester,
+        programCode: remedialProgramCode,
         scope: 'teacher',
         limit: 100,
       });
@@ -1687,7 +1740,18 @@ export const TeacherGradesPage = () => {
           : Array.isArray(payload.data?.packets)
             ? payload.data.packets
             : [];
-      setRemedialExamPackets(packets);
+      setRemedialExamPackets(
+        packets.filter((packet) => {
+          const packetProgramCode = resolveRemedialProgramCode({
+            ...entry,
+            reportSlotCode: packet.programCode || packet.type,
+            componentCode: packet.programCode || packet.type,
+          });
+          const sameProgram = packetProgramCode === remedialProgramCode;
+          const usableAsRemedialSource = getPacketScheduleCount(packet) > 0 || isRemedialExamPacket(packet);
+          return sameProgram && usableAsRemedialSource;
+        }),
+      );
     } catch (error) {
       if (requestId !== remedialPacketRequestRef.current) return;
       console.error('Fetch remedial exam packets error:', error);
@@ -1757,6 +1821,37 @@ export const TeacherGradesPage = () => {
     setShowBulkRemedialModal(false);
     resetRemedialActivityInputs();
     setRemedialExamPackets([]);
+  };
+
+  const openRemedialPacketCreator = () => {
+    const referenceEntry = bulkReferenceRemedialRow;
+    if (!referenceEntry) {
+      toast.error('Pilih sumber remedial terlebih dahulu.');
+      return;
+    }
+
+    const programCode = resolveRemedialProgramCode(referenceEntry);
+    const packetType = resolveRemedialPacketType(programCode);
+    const fixedSemester = resolveRemedialFixedSemester(programCode);
+    const assignmentId = Number(selectedAssignmentObj?.id || selectedAssignment || 0);
+    const title = remedialActivityTitleInput.trim() || `Remedial ${referenceEntry.sourceLabel || programCode}`;
+
+    navigate('/teacher/exams/create', {
+      state: {
+        type: packetType,
+        programCode,
+        programLabel: referenceEntry.sourceLabel || programCode,
+        fixedSemester,
+        isRemedialPacket: true,
+        packetDraft: {
+          title,
+          teacherAssignmentId: Number.isFinite(assignmentId) && assignmentId > 0 ? assignmentId : undefined,
+          subjectId: referenceEntry.subjectId,
+          semester: referenceEntry.semester,
+          instructions: remedialNoteInput.trim() || `Paket soal remedial untuk ${referenceEntry.sourceLabel || programCode}.`,
+        },
+      },
+    });
   };
 
   const handleSaveRemedial = async () => {
@@ -2841,12 +2936,13 @@ export const TeacherGradesPage = () => {
                         ))}
                       </select>
                     </div>
-                    <a
-                      href="/teacher/exams/create"
+                    <button
+                      type="button"
+                      onClick={openRemedialPacketCreator}
                       className="inline-flex h-[42px] items-center justify-center rounded-lg border border-indigo-200 bg-white px-4 text-sm font-medium text-indigo-700 hover:bg-indigo-100"
                     >
                       Buat Paket Baru
-                    </a>
+                    </button>
                   </div>
                 </div>
               ) : null}

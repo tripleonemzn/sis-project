@@ -11,11 +11,13 @@ import {
     BarChart3,
     Users,
     X,
+    RotateCcw,
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import {
     examService,
     findExamProgramBySlug,
+    isRemedialExamPacket,
     normalizeExamProgramCode,
 } from '../../../services/exam.service';
 import type { ExamPacket, ExamProgram, ExamSchedule, ExamType } from '../../../services/exam.service';
@@ -23,9 +25,11 @@ import { academicYearService } from '../../../services/academicYear.service';
 import { teacherAssignmentService } from '../../../services/teacherAssignment.service';
 import type { TeacherAssignment } from '../../../services/teacherAssignment.service';
 
+import UnderlineTabBar from '../../../components/navigation/UnderlineTabBar';
 import { QuestionBankView } from '../../../components/teacher/exams/QuestionBankView';
 
 type SemesterFilter = 'GANJIL' | 'GENAP' | '';
+type PacketTab = 'REGULAR' | 'REMEDIAL';
 type CreateExamInfoDraft = {
     title: string;
     assignmentId: string;
@@ -156,6 +160,7 @@ export const ExamListPage = () => {
     const [assignmentOptions, setAssignmentOptions] = useState<TeacherAssignment[]>([]);
     const [activeAcademicYear, setActiveAcademicYear] = useState<{id: number, name: string, semester?: string} | null>(null);
     const [selectedSemester, setSelectedSemester] = useState<SemesterFilter>('');
+    const [activePacketTab, setActivePacketTab] = useState<PacketTab>('REGULAR');
     const [isCreateInfoModalOpen, setIsCreateInfoModalOpen] = useState(false);
     const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
     const [schedulePacket, setSchedulePacket] = useState<ExamPacket | null>(null);
@@ -535,10 +540,37 @@ export const ExamListPage = () => {
         enabled: !!activeAcademicYear && !isBankSoal && !!selectedProgram && !!selectedSemester
     });
 
+    const packetTabItems = useMemo(
+        () => [
+            {
+                id: 'REGULAR',
+                label: canTeacherDirectSchedulePacket({
+                    programCode: selectedProgram?.code,
+                    type: selectedProgramBaseType || '',
+                })
+                    ? 'Paket Ujian'
+                    : 'Ujian Terjadwal',
+                icon: FileQuestion,
+            },
+            { id: 'REMEDIAL', label: 'Paket Remedial', icon: RotateCcw },
+        ],
+        [selectedProgram?.code, selectedProgramBaseType],
+    );
+
+    const packetsForActiveTab = useMemo(
+        () =>
+            packets.filter((packet: ExamPacket) =>
+                activePacketTab === 'REMEDIAL'
+                    ? isRemedialExamPacket(packet)
+                    : !isRemedialExamPacket(packet),
+            ),
+        [activePacketTab, packets],
+    );
+
     const filteredPackets = useMemo(() => {
         const keyword = search.toLowerCase().trim();
-        if (!keyword) return packets;
-        return packets.filter((packet: ExamPacket) => {
+        if (!keyword) return packetsForActiveTab;
+        return packetsForActiveTab.filter((packet: ExamPacket) => {
             const haystack = [
                 resolvePacketDisplayTitle(packet),
                 packet.title,
@@ -549,7 +581,7 @@ export const ExamListPage = () => {
                 .join(' ');
             return haystack.includes(keyword);
         });
-    }, [packets, search, resolvePacketDisplayTitle, resolvePacketLabel]);
+    }, [packetsForActiveTab, search, resolvePacketDisplayTitle, resolvePacketLabel]);
 
     const handleScheduleRowChange = (
         classId: number,
@@ -832,6 +864,23 @@ export const ExamListPage = () => {
                 </div>
             </div>
 
+            {selectedProgram && selectedSemester ? (
+                <div className="rounded-xl border border-gray-100 bg-white px-5 pt-3 shadow-sm">
+                    <UnderlineTabBar
+                        items={packetTabItems}
+                        activeId={activePacketTab}
+                        onChange={(id) => setActivePacketTab(id as PacketTab)}
+                        ariaLabel="Tab paket ujian"
+                        className="border-b border-gray-200"
+                    />
+                    <p className="py-3 text-sm text-gray-600">
+                        {activePacketTab === 'REMEDIAL'
+                            ? 'Paket remedial dibuat dari menu Remedial Nilai dan mengikuti jenis ujian sumbernya.'
+                            : 'Paket utama mengikuti konfigurasi dan jadwal program ujian yang berlaku.'}
+                    </p>
+                </div>
+            ) : null}
+
             {/* List */}
             {isLoading ? (
                 <div className="flex justify-center py-12">
@@ -851,11 +900,27 @@ export const ExamListPage = () => {
                     <h3 className="text-lg font-medium text-gray-900">Pilih Semester</h3>
                     <p className="text-gray-500 mt-1">Silakan pilih semester terlebih dahulu untuk menampilkan data ujian</p>
                 </div>
-            ) : packets.length === 0 ? (
+            ) : packetsForActiveTab.length === 0 ? (
                 <div className="text-center py-12 bg-white rounded-2xl border border-dashed border-gray-300">
-                    <FileQuestion className="w-12 h-12 text-gray-400 mx-auto mb-3" />
-                    <h3 className="text-lg font-medium text-gray-900">Belum ada paket ujian</h3>
-                    <p className="text-gray-500 mt-1">Buat paket ujian baru untuk memulai</p>
+                    {activePacketTab === 'REMEDIAL' ? (
+                        <RotateCcw className="w-12 h-12 text-gray-400 mx-auto mb-3" />
+                    ) : (
+                        <FileQuestion className="w-12 h-12 text-gray-400 mx-auto mb-3" />
+                    )}
+                    <h3 className="text-lg font-medium text-gray-900">
+                        {activePacketTab === 'REMEDIAL' ? 'Belum ada paket remedial' : 'Belum ada paket ujian'}
+                    </h3>
+                    <p className="text-gray-500 mt-1">
+                        {activePacketTab === 'REMEDIAL'
+                            ? 'Paket remedial akan muncul di sini setelah dibuat dari menu Remedial Nilai.'
+                            : 'Buat paket ujian baru untuk memulai'}
+                    </p>
+                </div>
+            ) : filteredPackets.length === 0 ? (
+                <div className="text-center py-12 bg-white rounded-2xl border border-dashed border-gray-300">
+                    <Search className="w-12 h-12 text-gray-400 mx-auto mb-3" />
+                    <h3 className="text-lg font-medium text-gray-900">Tidak ada hasil pencarian</h3>
+                    <p className="text-gray-500 mt-1">Coba kata kunci lain atau reset filter mapel.</p>
                 </div>
             ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">

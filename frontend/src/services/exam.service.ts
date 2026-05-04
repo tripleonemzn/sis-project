@@ -9,6 +9,8 @@ export type ExamProgramReportSlot = string;
 export type ExamFinanceClearanceMode = string;
 export type ExamStudentResultPublishMode = 'DIRECT' | 'SCHEDULED' | 'REPORT_DATE';
 
+export const REMEDIAL_EXAM_PACKET_DESCRIPTION = '[SIS:REMEDIAL_PACKET]';
+
 export interface ExamProgramReportDate {
     semester: 'ODD' | 'EVEN';
     reportType: string;
@@ -234,6 +236,7 @@ export interface ExamPacket {
     title: string;
     description?: string;
     isCurriculumManaged?: boolean;
+    isRemedialPacket?: boolean;
     type: ExamType;
     programCode?: string | null;
     duration: number; // minutes
@@ -271,6 +274,14 @@ export interface ExamPacket {
     };
     createdAt: string;
 }
+
+export const isRemedialExamPacket = (
+    packet?: Pick<ExamPacket, 'description' | 'isRemedialPacket'> | null,
+): boolean => {
+    if (!packet) return false;
+    if (packet.isRemedialPacket === true) return true;
+    return String(packet.description || '').includes(REMEDIAL_EXAM_PACKET_DESCRIPTION);
+};
 
 export interface ExamSchedule {
     id: number;

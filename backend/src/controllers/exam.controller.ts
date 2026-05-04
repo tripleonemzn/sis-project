@@ -3429,9 +3429,14 @@ function normalizeSessionLabelKey(rawLabel: unknown): string | null {
 }
 
 const AUTO_CURRICULUM_PACKET_DESCRIPTION = 'Packet dibuat otomatis karena jadwal dibuat dari menu kurikulum.';
+const REMEDIAL_PACKET_DESCRIPTION = '[SIS:REMEDIAL_PACKET]';
 
 function isCurriculumManagedPacketDescription(rawDescription: unknown): boolean {
     return String(rawDescription || '').trim() === AUTO_CURRICULUM_PACKET_DESCRIPTION;
+}
+
+function isRemedialPacketDescription(rawDescription: unknown): boolean {
+    return String(rawDescription || '').includes(REMEDIAL_PACKET_DESCRIPTION);
 }
 
 function buildAutoCurriculumPacketProgramFallbackFilters(
@@ -7407,7 +7412,12 @@ export const getPackets = asyncHandler(async (req: Request, res: Response) => {
         include: {
             subject: true,
             author: { select: { name: true } },
-            academicYear: true
+            academicYear: true,
+            _count: {
+                select: {
+                    schedules: true,
+                },
+            },
         },
         orderBy: { createdAt: 'desc' }
     });
@@ -7417,6 +7427,7 @@ export const getPackets = asyncHandler(async (req: Request, res: Response) => {
         return {
             ...packet,
             isCurriculumManaged: isCurriculumManagedPacketDescription(packet.description),
+            isRemedialPacket: isRemedialPacketDescription(packet.description),
             subjectId: effectiveSubject?.id ?? packet.subjectId,
             subject: effectiveSubject,
         };
@@ -7510,6 +7521,7 @@ export const getPacketById = asyncHandler(async (req: Request, res: Response) =>
             ...packet,
             schedules: normalizedSchedules,
             isCurriculumManaged: isCurriculumManagedPacketDescription(packet.description),
+            isRemedialPacket: isRemedialPacketDescription(packet.description),
             subjectId: effectiveSubject?.id ?? packet.subjectId,
             subject: effectiveSubject,
             mediaAudit,
@@ -7916,7 +7928,13 @@ export const createPacket = asyncHandler(async (req: Request, res: Response) => 
         questions: normalizedQuestions || normalizeQuestionsPayload(packet.questions) || [],
     });
 
-    res.json(new ApiResponse(201, { ...packet, mediaAudit }, 'Exam packet created successfully'));
+    res.json(
+        new ApiResponse(
+            201,
+            { ...packet, isRemedialPacket: isRemedialPacketDescription(packet.description), mediaAudit },
+            'Exam packet created successfully',
+        ),
+    );
 });
 
 export const updatePacket = asyncHandler(async (req: Request, res: Response) => {
@@ -8087,7 +8105,13 @@ export const updatePacket = asyncHandler(async (req: Request, res: Response) => 
     invalidateStartExamScheduleCacheByPacket(packetId);
     invalidatePacketItemAnalysisCacheByPacket(packetId);
     invalidatePacketSubmissionsCacheByPacket(packetId);
-    res.json(new ApiResponse(200, { ...packet, mediaAudit }, 'Exam packet updated successfully'));
+    res.json(
+        new ApiResponse(
+            200,
+            { ...packet, isRemedialPacket: isRemedialPacketDescription(packet.description), mediaAudit },
+            'Exam packet updated successfully',
+        ),
+    );
 });
 
 export const deletePacket = asyncHandler(async (req: Request, res: Response) => {

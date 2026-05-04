@@ -26,7 +26,12 @@ import ReactQuill from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css';
 import katex from 'katex';
 import 'katex/dist/katex.min.css';
-import { examProgramCodeToSlug, examService, normalizeExamProgramCode } from '../../../services/exam.service';
+import {
+    examProgramCodeToSlug,
+    examService,
+    normalizeExamProgramCode,
+    REMEDIAL_EXAM_PACKET_DESCRIPTION,
+} from '../../../services/exam.service';
 import type {
     ExamProgram,
     ExamType,
@@ -60,7 +65,8 @@ import {
 } from '../../../lib/examQuestionSupportStatus';
 
 // Extended Question interface for UI state and Backend Payload compatibility
-interface ExtendedQuestion extends Question {
+interface ExtendedQuestion extends Omit<Question, 'score'> {
+    score: number | '';
     saveToBank?: boolean;
     question_image_url?: string;
     question_video_url?: string;
@@ -1187,6 +1193,7 @@ export const ExamEditorPage = () => {
         programCode?: string;
         programLabel?: string;
         fixedSemester?: 'ODD' | 'EVEN' | null;
+        isRemedialPacket?: boolean;
         packetDraft?: {
             title?: string;
             teacherAssignmentId?: number;
@@ -1200,6 +1207,7 @@ export const ExamEditorPage = () => {
     const presetProgramCode = normalizeExamProgramCode(routeState?.programCode || routeState?.type);
     const presetProgramLabel = routeState?.programLabel || '';
     const presetFixedSemester = routeState?.fixedSemester || null;
+    const presetIsRemedialPacket = routeState?.isRemedialPacket === true;
     const presetPacketDraft = routeState?.packetDraft || null;
 
     // UI State for Editor
@@ -1217,6 +1225,7 @@ export const ExamEditorPage = () => {
     const { register, handleSubmit, setValue, watch, formState: { errors } } = useForm<PacketForm>({
         defaultValues: {
             title: presetPacketDraft?.title || '',
+            description: presetIsRemedialPacket ? REMEDIAL_EXAM_PACKET_DESCRIPTION : '',
             type: presetType || '',
             programCode: presetProgramCode || '',
             teacherAssignmentId: presetPacketDraft?.teacherAssignmentId,
@@ -1526,7 +1535,7 @@ export const ExamEditorPage = () => {
     
     // Restore draft on mount (only for create mode)
     useEffect(() => {
-        if (isEditMode || draftLoadedRef.current || draftPromptShownRef.current || !userId) return;
+        if (isEditMode || presetIsRemedialPacket || draftLoadedRef.current || draftPromptShownRef.current || !userId) return;
 
         const prefs = (userData?.data?.preferences ?? {}) as Record<string, unknown>;
         const profileDraft = extractExamDraftPayload(prefs['exam_draft']);
@@ -1548,13 +1557,16 @@ export const ExamEditorPage = () => {
             preferences: prefs,
             source: nextDraft.source,
         });
-    }, [isEditMode, userData, userId]);
+    }, [isEditMode, presetIsRemedialPacket, userData, userId]);
 
     useEffect(() => {
         if (!isEditMode) {
             if (presetType) setValue('type', presetType);
             if (presetProgramCode) {
                 setValue('programCode', normalizeExamProgramCode(presetProgramCode));
+            }
+            if (presetIsRemedialPacket) {
+                setValue('description', REMEDIAL_EXAM_PACKET_DESCRIPTION);
             }
             if (presetFixedSemester === 'ODD' || presetFixedSemester === 'EVEN') {
                 setValue('semester', presetFixedSemester);
@@ -1569,7 +1581,7 @@ export const ExamEditorPage = () => {
                 }
             }
         }
-    }, [isEditMode, presetType, presetProgramCode, presetFixedSemester, presetPacketDraft, setValue]);
+    }, [isEditMode, presetType, presetProgramCode, presetIsRemedialPacket, presetFixedSemester, presetPacketDraft, setValue]);
 
     useEffect(() => {
         if (!selectedProgramMeta && teacherPrograms.length > 0) {
@@ -2669,6 +2681,10 @@ export const ExamEditorPage = () => {
 
         const payload = {
             ...data,
+            description:
+                presetIsRemedialPacket || loadedPacket?.isRemedialPacket
+                    ? REMEDIAL_EXAM_PACKET_DESCRIPTION
+                    : data.description,
             type: effectiveType,
             programCode: isCurriculumManagedPacket
                 ? normalizeExamProgramCode(loadedPacket?.programCode || loadedPacket?.type || normalizedProgramCode)
@@ -3567,7 +3583,23 @@ export const ExamEditorPage = () => {
                                         type="number"
                                         min="1"
                                         value={activeQuestion.score}
-                                        onChange={(e) => updateQuestion(activeQuestion.id, { score: parseInt(e.target.value) || 1 })}
+                                        onChange={(e) => {
+                                            const rawValue = e.target.value;
+                                            if (rawValue === '') {
+                                                updateQuestion(activeQuestion.id, { score: '' });
+                                                return;
+                                            }
+                                            const parsed = Number(rawValue);
+                                            updateQuestion(activeQuestion.id, {
+                                                score: Number.isFinite(parsed) && parsed > 0 ? parsed : 1,
+                                            });
+                                        }}
+                                        onBlur={() => {
+                                            const parsed = Number(activeQuestion.score);
+                                            if (!Number.isFinite(parsed) || parsed <= 0) {
+                                                updateQuestion(activeQuestion.id, { score: 1 });
+                                            }
+                                        }}
                                         className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 font-medium text-center"
                                     />
                                 </div>
@@ -4361,6 +4393,7 @@ export const ExamEditorPage = () => {
                             <input type="hidden" {...register('academicYearId', { required: 'Tahun ajaran wajib terisi' })} />
                             <input type="hidden" {...register('type')} />
                             <input type="hidden" {...register('programCode')} />
+                            <input type="hidden" {...register('description')} />
 
                             {isCurriculumManagedPacket ? (
                                 <div className="space-y-6">
