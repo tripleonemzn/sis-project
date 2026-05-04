@@ -5,6 +5,47 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
+- Last updated: 2026-05-05 05:32 WIB
+- Current status: Batch 3 preflight UI fitur `Tahun Ajaran Baru` selesai, terverifikasi, dan web sudah live. Alur `Kenaikan & Kelulusan` sekarang punya tabel `Checklist Kesiapan Sebelum Proses` agar admin melihat area yang siap, perlu dicek, atau harus diperbaiki sebelum siswa dipindahkan.
+- Objective/task aktif:
+  - Menyederhanakan fitur tahun ajaran baru/promotion agar admin bisa melanjutkan data tahun ajaran lama ke tahun ajaran baru secara aman, bertahap, dan mudah dipahami.
+- Batch terakhir selesai:
+  - `Academic year promotion preflight Batch 3`
+- Progress roadmap fitur tahun ajaran baru:
+  - `100%` Batch 1 UI/terminologi web admin
+  - `100%` Batch 2 guard kontrak backend legacy vs v2
+  - `100%` Batch 3 preflight/checklist web admin
+  - `65%` total roadmap redesign tahun ajaran baru/promotion
+- Last completed repo work:
+  - Commit: `cb316d9`
+  - Title: `feat(admin): add promotion preflight checklist`
+  - Summary:
+    - menambah checklist preflight berbentuk tabel pada tab `Tahun Ajaran Baru` bagian `Kenaikan & Kelulusan`
+    - checklist merangkum kesiapan `Kelas & Wali Kelas`, `Guru Mapel`, `Jadwal/KKM/Rapor/Ujian`, `Tujuan Kelas Siswa`, `Kelulusan Kelas XII`, `Duty/Jabatan Guru`, dan `Aktivasi & Arsip`
+    - preflight memakai data existing dari workspace salin data dan workspace kenaikan; tidak menambah endpoint, polling, query backend, atau mutation baru
+    - menambah guard agar proses kenaikan tidak bisa lanjut jika ada perubahan tujuan kelas yang belum disimpan
+    - tabel tujuan kelas menandai baris yang punya perubahan tujuan kelas belum disimpan
+- Area/file disentuh:
+  - `frontend/src/pages/admin/academic/AcademicYearPage.tsx`
+  - `docs/CODEX_CONTINUITY.md`
+- Verifikasi batch ini:
+  - `git diff --check`
+  - `cd frontend && npm run build`
+  - `cd frontend && npm run deploy`
+  - `curl -I -s https://siskgb2.id/admin/academic-years | head -n 5` -> `HTTP/1.1 200 OK`
+- Publish/live status:
+  - Web sudah deploy live.
+  - Backend tidak disentuh dan tidak direstart pada batch ini.
+  - Mobile OTA tidak dipublish karena batch ini hanya mengubah halaman web admin; belum ada layar mobile admin untuk flow tahun ajaran baru.
+- Remaining work:
+  - Batch 4: audit akses arsip lintas role dan pastikan data tahun ajaran lama hanya tampil sebagai arsip/historis, bukan workflow operasional aktif.
+  - Batch 5: parity mobile jika nanti ada screen/flow mobile terkait tahun ajaran/promotion yang perlu disediakan.
+- Residual risk:
+  - Risiko rendah karena frontend-only dan memakai query workspace yang sudah ada. Tidak ada endpoint baru, mutation baru, polling baru, atau perubahan data production.
+  - Checklist duty/jabatan guru saat ini bersifat informatif karena duty melekat pada data guru existing, bukan komponen tahun ajaran yang disalin oleh flow ini.
+
+## Update Sebelumnya
+
 - Last updated: 2026-05-05 05:26 WIB
 - Current status: Batch 2 kontrak backend fitur `Tahun Ajaran Baru` selesai, terverifikasi, dan backend sudah direstart sehat. Endpoint legacy `POST /academic-years/:id/promote` yang dulu bisa memindahkan siswa langsung sekarang dinonaktifkan aman dengan respons `410 Gone`, sehingga jalur lama tidak bisa lagi mengubah data production.
 - Objective/task aktif:
