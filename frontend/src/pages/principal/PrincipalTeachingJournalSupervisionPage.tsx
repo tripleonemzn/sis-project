@@ -7,7 +7,6 @@ import {
   CheckCircle2,
   FileClock,
   Loader2,
-  RefreshCw,
   Search,
   ShieldCheck,
   Users,
@@ -407,22 +406,11 @@ export default function PrincipalTeachingJournalSupervisionPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Supervisi Jurnal Mengajar</h1>
-          <p className="text-sm text-gray-500">
-            Ringkasan eksekutif untuk menentukan prioritas supervisi guru berdasarkan jurnal, presensi mapel, dan perangkat ajar.
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={() => supervisionQuery.refetch()}
-          disabled={supervisionQuery.isFetching}
-          className="inline-flex items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 shadow-sm transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          <RefreshCw className={`h-4 w-4 ${supervisionQuery.isFetching ? 'animate-spin' : ''}`} />
-          Muat Ulang
-        </button>
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900">Supervisi Jurnal Mengajar</h1>
+        <p className="text-sm text-gray-500">
+          Ringkasan eksekutif untuk menentukan prioritas supervisi guru berdasarkan jurnal, presensi mapel, dan perangkat ajar.
+        </p>
       </div>
 
       <div className="grid gap-3 md:grid-cols-5">

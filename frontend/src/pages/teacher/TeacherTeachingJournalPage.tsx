@@ -9,7 +9,6 @@ import {
   FileClock,
   Link2,
   Loader2,
-  RefreshCw,
   Save,
   Search,
   Send,
@@ -631,22 +630,11 @@ export const TeacherTeachingJournalPage = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Jurnal Mengajar</h1>
-          <p className="text-sm text-gray-500">
-            Catat realisasi pembelajaran per sesi jadwal mengajar aktif.
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={() => sessionsQuery.refetch()}
-          disabled={sessionsQuery.isFetching}
-          className="inline-flex items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 shadow-sm transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          <RefreshCw className={`h-4 w-4 ${sessionsQuery.isFetching ? 'animate-spin' : ''}`} />
-          Muat Ulang
-        </button>
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900">Jurnal Mengajar</h1>
+        <p className="text-sm text-gray-500">
+          Catat realisasi pembelajaran per sesi jadwal mengajar aktif.
+        </p>
       </div>
 
       {!isLoadingActiveYear && !activeAcademicYearId ? (
@@ -752,16 +740,16 @@ export const TeacherTeachingJournalPage = () => {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1040px] text-left">
+            <table className="w-full min-w-[1120px] table-fixed text-left">
               <thead className="bg-gray-50">
                 <tr className="border-b border-gray-200">
                   <th className="w-14 px-5 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">No</th>
-                  <th className="px-5 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">Tanggal</th>
-                  <th className="px-5 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">Kelas</th>
+                  <th className="w-44 px-5 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">Tanggal</th>
+                  <th className="w-48 px-5 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">Kelas</th>
                   <th className="px-5 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">Mata Pelajaran</th>
-                  <th className="w-24 px-5 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">Jam</th>
-                  <th className="px-5 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">Status</th>
-                  <th className="px-5 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">Presensi</th>
+                  <th className="w-56 px-5 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">Jam</th>
+                  <th className="w-40 px-5 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">Status</th>
+                  <th className="w-40 px-5 py-3 text-xs font-semibold uppercase tracking-wider text-gray-500">Presensi</th>
                   <th className="w-40 px-5 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500">Aksi</th>
                 </tr>
               </thead>

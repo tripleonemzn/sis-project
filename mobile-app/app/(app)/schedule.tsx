@@ -31,6 +31,16 @@ const DAY_LABELS: Record<DayOfWeek, string> = {
   SATURDAY: 'Sabtu',
 };
 
+type ScheduleBlock = {
+  key: string;
+  periodStart: number;
+  periodEnd: number;
+  jpCount: number;
+  timeRange: string | null;
+  entries: ScheduleEntry[];
+  entry: ScheduleEntry;
+};
+
 function getDayLabel(day: string) {
   const normalized = String(day || '').trim().toUpperCase() as DayOfWeek;
   if (DAY_LABELS[normalized]) return DAY_LABELS[normalized];
@@ -41,9 +51,91 @@ function getDayLabel(day: string) {
     .replace(/\b\w/g, (char) => char.toUpperCase()) || 'Hari';
 }
 
-function ScheduleCard({ item }: { item: ScheduleEntry }) {
+function getTeachingHourValue(entry: ScheduleEntry) {
+  return typeof entry.teachingHour === 'number' ? entry.teachingHour : entry.period;
+}
+
+function formatPeriodRange(start: number, end: number) {
+  return start === end ? `Jam ke-${start}` : `Jam ke-${start}-${end}`;
+}
+
+function extractPeriodTimeBoundary(rawValue?: string | null, side: 'start' | 'end' = 'start') {
+  if (!rawValue) return null;
+  const parts = String(rawValue)
+    .split('-')
+    .map((value) => value.trim())
+    .filter(Boolean);
+  if (!parts.length) return rawValue.trim() || null;
+  return side === 'start' ? parts[0] : parts[parts.length - 1];
+}
+
+function buildScheduleBlockTimeRange(entries: ScheduleEntry[]) {
+  const first = entries[0];
+  const last = entries[entries.length - 1] || first;
+  if (!first || !last) return null;
+
+  const start = extractPeriodTimeBoundary(first.periodTime, 'start');
+  const end = extractPeriodTimeBoundary(last.periodTime, 'end');
+  if (start && end) return `${start} - ${end}`;
+  return start || end || null;
+}
+
+function buildScheduleBlocks(entries: ScheduleEntry[]) {
+  const sortedEntries = [...entries]
+    .filter((entry) => entry.teachingHour !== null)
+    .sort((a, b) => {
+      const aHour = getTeachingHourValue(a);
+      const bHour = getTeachingHourValue(b);
+      if (aHour === bHour) return a.period - b.period;
+      return aHour - bHour;
+    });
+
+  const blocks: ScheduleBlock[] = [];
+  let activeEntries: ScheduleEntry[] = [];
+
+  const createBlock = (blockEntries: ScheduleEntry[]): ScheduleBlock | null => {
+    const first = blockEntries[0];
+    const last = blockEntries[blockEntries.length - 1] || first;
+    if (!first || !last) return null;
+    return {
+      key: `block:${blockEntries.map((entry) => entry.id).join('-')}`,
+      periodStart: getTeachingHourValue(first),
+      periodEnd: getTeachingHourValue(last),
+      jpCount: blockEntries.length,
+      timeRange: buildScheduleBlockTimeRange(blockEntries),
+      entries: blockEntries,
+      entry: first,
+    };
+  };
+
+  sortedEntries.forEach((entry) => {
+    const previous = activeEntries[activeEntries.length - 1] || null;
+    const isSameBlock =
+      previous &&
+      getTeachingHourValue(entry) === getTeachingHourValue(previous) + 1 &&
+      entry.teacherAssignment.subject.id === previous.teacherAssignment.subject.id &&
+      entry.teacherAssignment.teacher.id === previous.teacherAssignment.teacher.id &&
+      entry.teacherAssignment.class.id === previous.teacherAssignment.class.id &&
+      String(entry.room || '').trim() === String(previous.room || '').trim();
+
+    if (isSameBlock) {
+      activeEntries.push(entry);
+      return;
+    }
+
+    const block = createBlock(activeEntries);
+    if (block) blocks.push(block);
+    activeEntries = [entry];
+  });
+
+  const finalBlock = createBlock(activeEntries);
+  if (finalBlock) blocks.push(finalBlock);
+  return blocks;
+}
+
+function ScheduleCard({ block }: { block: ScheduleBlock }) {
   const { scaleFont, scaleLineHeight } = useAppTextScale();
-  const displayHour = typeof item.teachingHour === 'number' ? item.teachingHour : item.period;
+  const item = block.entry;
   return (
     <View
       style={{
@@ -57,10 +149,10 @@ function ScheduleCard({ item }: { item: ScheduleEntry }) {
     >
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
         <Text style={{ fontWeight: '700', color: '#0f172a' }}>{item.teacherAssignment.subject.name}</Text>
-        <Text style={{ fontSize: scaleFont(12), color: '#334155' }}>Jam ke-{displayHour}</Text>
+        <Text style={{ fontSize: scaleFont(12), color: '#334155' }}>{formatPeriodRange(block.periodStart, block.periodEnd)}</Text>
       </View>
       <Text style={{ fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), color: '#475569', marginBottom: 4 }}>
-        {item.teacherAssignment.subject.code}
+        {item.teacherAssignment.subject.code} • {block.jpCount} JP{block.timeRange ? ` • ${block.timeRange}` : ''}
       </Text>
       <Text style={{ fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), color: '#475569', marginBottom: 4 }}>
         Guru: {item.teacherAssignment.teacher.name}
@@ -93,13 +185,8 @@ export default function ScheduleScreen() {
   if (isLoading) return <AppLoadingScreen message="Memuat jadwal..." />;
   if (!isAuthenticated) return <Redirect href="/welcome" />;
 
-  const dayEntries = entries
-    .filter((entry) => entry.dayOfWeek === effectiveActiveDay && entry.teachingHour !== null)
-    .sort((a, b) => {
-      const aHour = typeof a.teachingHour === 'number' ? a.teachingHour : a.period;
-      const bHour = typeof b.teachingHour === 'number' ? b.teachingHour : b.period;
-      return aHour - bHour;
-    });
+  const dayEntries = entries.filter((entry) => entry.dayOfWeek === effectiveActiveDay && entry.teachingHour !== null);
+  const dayScheduleBlocks = buildScheduleBlocks(dayEntries);
 
   return (
     <ScrollView
@@ -181,10 +268,10 @@ export default function ScheduleScreen() {
             })}
           </View>
 
-          {dayEntries.length > 0 ? (
+          {dayScheduleBlocks.length > 0 ? (
             <View>
-              {dayEntries.map((entry) => (
-                <ScheduleCard key={entry.id} item={entry} />
+              {dayScheduleBlocks.map((block) => (
+                <ScheduleCard key={block.key} block={block} />
               ))}
             </View>
           ) : (

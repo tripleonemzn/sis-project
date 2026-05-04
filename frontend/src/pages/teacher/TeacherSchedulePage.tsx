@@ -20,11 +20,8 @@ type TeachingGroup = {
 type DaySchedule = {
   day: DayOfWeek;
   label: string;
-  entries: {
-    period: number;
-    teachingHour: number;
-    entry: ScheduleEntry;
-  }[];
+  entries: DayScheduleEntry[];
+  blocks: ScheduleBlock[];
 };
 
 type TeacherScheduleOutletContext = {
@@ -39,8 +36,27 @@ type TeacherAssignmentWithCount = TeacherAssignment & {
 };
 
 type ScheduleTimeConfig = {
-  periodTypes?: Partial<Record<DayOfWeek, Record<number, string>>>;
-  periodNotes?: Partial<Record<DayOfWeek, Record<number, string>>>;
+  periodTimes?: ScheduleConfigMap;
+  periodTypes?: ScheduleConfigMap;
+  periodNotes?: ScheduleConfigMap;
+};
+
+type ScheduleConfigMap = Partial<Record<DayOfWeek | 'DEFAULT', Record<number, string>>>;
+
+type DayScheduleEntry = {
+  period: number;
+  teachingHour: number;
+  entry: ScheduleEntry;
+};
+
+type ScheduleBlock = {
+  key: string;
+  periodStart: number;
+  periodEnd: number;
+  jpCount: number;
+  timeRange: string | null;
+  entries: DayScheduleEntry[];
+  entry: ScheduleEntry;
 };
 
 const DAY_LABELS: Record<DayOfWeek, string> = {
@@ -60,6 +76,24 @@ const DAY_ORDER: DayOfWeek[] = [
   'FRIDAY',
   'SATURDAY',
 ];
+
+function getScheduleConfigValue(map: ScheduleConfigMap | undefined, day: DayOfWeek, period: number) {
+  return map?.[day]?.[period] ?? map?.DEFAULT?.[period] ?? null;
+}
+
+function extractPeriodTimeBoundary(rawValue?: string | null, side: 'start' | 'end' = 'start') {
+  if (!rawValue) return null;
+  const parts = String(rawValue)
+    .split('-')
+    .map((value) => value.trim())
+    .filter(Boolean);
+  if (!parts.length) return rawValue.trim() || null;
+  return side === 'start' ? parts[0] : parts[parts.length - 1];
+}
+
+function formatPeriodRange(start: number, end: number) {
+  return start === end ? `Jam ke ${start}` : `Jam ke ${start}-${end}`;
+}
 
 export const TeacherSchedulePage = () => {
   const { user: contextUser, activeYear: contextActiveYear } =
@@ -131,7 +165,7 @@ export const TeacherSchedulePage = () => {
   const isNonTeaching = useCallback((day: DayOfWeek, period: number) => {
     const cfg = (timeConfig?.config || {}) as ScheduleTimeConfig;
     const types = cfg.periodTypes || {};
-    const typeRaw = types[day]?.[period];
+    const typeRaw = getScheduleConfigValue(types, day, period);
     if (typeRaw) {
       const t = String(typeRaw).toUpperCase();
       if (t === 'UPACARA' || t === 'ISTIRAHAT' || t === 'TADARUS' || t === 'OTHER') {
@@ -141,7 +175,7 @@ export const TeacherSchedulePage = () => {
         return false;
       }
     }
-    const note = cfg.periodNotes?.[day]?.[period];
+    const note = getScheduleConfigValue(cfg.periodNotes, day, period);
     if (!note) {
       return false;
     }
@@ -186,6 +220,7 @@ export const TeacherSchedulePage = () => {
         day,
         label: DAY_LABELS[day],
         entries: [],
+        blocks: [],
       });
     }
 
@@ -215,13 +250,65 @@ export const TeacherSchedulePage = () => {
       const ds = map.get(day);
       if (ds) {
         ds.entries.sort((a, b) => a.teachingHour - b.teachingHour);
+        const scheduleTimeConfig = (timeConfig?.config || {}) as ScheduleTimeConfig;
+        const buildTimeRange = (blockEntries: DayScheduleEntry[]) => {
+          const first = blockEntries[0];
+          const last = blockEntries[blockEntries.length - 1] || first;
+          if (!first || !last) return null;
+          const firstTime = first.entry.periodTime || getScheduleConfigValue(scheduleTimeConfig.periodTimes, first.entry.dayOfWeek, first.period);
+          const lastTime = last.entry.periodTime || getScheduleConfigValue(scheduleTimeConfig.periodTimes, last.entry.dayOfWeek, last.period);
+          const start = extractPeriodTimeBoundary(firstTime, 'start');
+          const end = extractPeriodTimeBoundary(lastTime, 'end');
+          if (start && end) return `${start} - ${end}`;
+          return start || end || null;
+        };
+        const createBlock = (blockEntries: DayScheduleEntry[]): ScheduleBlock | null => {
+          const first = blockEntries[0];
+          const last = blockEntries[blockEntries.length - 1] || first;
+          if (!first || !last) return null;
+          return {
+            key: `block:${blockEntries.map((item) => item.entry.id).join('-')}`,
+            periodStart: first.teachingHour,
+            periodEnd: last.teachingHour,
+            jpCount: blockEntries.length,
+            timeRange: buildTimeRange(blockEntries),
+            entries: blockEntries,
+            entry: first.entry,
+          };
+        };
+
+        const blocks: ScheduleBlock[] = [];
+        let activeBlock: DayScheduleEntry[] = [];
+        ds.entries.forEach((item) => {
+          const previous = activeBlock[activeBlock.length - 1] || null;
+          const isSameBlock =
+            previous &&
+            item.teachingHour === previous.teachingHour + 1 &&
+            item.entry.teacherAssignment.id === previous.entry.teacherAssignment.id &&
+            item.entry.teacherAssignment.subject.id === previous.entry.teacherAssignment.subject.id &&
+            item.entry.teacherAssignment.class.id === previous.entry.teacherAssignment.class.id &&
+            String(item.entry.room || '').trim() === String(previous.entry.room || '').trim();
+
+          if (isSameBlock) {
+            activeBlock.push(item);
+            return;
+          }
+
+          const nextBlock = createBlock(activeBlock);
+          if (nextBlock) blocks.push(nextBlock);
+          activeBlock = [item];
+        });
+
+        const finalBlock = createBlock(activeBlock);
+        if (finalBlock) blocks.push(finalBlock);
+        ds.blocks = blocks;
       }
     }
 
     return DAY_ORDER.map((day) => map.get(day)!).filter(
       (ds) => ds.entries.length > 0,
     );
-  }, [scheduleEntries, getTeachingHour]);
+  }, [scheduleEntries, getTeachingHour, timeConfig]);
 
   const groups: TeachingGroup[] = useMemo(() => {
     const map = new Map<string, TeachingGroup>();
@@ -411,7 +498,7 @@ export const TeacherSchedulePage = () => {
                 </div>
                 <div className="flex items-center gap-2 text-sm text-gray-600 mb-4">
                   <Clock size={16} />
-                  <span>{day.entries.length} Jam Pelajaran</span>
+                  <span>{day.blocks.length} Blok • {day.entries.length} JP</span>
                 </div>
                 <div className="mt-auto pt-4 border-t border-gray-100 w-full flex items-center justify-between text-xs font-medium text-blue-600">
                   <span>Lihat Detail</span>
@@ -441,16 +528,20 @@ export const TeacherSchedulePage = () => {
             </div>
             
             <div className="flex-1 overflow-y-auto p-6 space-y-3">
-              {selectedDayDetail.entries.map(({ period, teachingHour, entry }) => {
-                 const timeRange = timeConfig?.config?.periodTimes?.[entry.dayOfWeek]?.[period] || '-';
+              {selectedDayDetail.blocks.map((block) => {
+                 const entry = block.entry;
+                 const timeRange = block.timeRange || '-';
                  return (
                   <div
-                    key={entry.id}
+                    key={block.key}
                     className="flex gap-4 p-4 border border-gray-100 rounded-xl bg-gray-50/50 hover:bg-white hover:shadow-sm hover:border-blue-200 transition-all"
                   >
                     <div className="min-w-[100px] flex flex-col justify-center border-r border-gray-200 pr-4">
                       <div className="text-sm font-bold text-gray-900">
-                        Jam Ke {teachingHour ?? '-'}
+                        {formatPeriodRange(block.periodStart, block.periodEnd)}
+                      </div>
+                      <div className="mt-1 text-xs font-semibold text-blue-600">
+                        {block.jpCount} JP
                       </div>
                       <div className="flex items-center gap-1.5 text-xs text-gray-500 mt-1.5 bg-white px-2 py-1 rounded-md border border-gray-100 w-fit">
                         <Clock size={12} />

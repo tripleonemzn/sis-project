@@ -271,6 +271,38 @@ const getPeriodTimeValue = (configObject: Record<string, unknown>, dayKey: strin
   return value || null;
 };
 
+const isNonTeachingSchedulePeriod = (configObject: Record<string, unknown>, dayKey: string, period: number) => {
+  const periodTypes = getJsonObject(configObject.periodTypes);
+  const rawType = getNestedConfigValue(periodTypes, dayKey, period);
+  const normalizedType = typeof rawType === 'string' ? rawType.trim().toUpperCase() : '';
+  if (normalizedType === 'TEACHING') return false;
+  if (['UPACARA', 'ISTIRAHAT', 'TADARUS', 'OTHER'].includes(normalizedType)) return true;
+
+  const periodNotes = getJsonObject(configObject.periodNotes);
+  const rawNote = getNestedConfigValue(periodNotes, dayKey, period);
+  const normalizedNote = typeof rawNote === 'string' ? rawNote.trim().toUpperCase() : '';
+  return (
+    normalizedNote.includes('UPACARA') ||
+    normalizedNote.includes('ISTIRAHAT') ||
+    normalizedNote.includes('TADARUS')
+  );
+};
+
+const getEffectiveTeachingHour = (configObject: Record<string, unknown>, dayKey: string, currentPeriod: number) => {
+  const period = Number(currentPeriod || 0);
+  if (!Number.isFinite(period) || period < 1) return null;
+  if (isNonTeachingSchedulePeriod(configObject, dayKey, period)) return null;
+
+  let teachingCounter = 0;
+  for (let cursor = 1; cursor <= period; cursor += 1) {
+    if (!isNonTeachingSchedulePeriod(configObject, dayKey, cursor)) {
+      teachingCounter += 1;
+    }
+  }
+
+  return teachingCounter > 0 ? teachingCounter : null;
+};
+
 const extractPeriodTimeBoundary = (rawValue: string | null, side: 'start' | 'end') => {
   if (!rawValue) return null;
   const parts = rawValue
@@ -296,32 +328,48 @@ type TeachingJournalScheduleEntryBlockItem = {
 const sameTeachingBlock = (
   left: TeachingJournalScheduleEntryBlockItem,
   right: TeachingJournalScheduleEntryBlockItem,
+  leftEffectivePeriod: number,
+  rightEffectivePeriod: number,
 ) =>
   left.dayOfWeek === right.dayOfWeek &&
-  left.period + 1 === right.period &&
+  leftEffectivePeriod + 1 === rightEffectivePeriod &&
   left.classId === right.classId &&
   left.teacherAssignmentId === right.teacherAssignmentId &&
   left.teacherAssignment.subjectId === right.teacherAssignment.subjectId &&
   String(left.room || '').trim() === String(right.room || '').trim();
 
-const groupScheduleEntriesIntoBlocks = <T extends TeachingJournalScheduleEntryBlockItem>(entries: T[]) => {
-  const blocks: T[][] = [];
-  const sortedEntries = [...entries].sort((left, right) => {
-    if (left.dayOfWeek !== right.dayOfWeek) return left.dayOfWeek.localeCompare(right.dayOfWeek);
-    return left.period - right.period;
-  });
+const groupScheduleEntriesIntoBlocks = <T extends TeachingJournalScheduleEntryBlockItem>(
+  entries: T[],
+  scheduleTimeConfig: Record<string, unknown>,
+) => {
+  const blocks: Array<Array<{ entry: T; effectivePeriod: number }>> = [];
+  const sortedEntries = entries
+    .map((entry) => ({
+      entry,
+      effectivePeriod: getEffectiveTeachingHour(scheduleTimeConfig, entry.dayOfWeek, entry.period),
+    }))
+    .filter((item): item is { entry: T; effectivePeriod: number } => item.effectivePeriod !== null)
+    .sort((left, right) => {
+      if (left.entry.dayOfWeek !== right.entry.dayOfWeek) return left.entry.dayOfWeek.localeCompare(right.entry.dayOfWeek);
+      if (left.effectivePeriod !== right.effectivePeriod) return left.effectivePeriod - right.effectivePeriod;
+      return left.entry.period - right.entry.period;
+    });
 
-  sortedEntries.forEach((entry) => {
+  sortedEntries.forEach((item) => {
     const activeBlock = blocks[blocks.length - 1];
     const previous = activeBlock?.[activeBlock.length - 1] || null;
-    if (activeBlock && previous && sameTeachingBlock(previous, entry)) {
-      activeBlock.push(entry);
+    if (
+      activeBlock &&
+      previous &&
+      sameTeachingBlock(previous.entry, item.entry, previous.effectivePeriod, item.effectivePeriod)
+    ) {
+      activeBlock.push(item);
       return;
     }
-    blocks.push([entry]);
+    blocks.push([item]);
   });
 
-  return blocks;
+  return blocks.map((block) => block.map((item) => item.entry));
 };
 
 const buildTeachingBlockMeta = (
@@ -330,10 +378,12 @@ const buildTeachingBlockMeta = (
 ) => {
   const first = entries[0];
   const last = entries[entries.length - 1] || first;
-  const periodStart = Number(first?.period || 0);
-  const periodEnd = Number(last?.period || periodStart);
-  const start = extractPeriodTimeBoundary(getPeriodTimeValue(scheduleTimeConfig, first?.dayOfWeek || '', periodStart), 'start');
-  const end = extractPeriodTimeBoundary(getPeriodTimeValue(scheduleTimeConfig, last?.dayOfWeek || '', periodEnd), 'end');
+  const rawPeriodStart = Number(first?.period || 0);
+  const rawPeriodEnd = Number(last?.period || rawPeriodStart);
+  const periodStart = getEffectiveTeachingHour(scheduleTimeConfig, first?.dayOfWeek || '', rawPeriodStart) || rawPeriodStart;
+  const periodEnd = getEffectiveTeachingHour(scheduleTimeConfig, last?.dayOfWeek || '', rawPeriodEnd) || periodStart;
+  const start = extractPeriodTimeBoundary(getPeriodTimeValue(scheduleTimeConfig, first?.dayOfWeek || '', rawPeriodStart), 'start');
+  const end = extractPeriodTimeBoundary(getPeriodTimeValue(scheduleTimeConfig, last?.dayOfWeek || '', rawPeriodEnd), 'end');
 
   return {
     periodStart,
@@ -685,7 +735,7 @@ export const getTeachingJournalSessions = asyncHandler(async (req: Request, res:
     if (!holidayDateKeys.has(dateKey)) {
       const dayOfWeek = DAY_OF_WEEK_BY_UTC_INDEX[cursor.getUTCDay()];
       const dayEntries = scheduleEntries.filter((entry) => entry.dayOfWeek === dayOfWeek);
-      groupScheduleEntriesIntoBlocks(dayEntries).forEach((blockEntries) => {
+      groupScheduleEntriesIntoBlocks(dayEntries, scheduleTimeConfigObject).forEach((blockEntries) => {
         const firstEntry = blockEntries[0];
         if (!firstEntry) return;
         const blockMeta = buildTeachingBlockMeta(blockEntries, scheduleTimeConfigObject);
@@ -990,7 +1040,7 @@ export const getTeachingJournalMonitoring = asyncHandler(async (req: Request, re
     if (!holidayDateKeys.has(dateKey)) {
       const dayOfWeek = DAY_OF_WEEK_BY_UTC_INDEX[cursor.getUTCDay()];
       const dayEntries = scheduleEntries.filter((entry) => entry.dayOfWeek === dayOfWeek);
-      groupScheduleEntriesIntoBlocks(dayEntries).forEach((blockEntries) => {
+      groupScheduleEntriesIntoBlocks(dayEntries, scheduleTimeConfigObject).forEach((blockEntries) => {
         const entry = blockEntries[0];
         if (!entry) return;
         const blockMeta = buildTeachingBlockMeta(blockEntries, scheduleTimeConfigObject);

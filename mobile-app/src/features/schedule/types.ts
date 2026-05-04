@@ -11,6 +11,7 @@ export type ScheduleEntry = {
   dayOfWeek: DayOfWeek;
   period: number;
   teachingHour?: number | null;
+  periodTime?: string | null;
   room: string | null;
   teacherAssignment: {
     teacher: {

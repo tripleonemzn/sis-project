@@ -49,11 +49,17 @@ async function buildSchedulePeriodResolver(academicYearId: number) {
   const timeConfig = await (prisma as any).scheduleTimeConfig.findUnique({
     where: { academicYearId },
   });
+  const periodTimes = (timeConfig as any)?.config?.periodTimes || {};
   const periodNotes = (timeConfig as any)?.config?.periodNotes || {};
   const periodTypes = (timeConfig as any)?.config?.periodTypes || {};
 
+  const getNestedPeriodValue = (map: Record<string, Record<string, unknown>>, day: string, period: number) => {
+    const key = String(period);
+    return map?.[day]?.[key] ?? map?.DEFAULT?.[key] ?? null;
+  };
+
   const resolvePeriodType = (day: string, period: number): string => {
-    const type = periodTypes[day]?.[period];
+    const type = getNestedPeriodValue(periodTypes, day, period);
     if (type) {
       const t = String(type).toUpperCase();
       if (
@@ -67,7 +73,7 @@ async function buildSchedulePeriodResolver(academicYearId: number) {
       }
     }
 
-    const note = periodNotes[day]?.[period];
+    const note = getNestedPeriodValue(periodNotes, day, period);
     if (!note) {
       return 'TEACHING';
     }
@@ -114,10 +120,17 @@ async function buildSchedulePeriodResolver(academicYearId: number) {
     return teachingHour;
   };
 
+  const getPeriodTime = (day: string, period: number) => {
+    const rawTime = getNestedPeriodValue(periodTimes, day, period);
+    const value = typeof rawTime === 'string' ? rawTime.trim() : '';
+    return value || null;
+  };
+
   return {
     resolvePeriodType,
     isNonTeachingPeriod,
     getTeachingHour,
+    getPeriodTime,
   };
 }
 
@@ -303,6 +316,7 @@ export const listSchedules = asyncHandler(async (req: Request, res: Response) =>
   const entriesWithTeachingHour = entries.map((entry: any) => ({
     ...entry,
     teachingHour: periodResolver.getTeachingHour(entry.dayOfWeek as string, entry.period),
+    periodTime: periodResolver.getPeriodTime(entry.dayOfWeek as string, entry.period),
   }));
 
   res
