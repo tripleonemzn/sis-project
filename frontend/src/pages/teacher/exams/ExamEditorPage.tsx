@@ -1062,6 +1062,16 @@ function buildReferenceOptionText(option: BlueprintReferenceOption): string {
     return source ? `${value} (${source})` : value;
 }
 
+function isUmbrellaTeachingResourceSubjectLabel(raw?: string | null): boolean {
+    const value = String(raw || '').trim().toLowerCase();
+    if (!value) return false;
+    return (
+        value.includes('konsentrasi keahlian') ||
+        value.includes('kompetensi keahlian') ||
+        value.includes('program keahlian')
+    );
+}
+
 function buildAssignmentDisplayLabel(assignment: TeacherAssignment): string {
     const subjectName = String(assignment.subject?.name || '-').trim();
     const className = String(assignment.class?.name || '-').trim();
@@ -1329,6 +1339,10 @@ export const ExamEditorPage = () => {
 
         return sameSubjectAssignments[0] || null;
     }, [assignmentOptions, curriculumScheduledClassNames, selectedSubjectId, selectedTeacherAssignmentId]);
+    const selectedSubjectForReferences = useMemo(
+        () => subjects.find((subject) => Number(subject.id) === selectedSubjectId) || null,
+        [selectedSubjectId, subjects],
+    );
 
     const teachingResourceReferenceContext = useMemo(() => {
         const classNameHint = curriculumScheduledClassNames[0] || '';
@@ -1343,24 +1357,73 @@ export const ExamEditorPage = () => {
             semester: selectedPacketSemester === 'EVEN' ? 'Genap' : 'Ganjil',
         };
     }, [curriculumScheduledClassNames, selectedAssignmentForReferences, selectedPacketSemester, selectedSubjectId]);
+    const teachingResourceReferenceSubjectIds = useMemo(() => {
+        const ids = new Set<number>();
+        if (selectedSubjectId > 0) ids.add(selectedSubjectId);
+
+        const shouldIncludeSpecificAssignmentSubjects = isUmbrellaTeachingResourceSubjectLabel(
+            selectedSubjectForReferences?.name ||
+            selectedAssignmentForReferences?.subject?.name ||
+            '',
+        );
+        if (!shouldIncludeSpecificAssignmentSubjects) return Array.from(ids);
+
+        const scheduledClassNameSet = new Set(curriculumScheduledClassNames.map((name) => name.toLowerCase()));
+        const targetLevel = normalizeClassLevelToken(
+            selectedAssignmentForReferences?.class?.level ||
+            selectedAssignmentForReferences?.class?.name ||
+            curriculumScheduledClassNames[0] ||
+            '',
+        );
+        const targetMajor = String(selectedAssignmentForReferences?.class?.major?.name || '').trim().toLowerCase();
+
+        assignmentOptions.forEach((assignment) => {
+            const subjectId = Number(assignment.subject?.id || 0);
+            if (subjectId <= 0) return;
+            const assignmentClassName = String(assignment.class?.name || '').trim().toLowerCase();
+            const classMatches =
+                scheduledClassNameSet.size === 0 ||
+                scheduledClassNameSet.has(assignmentClassName);
+            if (!classMatches) return;
+            const assignmentLevel = normalizeClassLevelToken(assignment.class?.level || assignment.class?.name);
+            if (targetLevel && assignmentLevel && assignmentLevel !== targetLevel) return;
+            const assignmentMajor = String(assignment.class?.major?.name || '').trim().toLowerCase();
+            if (targetMajor && assignmentMajor && assignmentMajor !== targetMajor) return;
+            ids.add(subjectId);
+        });
+
+        return Array.from(ids);
+    }, [
+        assignmentOptions,
+        curriculumScheduledClassNames,
+        selectedAssignmentForReferences,
+        selectedSubjectForReferences?.name,
+        selectedSubjectId,
+    ]);
 
     const teachingResourceReferenceRequests = useMemo<TeachingResourceReferenceProjectionRequest[]>(() => {
-        if (!selectedSubjectId) return [];
-        return BLUEPRINT_REFERENCE_REQUEST_CONFIGS.map((request) => ({
-            ...request,
-            matchBySubject: Boolean(teachingResourceReferenceContext.subjectId),
-            matchByClassLevel: Boolean(teachingResourceReferenceContext.classLevel),
-            matchByMajor: Boolean(teachingResourceReferenceContext.programKeahlian),
-            matchByActiveSemester: false,
-            context: teachingResourceReferenceContext,
-        }));
-    }, [selectedSubjectId, teachingResourceReferenceContext]);
+        if (teachingResourceReferenceSubjectIds.length === 0) return [];
+        return teachingResourceReferenceSubjectIds.flatMap((subjectId) =>
+            BLUEPRINT_REFERENCE_REQUEST_CONFIGS.map((request) => ({
+                ...request,
+                requestKey: `${request.requestKey}:subject-${subjectId}`,
+                matchBySubject: true,
+                matchByClassLevel: Boolean(teachingResourceReferenceContext.classLevel),
+                matchByMajor: Boolean(teachingResourceReferenceContext.programKeahlian),
+                matchByActiveSemester: false,
+                context: {
+                    ...teachingResourceReferenceContext,
+                    subjectId,
+                },
+            })),
+        );
+    }, [teachingResourceReferenceSubjectIds, teachingResourceReferenceContext]);
 
     const teachingResourceReferencesQuery = useQuery({
         queryKey: [
             'exam-blueprint-teaching-resource-references',
             selectedAcademicYearId,
-            selectedSubjectId,
+            teachingResourceReferenceSubjectIds.join(','),
             teachingResourceReferenceContext.classLevel || '',
             teachingResourceReferenceContext.programKeahlian || '',
             selectedPacketSemester,
@@ -1368,7 +1431,7 @@ export const ExamEditorPage = () => {
         enabled:
             supportsQuestionSupport &&
             selectedAcademicYearId > 0 &&
-            selectedSubjectId > 0 &&
+            teachingResourceReferenceSubjectIds.length > 0 &&
             teachingResourceReferenceRequests.length > 0,
         staleTime: 2 * 60 * 1000,
         queryFn: () =>
