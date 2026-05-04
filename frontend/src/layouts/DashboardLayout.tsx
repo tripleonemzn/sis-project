@@ -382,6 +382,7 @@ const resolveTeacherCommitteeBreadcrumbGroup = (user: User | null): string => {
       schedule: { label: 'Jadwal Mengajar', group: 'AKADEMIK' },
       classes: { label: 'Kelas & Mapel', group: 'AKADEMIK' },
       attendance: { label: 'Presensi Siswa', group: 'AKADEMIK' },
+      'teaching-journals': { label: 'Jurnal Mengajar', group: 'AKADEMIK' },
       materials: { label: 'Materi & Tugas', group: 'AKADEMIK' },
       grades: { label: 'Input Nilai', group: 'AKADEMIK' },
       'report-subjects': { label: 'Rapor Mapel', group: 'AKADEMIK' },

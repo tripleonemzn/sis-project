@@ -521,6 +521,7 @@ export const getMenuItems = (
           { label: 'Jadwal Mengajar', path: '/teacher/schedule', icon: Calendar },
           { label: 'Kelas & Mapel', path: '/teacher/classes', icon: BookOpen },
           { label: 'Presensi Siswa', path: '/teacher/attendance', icon: UserCheck },
+          { label: 'Jurnal Mengajar', path: '/teacher/teaching-journals', icon: ClipboardCheck },
           { label: 'Materi & Tugas', path: '/teacher/materials', icon: ClipboardList },
           { label: 'Input Nilai', path: '/teacher/grades', icon: FileText },
           { label: 'Rapor Mapel', path: '/teacher/report-subjects', icon: FileBarChart },

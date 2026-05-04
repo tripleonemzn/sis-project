@@ -53,6 +53,7 @@ const STRICT_WEB_PARITY_KEYS = new Set<string>([
   'teaching-schedule',
   'teacher-classes',
   'attendance-teacher',
+  'teacher-teaching-journals',
   'teacher-materials',
   'grade-input',
   'teacher-report-subjects',
@@ -302,6 +303,11 @@ const ROLE_MENUS: Record<string, RoleMenuItem[]> = {
       key: 'attendance-teacher',
       label: 'Presensi Siswa',
       route: '/teacher/attendance',
+    },
+    {
+      key: 'teacher-teaching-journals',
+      label: 'Jurnal Mengajar',
+      route: '/teacher/teaching-journals',
     },
     {
       key: 'teacher-materials',

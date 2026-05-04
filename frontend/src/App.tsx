@@ -43,6 +43,7 @@ const TeacherHomeroomPage = lazy(() => import("./pages/teacher/TeacherHomeroomPa
 const TeacherBpBkPage = lazy(() => import("./pages/teacher/TeacherBpBkPage").then(m => ({ default: m.TeacherBpBkPage })));
 const TeacherAttendanceListPage = lazy(() => import("./pages/teacher/TeacherAttendanceListPage").then(m => ({ default: m.TeacherAttendanceListPage })));
 const TeacherAttendancePage = lazy(() => import("./pages/teacher/TeacherAttendancePage").then(m => ({ default: m.TeacherAttendancePage })));
+const TeacherTeachingJournalPage = lazy(() => import("./pages/teacher/TeacherTeachingJournalPage").then(m => ({ default: m.TeacherTeachingJournalPage })));
 const TeacherGradesPage = lazy(() => import("./pages/teacher/TeacherGradesPage").then(m => ({ default: m.TeacherGradesPage })));
 const TeacherSubjectReportPage = lazy(() => import("./pages/teacher/TeacherSubjectReportPage").then(m => ({ default: m.TeacherSubjectReportPage })));
 const AssignmentSubmissionsPage = lazy(() =>
@@ -409,6 +410,7 @@ function App() {
             <Route path="classes/:classId/students" element={<TeacherClassStudentsPage />} />
             <Route path="attendance" element={<TeacherAttendanceListPage />} />
             <Route path="attendance/:assignmentId" element={<TeacherAttendancePage />} />
+            <Route path="teaching-journals" element={<TeacherTeachingJournalPage />} />
             <Route path="grades" element={<TeacherGradesPage />} />
             <Route path="grades/us" element={<Navigate to="/teacher/grades" replace />} />
             <Route path="bk" element={<TeacherBpBkPage />} />
