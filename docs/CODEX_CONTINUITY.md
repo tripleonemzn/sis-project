@@ -5,50 +5,56 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-05-04 14:56 WIB
-- Current status: field `Kompetensi/Capaian`, `Tujuan Pembelajaran`, `Indikator Soal`, dan `Ruang Lingkup Materi` pada modal `Kisi-kisi & Kartu Soal` sekarang langsung berupa dropdown referensi perangkat ajar. Textarea manual di bawah field tersebut sudah dihapus agar guru tinggal memilih CP/kompetensi, TP, IKTP, dan materi dari perangkat ajar yang tersedia.
+- Last updated: 2026-05-04 15:48 WIB
+- Current status: Batch 1 fondasi backend untuk fitur `Jurnal Mengajar Guru` sudah live. Schema Prisma, migration database, route API, dan controller dasar untuk daftar sesi jurnal serta create/update detail jurnal per sesi sudah tersedia dengan basis utama `scheduleEntryId` dan tahun ajaran aktif.
 - Objective/task aktif:
-  - Mengintegrasikan dokumen perangkat ajar guru ke workflow ujian, khususnya agar guru tidak mengetik ulang CP/kompetensi, TP, materi, dan IKTP ketika menyusun kisi-kisi/kartu soal.
+  - Mengembangkan fitur `Jurnal Mengajar Guru` yang terhubung ke jadwal mengajar, perangkat ajar, dan presensi mapel sebagai pondasi monitoring kurikulum serta supervisi kepsek.
 - Batch terakhir selesai:
-  - `Teaching resource references for exam blueprint/question card`
-- Progress fitur remedial keseluruhan:
-  - `100%`
-- Progress presensi terpadu saat ini:
-  - `100%` backend audit dan endpoint rekap/detail
-  - `100%` web guru mapel rekap detail
-  - `100%` web wali kelas detail tanggal rekap
-  - `100%` web kurikulum/admin monitoring guru mapel
-  - `100%` mobile parity untuk rekap/detail baru
-  - `100%` status `Dispen` dan UI rekap klik angka
-- Progress roadmap perangkat ajar dinamis:
-  - `100%` untuk rumusan arsitektur generik
-  - `100%` untuk implementasi teknis scope aktif engine generik
-  - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
-  - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
+  - `Teaching journal foundation backend`
+- Progress fitur jurnal mengajar guru:
+  - `20%` keseluruhan roadmap
+  - `100%` Batch 1 foundation backend
+  - `0%` Batch 2 teacher input web/mobile
+  - `0%` Batch 3 integrasi referensi perangkat ajar di form jurnal
+  - `0%` Batch 4 monitoring kurikulum
+  - `0%` Batch 5 supervisi/ringkasan kepsek
 - Last completed repo work:
-  - Commit: `8f7527d`
-  - Title: `fix(exams): use dropdown-only blueprint references`
+  - Commit: `pending current batch commit`
+  - Title: `teaching journal backend foundation`
   - Summary:
-    - empat field referensi utama di modal kisi-kisi/kartu soal tidak lagi menyediakan input teks manual
-    - dropdown menampilkan referensi perangkat ajar yang relevan dan tetap menampilkan `Nilai tersimpan` jika ada data lama yang belum cocok dengan opsi referensi
-    - jika referensi perangkat ajar belum tersedia, field tampil disabled dengan pesan yang jelas, bukan textarea manual
+    - menambah model `TeachingJournal` dan `TeachingJournalReference` di Prisma dengan enum status, mode, dan delivery status
+    - menambah endpoint `/api/teaching-journals/sessions`, `/api/teaching-journals/entries/:id`, dan `/api/teaching-journals/entries`
+    - sesi jurnal dibangkitkan dari `scheduleEntryId`, dibatasi ke tahun ajaran aktif, melewati hari libur, dan menampilkan status jurnal/presensi per sesi
+    - upsert jurnal sudah menahan mismatch `id` vs `scheduleEntryId` dan tidak mengizinkan guru menandai `REVIEWED`
 - Area/file disentuh:
-  - `frontend/src/pages/teacher/exams/ExamEditorPage.tsx`
+  - `backend/prisma/schema.prisma`
+  - `backend/prisma/migrations/20260504161000_add_teaching_journal_foundation/migration.sql`
+  - `backend/src/controllers/teachingJournal.controller.ts`
+  - `backend/src/routes/teachingJournal.routes.ts`
+  - `backend/src/routes/index.ts`
   - `docs/CODEX_CONTINUITY.md`
 - Verifikasi batch ini:
   - `git diff --check`
-  - `cd frontend && npm run build`
-  - `cd frontend && npm run deploy`
-  - `curl -I -s https://siskgb2.id/` -> `HTTP/1.1 200 OK`
+  - `cd backend && npx prisma generate`
+  - `cd backend && npm run build`
+  - `cd backend && npx prisma migrate deploy`
+  - `cd backend && npm run service:restart`
+  - `cd backend && npm run service:health`
+  - `node ... prisma.teachingJournal.count()` -> tabel baru terbaca normal
+  - `curl http://127.0.0.1:3000/api/teaching-journals/sessions` -> `401`, menandakan route baru sudah aktif dan terlindungi auth
 - Publish/live status:
-  - Web sudah deploy live
-  - Tidak ada perubahan backend dan tidak ada restart service pada batch ini
-  - Tidak ada perubahan mobile pada batch ini karena editor kisi-kisi/kartu soal yang tersedia saat ini berada di web
+  - Backend migration sudah applied live
+  - Backend service sudah direload dan health check `200/200`
+  - Tidak ada perubahan web pada batch ini
+  - Tidak ada perubahan mobile pada batch ini
 - Remaining work:
-  - QA manual direkomendasikan: pada akun guru, buka paket ujian seperti mapel `Projek Ilmu Pengetahuan Alam`, buka `Kisi-kisi & Kartu Soal`, lalu pastikan empat field referensi utama muncul sebagai dropdown langsung tanpa textarea manual di bawahnya.
-  - Jika nanti mobile memiliki editor kisi-kisi/kartu soal, parity mobile perlu mengikuti istilah dan alur dropdown web ini.
+  - Batch 2: bangun UI guru untuk daftar sesi jurnal dan form input jurnal
+  - Batch 3: sambungkan picker referensi perangkat ajar ke form jurnal
+  - Batch 4: buat monitoring kurikulum berbasis kepatuhan dan coverage
+  - Batch 5: buat ringkasan supervisi kepsek
 - Residual risk:
-  - Risiko rendah; perubahan frontend-only dan memakai endpoint referensi perangkat ajar existing dengan query key scoped per paket/mapel/kelas. Tidak ada polling, endpoint baru, atau perubahan data flow backend.
+  - Risiko rendah-sedang; perubahan backend menambah tabel dan route baru tetapi tidak mengubah alur runtime existing lain.
+  - Endpoint daftar sesi untuk role non-teacher saat ini masih bisa membaca scope aktif tahun ajaran secara cukup lebar dalam rentang tanggal yang dipilih; Batch 4 perlu menambahkan filter/pagination UI yang disiplin agar monitoring tetap hemat beban.
 
 ## Status Saat Ini
 

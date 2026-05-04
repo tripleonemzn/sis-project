@@ -99,6 +99,8 @@ model User {
   cpTpAnalyses                                       CpTpAnalysis[]
   teachingResourceEntriesAuthored                    TeachingResourceEntry[]             @relation("TeachingResourceEntryAuthor")
   teachingResourceEntriesReviewed                    TeachingResourceEntry[]             @relation("TeachingResourceEntryReviewer")
+  teachingJournalsAuthored                           TeachingJournal[]                   @relation("TeachingJournalAuthor")
+  teachingJournalsReviewed                           TeachingJournal[]                   @relation("TeachingJournalReviewer")
   dailyAttendances                                   DailyAttendance[]
   dailyPresenceCheckIns                              DailyAttendance[]                   @relation("DailyAttendanceCheckInActor")
   dailyPresenceCheckOuts                             DailyAttendance[]                   @relation("DailyAttendanceCheckOutActor")
@@ -423,6 +425,7 @@ model AcademicYear {
   osisJoinRequests               OsisJoinRequest[]
   teachingResourceProgramConfigs TeachingResourceProgramConfig[]
   teachingResourceEntries        TeachingResourceEntry[]
+  teachingJournals              TeachingJournal[]
   bpbkCounselings                BpBkCounseling[]
   officeLetters                  OfficeLetter[]
   committeeEvents                CommitteeEvent[]
@@ -567,6 +570,66 @@ model TeachingResourceEntry {
   @@index([teacherId, academicYearId, programCode])
   @@index([submittedAt, status])
   @@map("teaching_resource_entries")
+}
+
+model TeachingJournal {
+  id                  Int                            @id @default(autoincrement())
+  academicYearId      Int
+  teacherId           Int
+  reviewerId          Int?
+  teacherAssignmentId Int
+  scheduleEntryId     Int
+  classId             Int
+  subjectId           Int
+  journalDate         DateTime
+  period              Int
+  room                String?
+  teachingMode        TeachingJournalMode           @default(REGULAR)
+  deliveryStatus      TeachingJournalDeliveryStatus @default(COMPLETED)
+  status              TeachingJournalStatus         @default(DRAFT)
+  startedAt           DateTime?
+  endedAt             DateTime?
+  notes               String?
+  obstacles           String?
+  followUpPlan        String?
+  submittedAt         DateTime?
+  reviewedAt          DateTime?
+  reviewNote          String?
+  createdAt           DateTime                      @default(now())
+  updatedAt           DateTime                      @updatedAt
+  academicYear        AcademicYear                  @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+  teacher             User                          @relation("TeachingJournalAuthor", fields: [teacherId], references: [id], onDelete: Cascade)
+  reviewer            User?                         @relation("TeachingJournalReviewer", fields: [reviewerId], references: [id], onDelete: SetNull)
+  teacherAssignment   TeacherAssignment             @relation(fields: [teacherAssignmentId], references: [id], onDelete: Cascade)
+  scheduleEntry       ScheduleEntry                 @relation(fields: [scheduleEntryId], references: [id], onDelete: Cascade)
+  class               Class                         @relation(fields: [classId], references: [id], onDelete: Cascade)
+  subject             Subject                       @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  references          TeachingJournalReference[]
+
+  @@unique([academicYearId, scheduleEntryId, journalDate])
+  @@index([teacherId, academicYearId, journalDate])
+  @@index([teacherAssignmentId, journalDate])
+  @@index([classId, subjectId, journalDate])
+  @@index([status, submittedAt])
+  @@map("teaching_journals")
+}
+
+model TeachingJournalReference {
+  id                  Int             @id @default(autoincrement())
+  journalId           Int
+  sourceProgramCode   String
+  sourceEntryId       Int?
+  sourceFieldIdentity String?
+  selectionToken      String?
+  value               String
+  label               String?
+  snapshot            Json?
+  createdAt           DateTime        @default(now())
+  journal             TeachingJournal @relation(fields: [journalId], references: [id], onDelete: Cascade)
+
+  @@index([journalId])
+  @@index([sourceProgramCode, sourceEntryId])
+  @@map("teaching_journal_references")
 }
 
 model StudentPermission {
@@ -808,6 +871,7 @@ model Class {
   examSchedules           ExamSchedule[]
   materials               Material[]
   scheduleEntries         ScheduleEntry[]
+  teachingJournals        TeachingJournal[]
   teacherAssignments      TeacherAssignment[]
   students                User[]                      @relation("StudentClass")
   financeTariffRules      FinanceTariffRule[]
@@ -936,6 +1000,7 @@ model Subject {
   scoreEntries       StudentScoreEntry[]
   studentGrades      StudentGrade[]
   kkms               SubjectKKM[]
+  teachingJournals   TeachingJournal[]
   category           SubjectCategory?    @relation(fields: [categoryId], references: [id])
   parent             Subject?            @relation("SubjectHierarchy", fields: [parentId], references: [id])
   children           Subject[]           @relation("SubjectHierarchy")
@@ -981,6 +1046,7 @@ model TeacherAssignment {
   kkm                  Int             @default(75)
   competencyThresholds Json?
   scheduleEntries      ScheduleEntry[]
+  teachingJournals     TeachingJournal[]
   academicYear         AcademicYear    @relation(fields: [academicYearId], references: [id])
   class                Class           @relation(fields: [classId], references: [id])
   subject              Subject         @relation(fields: [subjectId], references: [id])
@@ -1004,6 +1070,7 @@ model ScheduleEntry {
   academicYear        AcademicYear      @relation(fields: [academicYearId], references: [id])
   class               Class             @relation(fields: [classId], references: [id])
   teacherAssignment   TeacherAssignment @relation(fields: [teacherAssignmentId], references: [id], onDelete: Cascade)
+  teachingJournals    TeachingJournal[]
 
   @@unique([classId, academicYearId, dayOfWeek, period])
   @@map("schedule_entries")
@@ -3515,6 +3582,27 @@ enum TeachingResourceEntryStatus {
   SUBMITTED
   APPROVED
   REJECTED
+}
+
+enum TeachingJournalStatus {
+  DRAFT
+  SUBMITTED
+  REVIEWED
+}
+
+enum TeachingJournalDeliveryStatus {
+  COMPLETED
+  PARTIAL
+  NOT_DELIVERED
+  RESCHEDULED
+}
+
+enum TeachingJournalMode {
+  REGULAR
+  SUBSTITUTE
+  ENRICHMENT
+  REMEDIAL
+  ASSESSMENT
 }
 
 enum ExamType {
