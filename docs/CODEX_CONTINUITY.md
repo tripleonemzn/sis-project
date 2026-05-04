@@ -5,12 +5,12 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-05-04 13:20 WIB
-- Current status: approval Kurikulum perangkat ajar sekarang otomatis meneruskan paket ke Kepala Sekolah. Tidak ada lagi langkah manual `Ajukan ke Kepala Sekolah` setelah Kurikulum menekan `Setujui Paket`; status langsung menjadi `SUBMITTED_TO_PRINCIPAL` dan muncul di menu Principal `PERANGKAT AJAR > Persetujuan Perangkat Ajar`.
+- Last updated: 2026-05-04 14:30 WIB
+- Current status: kisi-kisi dan kartu soal guru sekarang bisa mengambil referensi dari perangkat ajar yang sudah dibuat guru. Pada modal `Kisi-kisi & Kartu Soal`, field `Kompetensi/Capaian`, `Tujuan Pembelajaran`, `Indikator Soal`, dan `Ruang Lingkup Materi` memiliki dropdown referensi dinamis dari CP, ATP, Prota, dan KKTP sesuai konteks mapel/kelas/tahun ajaran paket ujian. Kartu soal tetap mengikuti data blueprint yang sama, sehingga saat kisi-kisi diisi dari referensi, kartu soal ikut sinkron.
 - Objective/task aktif:
-  - Menjadikan review perangkat ajar sebagai alur paket: Guru kirim paket mapel lengkap ke Kurikulum, Kurikulum setujui/kembalikan, paket yang disetujui otomatis masuk ke Kepala Sekolah, Kepala Sekolah setujui final, lalu print dokumen menampilkan QR tanda tangan guru dan kepala sekolah.
+  - Mengintegrasikan dokumen perangkat ajar guru ke workflow ujian, khususnya agar guru tidak mengetik ulang CP/kompetensi, TP, materi, dan IKTP ketika menyusun kisi-kisi/kartu soal.
 - Batch terakhir selesai:
-  - `Teaching resource review auto-submit to principal`
+  - `Teaching resource references for exam blueprint/question card`
 - Progress fitur remedial keseluruhan:
   - `100%`
 - Progress presensi terpadu saat ini:
@@ -26,36 +26,30 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `100%` untuk builder Wakakur generasi baru pada scope roadmap saat ini
   - `100%` untuk integrasi berantai antar-dokumen generik pada roadmap baru
 - Last completed repo work:
-  - Commit: `5295590`
-  - Title: `fix(teaching-resources): auto forward curriculum approval`
+  - Commit: `b00b56f`
+  - Title: `feat(exams): link blueprint fields to teaching resources`
   - Summary:
-    - action `APPROVE` Kurikulum kini menyimpan meta status `SUBMITTED_TO_PRINCIPAL`, sekaligus mengisi `principalSubmittedAt` dan `principalSubmittedBy`
-    - tombol manual `Ajukan ke Kepala Sekolah` di tab Kurikulum dihapus dari UI karena alur sudah otomatis
-    - data paket KGB2G071 yang telanjur `CURRICULUM_APPROVED` di-upgrade menjadi `SUBMITTED_TO_PRINCIPAL`
+    - modal `Kisi-kisi & Kartu Soal` sekarang membaca referensi perangkat ajar melalui service `teachingResourceProgramService.getReferenceEntries`
+    - dropdown referensi ditambahkan untuk `Kompetensi/Capaian`, `Tujuan Pembelajaran`, `Indikator Soal`, dan `Ruang Lingkup Materi`
+    - opsi agregat/multiline dari perangkat ajar dipecah menjadi pilihan per poin agar guru bisa memilih TP/IKTP spesifik
+    - konteks referensi mengikuti assignment/paket ujian yang aktif: mapel, tingkat kelas, program keahlian, semester, dan tahun ajaran aktif
 - Area/file disentuh:
-  - `backend/src/controllers/teachingResourceProgram.controller.ts`
-  - `frontend/src/pages/teacher/learning-resources/LearningResourceReviewSubmissionPage.tsx`
+  - `frontend/src/pages/teacher/exams/ExamEditorPage.tsx`
   - `docs/CODEX_CONTINUITY.md`
 - Verifikasi batch ini:
   - `git diff --check`
-  - `cd backend && npm run build`
   - `cd frontend && npm run build`
-  - DB verification script:
-    - KGB2G071 `XII TKJ` entries `CP`, `ATP`, `PROTA`, `PROMES`, `KKTP`, `MATRIKS_SEBARAN` sekarang `entryStatus APPROVED` dan `packageStatus SUBMITTED_TO_PRINCIPAL`
-  - `cd backend && npm run service:restart`
-  - `cd backend && npm run service:health` -> `Backend:200`, `Backend API:200`
   - `cd frontend && npm run deploy`
-  - `curl -I -s 'https://siskgb2.id/teacher/learning-resources/review-submissions?view=curriculum' | head -n 1` -> `HTTP/1.1 200 OK`
-  - `curl -I -s 'https://siskgb2.id/principal/learning-resources/review-submissions?view=principal' | head -n 1` -> `HTTP/1.1 200 OK`
+  - `curl -I -s 'https://siskgb2.id/' | head -n 1` -> `HTTP/1.1 200 OK`
 - Publish/live status:
   - Web sudah deploy live
-  - Backend sudah reload dan health check sukses
-  - Tidak ada perubahan mobile pada batch ini
+  - Tidak ada perubahan backend dan tidak ada restart service pada batch ini
+  - Tidak ada perubahan mobile pada batch ini karena editor kisi-kisi/kartu soal yang tersedia saat ini berada di web
 - Remaining work:
-  - QA manual end-to-end workflow paket review tetap direkomendasikan: Kurikulum buka `Review Detail`, isi komentar paket/dokumen, minta revisi atau setujui, lalu Kepala Sekolah menerima paket otomatis dan menyetujui final.
-  - QA manual print final setelah approval tetap direkomendasikan untuk memastikan QR tanda tangan guru dan kepala sekolah muncul sesuai status final.
+  - QA manual direkomendasikan: buka paket ujian yang mendukung `Kisi-kisi & Kartu Soal`, pilih dropdown referensi CP/TP/IKTP/materi, simpan paket, lalu cek kartu soal ikut membaca data blueprint yang sama.
+  - Jika nanti mobile memiliki editor kisi-kisi/kartu soal, parity mobile perlu mengikuti istilah dan alur dropdown web ini.
 - Residual risk:
-  - Risiko rendah; perubahan hanya memindahkan status workflow pada aksi approval Kurikulum dan UI tombol terkait, tanpa endpoint/query berat baru.
+  - Risiko rendah; perubahan frontend-only dan memakai endpoint referensi perangkat ajar existing dengan query key scoped per paket/mapel/kelas. Tidak ada polling, endpoint baru, atau perubahan data flow backend.
 
 ## Status Saat Ini
 
