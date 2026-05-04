@@ -5,6 +5,35 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
+- Last updated: 2026-05-04 18:50 WIB
+- Current status: Audit dan repair data paket remedial lama selesai. Ditemukan 2 paket remedial lama yang masih nyasar di `FORMATIF/Ulangan Harian`, lalu sudah dikoreksi ke `SBTS` dan diberi marker internal `Paket Remedial` agar tampil di tab remedial SBTS.
+- Objective/task aktif:
+  - Menelusuri paket remedial yang dibuat sebelum fix program routing remedial, terutama contoh akun `KGB2G103`, lalu menyesuaikan paket yang nyasar sesuai program ujian sumbernya.
+- Batch terakhir selesai:
+  - `Remedial legacy packet data repair`
+- Progress:
+  - `100%` audit data paket remedial lama
+  - `100%` apply koreksi data terbatas
+  - `100%` verifikasi pasca-koreksi
+- Last completed data repair:
+  - Packet `75` milik `KGB2G103` / `Suci Annisa, S.Pd`, mapel `KJ02 Bahasa Inggris`, semester `EVEN`: `FORMATIF` -> `SBTS`, marker remedial ditambahkan.
+  - Packet `76` milik `KGB2G099` / `Wiwiet Yuliana Putri, S.T.`, mapel `KK03 Dasar-dasar Teknik Komputer dan Jaringan`, semester `EVEN`: `FORMATIF` -> `SBTS`, marker remedial ditambahkan.
+- Verifikasi batch ini:
+  - Audit `student_score_remedials` dengan packet linked: `0` row linked, jadi tidak ada record remedial siswa yang perlu koreksi relasi.
+  - Audit paket remedial-like unscheduled `FORMATIF` sebelum apply: `2` paket, semuanya bisa dipetakan aman ke `SBTS`.
+  - Verifikasi setelah apply: remaining remedial-like unscheduled `FORMATIF` = `0`.
+  - `cd backend && npm run service:health` -> `Backend:200`, `Backend API:200`.
+- Publish/live status:
+  - Tidak ada deploy/restart baru yang diperlukan karena perubahan ini hanya koreksi data database.
+  - UI web/backend sudah live dari batch remedial sebelumnya.
+  - Mobile OTA tidak diperlukan karena tidak ada perubahan kode mobile.
+- Remaining work:
+  - Tidak ada sisa pekerjaan untuk repair data remedial legacy ini.
+- Residual risk:
+  - Risiko rendah karena update dibatasi ke 2 packet ID hasil audit dan tidak menyentuh soal, nilai, schedule, atau jawaban siswa.
+
+## Update Sebelumnya
+
 - Last updated: 2026-05-04 18:44 WIB
 - Current status: Follow-up fitur remedial ujian sudah selesai, terverifikasi, dipush, dan live. Paket soal yang dibuat dari flow remedial sekarang mengikuti jenis/program ujian sumbernya, misalnya remedial SBTS membuat paket SBTS dan tampil pada tab `Paket Remedial` di halaman SBTS, bukan lagi masuk ke FORMATIF/Ulangan Harian.
 - Objective/task aktif:
