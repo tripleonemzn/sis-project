@@ -102,13 +102,13 @@ function setActiveAcademicYearCache(payload: unknown) {
 
 function assertAcademicPromotionV2Enabled() {
   if (!isAcademicPromotionV2Enabled()) {
-    throw new ApiError(403, 'Fitur promotion kenaikan kelas belum diaktifkan di server.');
+    throw new ApiError(403, 'Fitur kenaikan dan kelulusan belum diaktifkan di server.');
   }
 }
 
 function assertAcademicYearRolloverEnabled() {
   if (!isAcademicYearRolloverEnabled()) {
-    throw new ApiError(403, 'Fitur rollover tahun ajaran belum diaktifkan di server.');
+    throw new ApiError(403, 'Fitur salin data tahun ajaran belum diaktifkan di server.');
   }
 }
 
@@ -482,7 +482,7 @@ export const createAcademicYearRolloverTargetController = asyncHandler(async (re
     new ApiResponse(
       result.created ? 201 : 200,
       result,
-      result.created ? 'Draft tahun ajaran target berhasil dibuat' : 'Draft tahun ajaran target sudah tersedia',
+      result.created ? 'Tahun ajaran baru berhasil dibuat' : 'Tahun ajaran baru sudah tersedia',
     ),
   );
 });
@@ -495,7 +495,7 @@ export const getAcademicYearRolloverWorkspaceController = asyncHandler(async (re
   const workspace = await getAcademicYearRolloverWorkspace(Number(id), query.targetAcademicYearId);
 
   res.status(200).json(
-    new ApiResponse(200, workspace, 'Workspace rollover tahun ajaran berhasil diambil'),
+    new ApiResponse(200, workspace, 'Data salin tahun sebelumnya berhasil diambil'),
   );
 });
 
@@ -546,7 +546,7 @@ export const applyAcademicYearRolloverController = asyncHandler(async (req: Requ
   }
 
   res.status(200).json(
-    new ApiResponse(200, result, 'Clone setup tahun ajaran berhasil diterapkan'),
+    new ApiResponse(200, result, 'Data tahun ajaran baru berhasil disalin'),
   );
 });
 
@@ -558,7 +558,7 @@ export const getAcademicPromotionWorkspaceController = asyncHandler(async (req: 
   const workspace = await getAcademicPromotionWorkspace(Number(id), query.targetAcademicYearId);
 
   res.status(200).json(
-    new ApiResponse(200, workspace, 'Workspace promotion berhasil diambil'),
+    new ApiResponse(200, workspace, 'Data kenaikan dan kelulusan berhasil diambil'),
   );
 });
 
@@ -574,7 +574,7 @@ export const saveAcademicPromotionMappingsController = asyncHandler(async (req: 
   });
 
   res.status(200).json(
-    new ApiResponse(200, workspace, 'Mapping promotion berhasil disimpan'),
+    new ApiResponse(200, workspace, 'Tujuan kelas berhasil disimpan'),
   );
 });
 
@@ -617,7 +617,7 @@ export const commitAcademicPromotionController = asyncHandler(async (req: Reques
   }
 
   res.status(200).json(
-    new ApiResponse(200, result, 'Promotion berhasil di-commit'),
+    new ApiResponse(200, result, 'Kenaikan dan kelulusan berhasil diproses'),
   );
 });
 
@@ -676,69 +676,13 @@ export const rollbackAcademicPromotionController = asyncHandler(async (req: Requ
   }
 
   res.status(200).json(
-    new ApiResponse(200, result, 'Promotion berhasil di-rollback'),
+    new ApiResponse(200, result, 'Proses kenaikan dan kelulusan berhasil dibatalkan'),
   );
 });
 
-export const promoteAcademicYear = asyncHandler(async (req: Request, res: Response) => {
-  const { id } = req.params;
-  const { newAcademicYearId } = req.body as { newAcademicYearId: number };
-
-  const currentYear = await prisma.academicYear.findUnique({
-    where: { id: Number(id) },
-    include: { classes: true },
-  });
-  if (!currentYear) {
-    throw new ApiError(404, 'Tahun akademik (saat ini) tidak ditemukan');
-  }
-
-  const newYear = await prisma.academicYear.findUnique({
-    where: { id: Number(newAcademicYearId) },
-    include: { classes: true },
-  });
-  if (!newYear) {
-    throw new ApiError(404, 'Tahun akademik (baru) tidak ditemukan');
-  }
-
-  const newYearClassesByKey = new Map<string, { id: number }>();
-  for (const c of newYear.classes) {
-    // key: majorId-level
-    // @ts-ignore majorId exists on Class
-    newYearClassesByKey.set(`${c.majorId}-${c.level}`, { id: c.id });
-  }
-
-  const promotionSummary: { moved: number; graduated: number; errors: string[] } = {
-    moved: 0,
-    graduated: 0,
-    errors: [],
-  };
-
-  // Promote X->XI and XI->XII, Graduate XII
-  for (const c of currentYear.classes) {
-    // @ts-ignore access fields present on Class
-    const keyMajorId = c.majorId;
-    const level = c.level;
-
-    if (level === 'X' || level === 'XI') {
-      const nextLevel = level === 'X' ? 'XI' : 'XII';
-      const target = newYearClassesByKey.get(`${keyMajorId}-${nextLevel}`);
-      if (!target) {
-        promotionSummary.errors.push(`Kelas target tidak ditemukan untuk majorId=${keyMajorId} level=${nextLevel}`);
-        continue;
-      }
-      const result = await prisma.user.updateMany({
-        where: { classId: c.id, role: 'STUDENT' },
-        data: { classId: target.id },
-      });
-      promotionSummary.moved += result.count;
-    } else if (level === 'XII') {
-      const result = await prisma.user.updateMany({
-        where: { classId: c.id, role: 'STUDENT' },
-        data: { classId: null, studentStatus: 'GRADUATED' },
-      });
-      promotionSummary.graduated += result.count;
-    }
-  }
-
-  res.status(200).json(new ApiResponse(200, promotionSummary, 'Proses kenaikan kelas selesai'));
+export const promoteAcademicYear = asyncHandler(async (_req: Request, _res: Response) => {
+  throw new ApiError(
+    410,
+    'Endpoint kenaikan kelas lama sudah dinonaktifkan demi keamanan data. Gunakan alur Tahun Ajaran Baru: Salin Data Tahun Sebelumnya, simpan Tujuan Kelas, lalu Proses Kenaikan & Kelulusan.',
+  );
 });

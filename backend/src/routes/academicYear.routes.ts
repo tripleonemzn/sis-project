@@ -49,6 +49,7 @@ router.get('/:id/promotion-v2', getAcademicPromotionWorkspaceController);
 router.put('/:id/promotion-v2/mappings', saveAcademicPromotionMappingsController);
 router.post('/:id/promotion-v2/commit', commitAcademicPromotionController);
 router.post('/:id/promotion-v2/runs/:runId/rollback', rollbackAcademicPromotionController);
+// Legacy unsafe promotion endpoint is kept only to return 410 Gone.
 router.post('/:id/promote', promoteAcademicYear);
 
 export default router;
