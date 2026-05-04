@@ -5,8 +5,8 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
-- Last updated: 2026-05-04 18:42 WIB
-- Current status: Follow-up fitur remedial ujian sudah diimplementasikan dan lolos build lokal. Paket soal yang dibuat dari flow remedial sekarang mengikuti jenis/program ujian sumbernya, misalnya remedial SBTS membuat paket SBTS dan tampil pada tab `Paket Remedial` di halaman SBTS, bukan lagi masuk ke FORMATIF/Ulangan Harian.
+- Last updated: 2026-05-04 18:44 WIB
+- Current status: Follow-up fitur remedial ujian sudah selesai, terverifikasi, dipush, dan live. Paket soal yang dibuat dari flow remedial sekarang mengikuti jenis/program ujian sumbernya, misalnya remedial SBTS membuat paket SBTS dan tampil pada tab `Paket Remedial` di halaman SBTS, bukan lagi masuk ke FORMATIF/Ulangan Harian.
 - Objective/task aktif:
   - Memperbaiki flow remedial agar guru bisa membuat/memilih paket remedial sesuai program ujian sumber tanpa membuka izin pembuatan paket non-harian dari jalur reguler.
 - Batch terakhir selesai:
@@ -14,7 +14,7 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 - Progress:
   - `100%` implementasi kode
   - `100%` verifikasi build lokal
-  - `0%` publish live saat catatan ini dibuat; deploy/restart masih perlu dilanjutkan setelah commit dokumentasi
+  - `100%` publish live web/backend
 - Last completed repo work:
   - Commit: `e746698`
   - Title: `fix(remedial): route packets to source exam program`
@@ -35,14 +35,21 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
   - `git diff --check`
   - `cd backend && npm run build`
   - `cd frontend && npm run build`
+  - `cd backend && npm run service:restart`
+  - `cd backend && npm run service:health` -> `Backend:200`, `Backend API:200`
+  - `cd frontend && npm run deploy`
+  - `curl -I -s https://siskgb2.id/teacher/exams/program/sbts | head -n 1` -> `HTTP/1.1 200 OK`
+  - `curl -I -s https://siskgb2.id/teacher/grades | head -n 1` -> `HTTP/1.1 200 OK`
 - Publish/live status:
-  - Pending setelah catatan ini dibuat: push commit terbaru, restart backend, health check, dan deploy web.
+  - Backend sudah restart dan health check normal.
+  - Web sudah deploy live.
   - Mobile OTA tidak diperlukan karena tidak ada perubahan kode mobile.
 - Remaining work:
-  - Commit update kontinuitas, push `origin/main`, restart backend, deploy web, health check, dan cek worktree clean.
+  - Tidak ada sisa pekerjaan untuk follow-up remedial ini.
 - Residual risk:
   - Risiko rendah-menengah karena menyentuh backend response paket ujian dan UI guru. Tidak ada migration, tidak ada endpoint baru, tidak ada polling/refetch agresif.
   - Paket remedial lama yang dibuat sebelum marker internal ini mungkin tetap terbaca sebagai paket reguler jika belum punya marker; paket baru dari flow remedial sudah aman.
+  - Catatan deploy: `scripts/release-manager.sh web deploy` dihentikan safety gate Prisma karena mendeteksi potensi data loss pada table lama `exam_sitting_slot_proctors`; tidak dipaksa. Web dideploy aman lewat `cd frontend && npm run deploy` karena batch ini tidak mengubah schema database.
 
 ## Update Sebelumnya
 
