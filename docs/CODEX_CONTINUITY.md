@@ -5,6 +5,47 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
+- Last updated: 2026-05-04 18:42 WIB
+- Current status: Follow-up fitur remedial ujian sudah diimplementasikan dan lolos build lokal. Paket soal yang dibuat dari flow remedial sekarang mengikuti jenis/program ujian sumbernya, misalnya remedial SBTS membuat paket SBTS dan tampil pada tab `Paket Remedial` di halaman SBTS, bukan lagi masuk ke FORMATIF/Ulangan Harian.
+- Objective/task aktif:
+  - Memperbaiki flow remedial agar guru bisa membuat/memilih paket remedial sesuai program ujian sumber tanpa membuka izin pembuatan paket non-harian dari jalur reguler.
+- Batch terakhir selesai:
+  - `Remedial exam packet routing follow-up`
+- Progress:
+  - `100%` implementasi kode
+  - `100%` verifikasi build lokal
+  - `0%` publish live saat catatan ini dibuat; deploy/restart masih perlu dilanjutkan setelah commit dokumentasi
+- Last completed repo work:
+  - Commit: `e746698`
+  - Title: `fix(remedial): route packets to source exam program`
+  - Summary:
+    - paket remedial baru diberi marker internal agar bisa dipisah dari paket ujian reguler
+    - daftar paket ujian guru kini memiliki tab `Paket Ujian/Ujian Terjadwal` dan `Paket Remedial`
+    - modal remedial nilai hanya menawarkan paket existing yang sesuai program sumber dan pernah dijadwalkan atau memang paket remedial
+    - tombol `Buat Paket Baru` dari remedial mengirim context program/semester ke editor paket, sehingga SBTS/SAS/SAT tetap berada pada program yang benar
+    - input bobot nilai soal di editor paket sekarang bisa dikosongkan sementara saat diedit, lalu divalidasi ulang saat blur sehingga tidak lagi berubah menjadi angka seperti `133`
+- Area/file disentuh:
+  - `backend/src/controllers/exam.controller.ts`
+  - `frontend/src/services/exam.service.ts`
+  - `frontend/src/pages/teacher/TeacherGradesPage.tsx`
+  - `frontend/src/pages/teacher/exams/ExamEditorPage.tsx`
+  - `frontend/src/pages/teacher/exams/ExamListPage.tsx`
+  - `docs/CODEX_CONTINUITY.md`
+- Verifikasi batch ini:
+  - `git diff --check`
+  - `cd backend && npm run build`
+  - `cd frontend && npm run build`
+- Publish/live status:
+  - Pending setelah catatan ini dibuat: push commit terbaru, restart backend, health check, dan deploy web.
+  - Mobile OTA tidak diperlukan karena tidak ada perubahan kode mobile.
+- Remaining work:
+  - Commit update kontinuitas, push `origin/main`, restart backend, deploy web, health check, dan cek worktree clean.
+- Residual risk:
+  - Risiko rendah-menengah karena menyentuh backend response paket ujian dan UI guru. Tidak ada migration, tidak ada endpoint baru, tidak ada polling/refetch agresif.
+  - Paket remedial lama yang dibuat sebelum marker internal ini mungkin tetap terbaca sebagai paket reguler jika belum punya marker; paket baru dari flow remedial sudah aman.
+
+## Update Sebelumnya
+
 - Last updated: 2026-05-04 18:10 WIB
 - Current status: Follow-up UI web setelah grouping jurnal/jadwal mengajar sudah selesai dan live. Detail `Jam` pada tabel Jurnal Mengajar sekarang memisahkan waktu/JP dan `Ruang : ...`; tab review perangkat ajar untuk Kepsek/Wakakur sudah tidak ambigu; Review Perangkat Ajar Wakakur kini digabung sebagai tab di halaman `Program Perangkat Ajar`.
 - Objective/task aktif:
