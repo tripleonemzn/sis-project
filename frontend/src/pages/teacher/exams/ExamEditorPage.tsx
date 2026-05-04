@@ -39,6 +39,11 @@ import type {
     QuestionMatrixColumn,
     QuestionMatrixRow,
 } from '../../../services/exam.service';
+import {
+    teachingResourceProgramService,
+    type TeachingResourceProjectedReferenceOption,
+    type TeachingResourceReferenceProjectionRequest,
+} from '../../../services/teachingResourceProgram.service';
 import { academicYearService } from '../../../services/academicYear.service';
 import { teacherAssignmentService } from '../../../services/teacherAssignment.service';
 import type { TeacherAssignment } from '../../../services/teacherAssignment.service';
@@ -92,6 +97,51 @@ type TextFieldHistoryState = {
     past: string[];
     future: string[];
 };
+
+type BlueprintReferenceField = 'competency' | 'learningObjective' | 'indicator' | 'materialScope';
+
+type BlueprintReferenceOption = TeachingResourceProjectedReferenceOption & {
+    optionKey: string;
+};
+
+const BLUEPRINT_REFERENCE_PROGRAM_CODES = ['CP', 'ATP', 'PROTA', 'KKTP'];
+
+const BLUEPRINT_REFERENCE_REQUEST_CONFIGS: Array<{
+    requestKey: string;
+    sourceProgramCode: string;
+    candidates: string[];
+}> = [
+    {
+        requestKey: 'blueprint:competency:cp',
+        sourceProgramCode: 'CP',
+        candidates: ['capaian_pembelajaran', 'kompetensi', 'elemen'],
+    },
+    {
+        requestKey: 'blueprint:learningObjective:atp',
+        sourceProgramCode: 'ATP',
+        candidates: ['tujuan_pembelajaran'],
+    },
+    {
+        requestKey: 'blueprint:learningObjective:prota',
+        sourceProgramCode: 'PROTA',
+        candidates: ['tujuan_pembelajaran'],
+    },
+    {
+        requestKey: 'blueprint:materialScope:atp',
+        sourceProgramCode: 'ATP',
+        candidates: ['materi_pokok', 'konten_materi'],
+    },
+    {
+        requestKey: 'blueprint:materialScope:cp',
+        sourceProgramCode: 'CP',
+        candidates: ['konten_materi', 'materi_pokok'],
+    },
+    {
+        requestKey: 'blueprint:indicator:kktp',
+        sourceProgramCode: 'KKTP',
+        candidates: ['indikator_ketercapaian', 'indikator_ketercapaian_tp', 'iktp', 'indikator'],
+    },
+];
 
 function createDefaultBlueprint(): QuestionBlueprint {
     return {
@@ -955,6 +1005,63 @@ function normalizeClassLevelToken(raw?: string | null): string {
     return value;
 }
 
+function splitReferenceLines(value: unknown): string[] {
+    return String(value || '')
+        .split(/\r?\n+/)
+        .map((line) => line.trim())
+        .filter((line) => Boolean(line && !['-', '—', '–'].includes(line)));
+}
+
+function getSnapshotValue(snapshot: Record<string, string> | undefined, candidates: string[]): string {
+    if (!snapshot) return '';
+    const normalizedCandidates = candidates.map((candidate) => candidate.toLowerCase());
+    const entries = Object.entries(snapshot);
+    for (const [key, value] of entries) {
+        const normalizedKey = key.toLowerCase();
+        if (normalizedCandidates.includes(normalizedKey)) {
+            return String(value || '').trim();
+        }
+    }
+    return '';
+}
+
+function expandBlueprintReferenceOption(option: TeachingResourceProjectedReferenceOption): BlueprintReferenceOption[] {
+    const lines = splitReferenceLines(option.value);
+    if (lines.length <= 1) {
+        return [
+            {
+                ...option,
+                value: String(option.value || '').trim(),
+                label: String(option.value || option.label || '').trim(),
+                optionKey: `${option.requestKey}::${option.selectValue}`,
+            },
+        ];
+    }
+
+    return lines.map((line, index) => {
+        const lineSnapshot = Object.entries(option.snapshot || {}).reduce<Record<string, string>>((acc, [key, rawValue]) => {
+            const valueLines = splitReferenceLines(rawValue);
+            acc[key] = valueLines.length === lines.length ? valueLines[index] || '' : String(rawValue || '').trim();
+            return acc;
+        }, {});
+        return {
+            ...option,
+            value: line,
+            label: line,
+            snapshot: lineSnapshot,
+            isAggregate: false,
+            lineCount: 1,
+            optionKey: `${option.requestKey}::${option.selectValue}::line-${index}`,
+        };
+    });
+}
+
+function buildReferenceOptionText(option: BlueprintReferenceOption): string {
+    const source = String(option.sourceProgramCode || '').trim();
+    const value = String(option.value || option.label || '').trim();
+    return source ? `${value} (${source})` : value;
+}
+
 function buildAssignmentDisplayLabel(assignment: TeacherAssignment): string {
     const subjectName = String(assignment.subject?.name || '-').trim();
     const className = String(assignment.class?.name || '-').trim();
@@ -1205,6 +1312,106 @@ export const ExamEditorPage = () => {
             .filter((name) => Boolean(name));
         return Array.from(new Set(classNames));
     }, [loadedPacket?.schedules]);
+    const selectedAssignmentForReferences = useMemo(() => {
+        const selected = assignmentOptions.find((assignment) => assignment.id === selectedTeacherAssignmentId);
+        if (selected) return selected;
+
+        const scheduledClassNameSet = new Set(curriculumScheduledClassNames.map((name) => name.toLowerCase()));
+        const sameSubjectAssignments = assignmentOptions.filter(
+            (assignment) => Number(assignment.subject?.id || 0) === selectedSubjectId,
+        );
+        if (scheduledClassNameSet.size > 0) {
+            const byScheduledClass = sameSubjectAssignments.find((assignment) =>
+                scheduledClassNameSet.has(String(assignment.class?.name || '').trim().toLowerCase()),
+            );
+            if (byScheduledClass) return byScheduledClass;
+        }
+
+        return sameSubjectAssignments[0] || null;
+    }, [assignmentOptions, curriculumScheduledClassNames, selectedSubjectId, selectedTeacherAssignmentId]);
+
+    const teachingResourceReferenceContext = useMemo(() => {
+        const classNameHint = curriculumScheduledClassNames[0] || '';
+        const classLevel =
+            normalizeClassLevelToken(selectedAssignmentForReferences?.class?.level) ||
+            normalizeClassLevelToken(selectedAssignmentForReferences?.class?.name) ||
+            normalizeClassLevelToken(classNameHint);
+        return {
+            subjectId: selectedSubjectId || undefined,
+            classLevel: classLevel || undefined,
+            programKeahlian: String(selectedAssignmentForReferences?.class?.major?.name || '').trim() || undefined,
+            semester: selectedPacketSemester === 'EVEN' ? 'Genap' : 'Ganjil',
+        };
+    }, [curriculumScheduledClassNames, selectedAssignmentForReferences, selectedPacketSemester, selectedSubjectId]);
+
+    const teachingResourceReferenceRequests = useMemo<TeachingResourceReferenceProjectionRequest[]>(() => {
+        if (!selectedSubjectId) return [];
+        return BLUEPRINT_REFERENCE_REQUEST_CONFIGS.map((request) => ({
+            ...request,
+            matchBySubject: Boolean(teachingResourceReferenceContext.subjectId),
+            matchByClassLevel: Boolean(teachingResourceReferenceContext.classLevel),
+            matchByMajor: Boolean(teachingResourceReferenceContext.programKeahlian),
+            matchByActiveSemester: false,
+            context: teachingResourceReferenceContext,
+        }));
+    }, [selectedSubjectId, teachingResourceReferenceContext]);
+
+    const teachingResourceReferencesQuery = useQuery({
+        queryKey: [
+            'exam-blueprint-teaching-resource-references',
+            selectedAcademicYearId,
+            selectedSubjectId,
+            teachingResourceReferenceContext.classLevel || '',
+            teachingResourceReferenceContext.programKeahlian || '',
+            selectedPacketSemester,
+        ],
+        enabled:
+            supportsQuestionSupport &&
+            selectedAcademicYearId > 0 &&
+            selectedSubjectId > 0 &&
+            teachingResourceReferenceRequests.length > 0,
+        staleTime: 2 * 60 * 1000,
+        queryFn: () =>
+            teachingResourceProgramService.getReferenceEntries({
+                academicYearId: selectedAcademicYearId,
+                programCodes: BLUEPRINT_REFERENCE_PROGRAM_CODES,
+                limitPerProgram: 200,
+                includeRows: false,
+                referenceRequests: teachingResourceReferenceRequests,
+            }),
+    });
+
+    const blueprintReferenceOptionsByField = useMemo<Record<BlueprintReferenceField, BlueprintReferenceOption[]>>(() => {
+        const empty: Record<BlueprintReferenceField, BlueprintReferenceOption[]> = {
+            competency: [],
+            learningObjective: [],
+            indicator: [],
+            materialScope: [],
+        };
+        const pushedKeys = new Set<string>();
+        const pushOption = (field: BlueprintReferenceField, option: BlueprintReferenceOption) => {
+            const value = String(option.value || '').trim();
+            if (!value) return;
+            const dedupeKey = `${field}::${option.sourceProgramCode}::${value}`.toLowerCase();
+            if (pushedKeys.has(dedupeKey)) return;
+            pushedKeys.add(dedupeKey);
+            empty[field].push(option);
+        };
+
+        const programs = teachingResourceReferencesQuery.data?.data?.programs || [];
+        programs.forEach((program) => {
+            (program.options || []).forEach((rawOption) => {
+                expandBlueprintReferenceOption(rawOption).forEach((option) => {
+                    if (option.requestKey.includes(':competency:')) pushOption('competency', option);
+                    if (option.requestKey.includes(':learningObjective:')) pushOption('learningObjective', option);
+                    if (option.requestKey.includes(':materialScope:')) pushOption('materialScope', option);
+                    if (option.requestKey.includes(':indicator:')) pushOption('indicator', option);
+                });
+            });
+        });
+
+        return empty;
+    }, [teachingResourceReferencesQuery.data?.data?.programs]);
     useEffect(() => {
         if (filteredAssignmentsByProgram.length === 0) {
             if (selectedTeacherAssignmentId > 0) {
@@ -2578,6 +2785,77 @@ export const ExamEditorPage = () => {
         activeQuestionReviewFeedback?.questionCardComment,
     );
     const activeQuestionReviewExpanded = Boolean(activeQuestion?.id && expandedReviewNotes[activeQuestion.id]);
+    const hasBlueprintReferenceOptions = Object.values(blueprintReferenceOptionsByField).some((options) => options.length > 0);
+
+    const applyBlueprintReferenceOption = (
+        qId: string,
+        field: BlueprintReferenceField,
+        optionKey: string,
+    ) => {
+        const selectedOption = blueprintReferenceOptionsByField[field].find((option) => option.optionKey === optionKey);
+        if (!selectedOption) return;
+        const question = questions.find((item) => item.id === qId);
+        const currentBlueprint = normalizeBlueprint(question?.blueprint);
+        const snapshot = selectedOption.snapshot || {};
+        const nextBlueprint: QuestionBlueprint = { ...currentBlueprint };
+
+        if (field === 'competency') {
+            nextBlueprint.competency =
+                getSnapshotValue(snapshot, ['capaian_pembelajaran', 'kompetensi', 'elemen']) ||
+                selectedOption.value;
+        }
+
+        if (field === 'learningObjective') {
+            nextBlueprint.learningObjective =
+                getSnapshotValue(snapshot, ['tujuan_pembelajaran']) ||
+                selectedOption.value;
+            const materialFromSnapshot = getSnapshotValue(snapshot, ['materi_pokok', 'konten_materi']);
+            if (materialFromSnapshot) {
+                nextBlueprint.materialScope = materialFromSnapshot;
+            }
+        }
+
+        if (field === 'materialScope') {
+            nextBlueprint.materialScope =
+                getSnapshotValue(snapshot, ['materi_pokok', 'konten_materi']) ||
+                selectedOption.value;
+        }
+
+        if (field === 'indicator') {
+            nextBlueprint.indicator =
+                getSnapshotValue(snapshot, ['indikator_ketercapaian', 'indikator_ketercapaian_tp', 'iktp', 'indikator']) ||
+                selectedOption.value;
+        }
+
+        updateQuestion(qId, { blueprint: nextBlueprint });
+        toast.success('Referensi perangkat ajar diterapkan.');
+    };
+
+    const renderBlueprintReferenceSelect = (
+        field: BlueprintReferenceField,
+        placeholder: string,
+    ) => {
+        const options = blueprintReferenceOptionsByField[field];
+        if (!activeQuestion?.id || options.length === 0) return null;
+        return (
+            <select
+                value=""
+                onChange={(event) => {
+                    const optionKey = event.target.value;
+                    if (!optionKey) return;
+                    applyBlueprintReferenceOption(activeQuestion.id, field, optionKey);
+                }}
+                className="mb-2 w-full rounded-xl border border-blue-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-blue-500 focus:outline-none"
+            >
+                <option value="">{placeholder}</option>
+                {options.map((option) => (
+                    <option key={option.optionKey} value={option.optionKey}>
+                        {buildReferenceOptionText(option)}
+                    </option>
+                ))}
+            </select>
+        );
+    };
 
     const toggleActiveQuestionReview = () => {
         if (!activeQuestion?.id) return;
@@ -4243,11 +4521,22 @@ export const ExamEditorPage = () => {
                                         </span>
                                     </div>
 
+                                    {teachingResourceReferencesQuery.isFetching ? (
+                                        <div className="mb-4 rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-xs text-blue-700">
+                                            Membaca referensi CP, ATP, Prota, dan KKTP dari perangkat ajar yang sudah dibuat.
+                                        </div>
+                                    ) : hasBlueprintReferenceOptions ? (
+                                        <div className="mb-4 rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-xs text-blue-800">
+                                            Pilihan dropdown di bawah mengambil data perangkat ajar sesuai mapel dan kelas paket ujian.
+                                        </div>
+                                    ) : null}
+
                                     <div className="grid grid-cols-1 gap-3">
                                         <div>
                                             <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-blue-700">
                                                 Kompetensi/Capaian
                                             </p>
+                                            {renderBlueprintReferenceSelect('competency', 'Ambil Kompetensi/CP dari perangkat ajar')}
                                             <textarea
                                                 value={activeQuestionBlueprint.competency || ''}
                                                 onChange={(e) => updateQuestionBlueprintField(activeQuestion.id, 'competency', e.target.value)}
@@ -4260,6 +4549,7 @@ export const ExamEditorPage = () => {
                                             <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-blue-700">
                                                 Tujuan Pembelajaran
                                             </p>
+                                            {renderBlueprintReferenceSelect('learningObjective', 'Ambil TP dari ATP/Prota')}
                                             <textarea
                                                 value={activeQuestionBlueprint.learningObjective || ''}
                                                 onChange={(e) => updateQuestionBlueprintField(activeQuestion.id, 'learningObjective', e.target.value)}
@@ -4272,6 +4562,7 @@ export const ExamEditorPage = () => {
                                             <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-blue-700">
                                                 Indikator Soal
                                             </p>
+                                            {renderBlueprintReferenceSelect('indicator', 'Ambil IKTP dari KKTP')}
                                             <textarea
                                                 value={activeQuestionBlueprint.indicator || ''}
                                                 onChange={(e) => updateQuestionBlueprintField(activeQuestion.id, 'indicator', e.target.value)}
@@ -4284,6 +4575,7 @@ export const ExamEditorPage = () => {
                                             <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-blue-700">
                                                 Ruang Lingkup Materi
                                             </p>
+                                            {renderBlueprintReferenceSelect('materialScope', 'Ambil materi dari ATP/CP')}
                                             <textarea
                                                 value={activeQuestionBlueprint.materialScope || ''}
                                                 onChange={(e) => updateQuestionBlueprintField(activeQuestion.id, 'materialScope', e.target.value)}
