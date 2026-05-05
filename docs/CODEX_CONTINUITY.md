@@ -5,6 +5,57 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
+- Last updated: 2026-05-05 09:13 WIB
+- Current status: Fix paket remedial KGB2G103 tenggat berakhir selesai, terverifikasi, dipublish live, dan data sample sudah bisa dikerjakan lagi. Aktivitas remedial guru `KGB2G103` sekarang tidak ada yang expired aktif (`total=8`, `expired=0`) dengan tenggat baru `2026-05-12 23:59 WIB`.
+- Objective/task aktif:
+  - Menutup kasus guru `KGB2G103` / Suci Annisa, S.Pd: paket remedial sudah dibuat dan publish tetapi siswa melihat status `Tenggat Berakhir`.
+  - Menambahkan kontrol agar guru bisa mengedit tenggat/judul/catatan aktivitas remedial dan membatalkan remedial yang belum dikumpulkan siswa.
+  - Menambahkan kemampuan hapus paket remedial yang aman untuk paket remedial yang belum dipakai.
+- Last completed repo work:
+  - Commit: `ee50538`
+  - Title: `fix(remedial): allow managing published activities`
+  - Summary:
+    - data production KGB2G103 diperbaiki: 8 aktivitas remedial SBTS Bahasa Inggris diperpanjang sampai `2026-05-12T16:59:00.000Z`
+    - backend menolak publish/update remedial jika tenggat sudah lewat atau terlalu dekat (`<= now + 1 menit`)
+    - backend menambah endpoint guru/admin untuk `PATCH /grades/remedials/student-activities/:id` dan `DELETE /grades/remedials/student-activities/:id`
+    - cancel remedial memakai status `CANCELLED` agar siswa tidak lagi melihat aktivitas tersebut tanpa menghapus histori nilai
+    - guru hanya boleh mengubah aktivitas remedial yang belum dikumpulkan siswa; paket soal tidak boleh diganti jika siswa sudah mulai mengerjakan
+    - guru boleh menghapus paket remedial miliknya sendiri hanya jika paket belum dipakai jadwal/remedial aktif
+    - web guru `Input Nilai > Remedial` menambah aksi `Edit` dan `Batalkan` pada riwayat remedial
+    - web/mobile paket ujian guru menambah aksi hapus khusus paket remedial yang belum dipakai
+- Area/file disentuh:
+  - `backend/src/controllers/grade.controller.ts`
+  - `backend/src/routes/grade.routes.ts`
+  - `backend/src/controllers/exam.controller.ts`
+  - `frontend/src/services/grade.service.ts`
+  - `frontend/src/pages/teacher/TeacherGradesPage.tsx`
+  - `frontend/src/pages/teacher/exams/ExamListPage.tsx`
+  - `mobile-app/src/features/exams/examApi.ts`
+  - `mobile-app/src/features/exams/TeacherExamPacketsModuleScreen.tsx`
+- Verifikasi:
+  - `git diff --check`
+  - `cd backend && npm run build`
+  - `cd frontend && npm run build`
+  - `cd mobile-app && npm run typecheck`
+  - `cd mobile-app && npm run audit:parity:check`
+  - `cd backend && npm run service:restart`
+  - `cd backend && npm run service:health` -> `Backend:200`, `Backend API:200`
+  - `cd frontend && npm run deploy`
+  - `curl -I -s https://siskgb2.id/teacher/grades | head -n 5` -> `HTTP/1.1 200 OK`
+  - audit DB KGB2G103 -> `total=8`, `expired=0`, dueAt `2026-05-12T16:59:00.000Z`
+- Publish/live status:
+  - Backend sudah restart live dan health check normal.
+  - Web sudah deploy live.
+  - Mobile OTA Android sudah publish ke channel `pilot-live`, update group `7b42c93d-2113-4f61-848b-aa5e3474b056`, Android update `019df5e8-ddb8-7494-813d-32cf486c6400`.
+  - Push notifikasi update mobile berhasil: recipients `89`, sent `89`, failed `0`, stale `0`.
+- Remaining work:
+  - Tidak ada sisa pekerjaan kode untuk kasus ini.
+  - Uji manual yang disarankan: login siswa target remedial KGB2G103, buka menu `Ujian > Paket Remedial`, pastikan status bisa dikerjakan sebelum tenggat `12 Mei 2026 23:59 WIB`.
+- Residual risk:
+  - Risiko rendah. Endpoint baru scoped per aktivitas, tidak menambah polling, query besar, migration, atau fan-out luas. Hapus paket remedial dibatasi agar tidak menghapus paket yang sudah dipakai remedial aktif/jadwal.
+
+## Update Sebelumnya
+
 - Last updated: 2026-05-05 08:27 WIB
 - Current status: Fix paket remedial tidak tampil di siswa selesai, terverifikasi, dipush, dan live. Paket remedial tipe soal sekarang tampil di menu `Ujian` siswa web/mobile pada section `Paket Remedial`, selain tetap tersedia di `Materi & Tugas > Remedial`.
 - Objective/task aktif:
