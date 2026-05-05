@@ -5,6 +5,50 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
+- Last updated: 2026-05-05 08:27 WIB
+- Current status: Fix paket remedial tidak tampil di siswa selesai, terverifikasi, dipush, dan live. Paket remedial tipe soal sekarang tampil di menu `Ujian` siswa web/mobile pada section `Paket Remedial`, selain tetap tersedia di `Materi & Tugas > Remedial`.
+- Objective/task aktif:
+  - Menutup bug laporan guru bahwa paket remedial yang sudah dibuat dan dipublish tidak tampil di sisi siswa, dengan sample akun guru `KGB2G081`.
+- Last completed repo work:
+  - Commit: `3a62d9f`
+  - Title: `fix(remedial): surface published packets to students`
+  - Summary:
+    - backend menolak publish remedial metode `QUESTION_SET` jika belum ada paket soal
+    - backend memastikan paket soal remedial sesuai mapel, semester, tahun ajaran, dan jenis/program nilai sumber seperti `SBTS`
+    - UI guru menampilkan guard sebelum publish agar metode soal/quiz wajib memilih/membuat paket soal
+    - web siswa menu `Ujian` menambah section tabel `Paket Remedial` dengan status `Bisa Dikerjakan`, `Tenggat Berakhir`, `Paket Belum Siap`, atau `Sudah Dikerjakan`
+    - mobile siswa menu `Ujian` menambah section `Paket Remedial` dengan parity istilah/action terhadap web
+- Data repair production:
+  - Audit menemukan `37` aktivitas remedial aktif metode `QUESTION_SET` tanpa relasi paket soal.
+  - Semua `37` record lama berhasil dipetakan aman ke tepat satu paket guru/mapel/program yang sama dan diisi `activityExamPacketId`.
+  - Setelah repair: `globalMissing=0`; akun `KGB2G081` juga `teacherMissing=0`.
+- Area/file disentuh:
+  - `backend/src/controllers/grade.controller.ts`
+  - `frontend/src/pages/student/StudentExamsPage.tsx`
+  - `frontend/src/pages/teacher/TeacherGradesPage.tsx`
+  - `mobile-app/app/(app)/exams.tsx`
+  - `docs/CODEX_CONTINUITY.md`
+- Verifikasi:
+  - `git diff --check`
+  - `cd backend && npm run build`
+  - `cd frontend && npm run build`
+  - `cd mobile-app && npm run typecheck`
+  - `cd mobile-app && npm run audit:parity:check`
+  - `cd backend && npm run service:health` -> `Backend:200`, `Backend API:200`
+  - `curl -I -s https://siskgb2.id/student/exams | head -n 5` -> `HTTP/1.1 200 OK`
+- Publish/live status:
+  - Backend sudah restart live dan health check normal.
+  - Web sudah deploy live.
+  - Mobile OTA Android sudah publish ke channel `pilot-live`, update group `b1f9b8c1-08df-464d-be84-8232c57496ec`, Android update `019df5bf-6156-76c6-b569-36d78ffbc036`.
+  - Push notifikasi update mobile berhasil: recipients `87`, sent `87`, failed `0`, stale `0`.
+- Remaining work:
+  - Tidak ada sisa pekerjaan kode untuk bug ini.
+  - Catatan uji manual: beberapa remedial lama milik `KGB2G081` memiliki tenggat yang sudah lewat, sehingga akan tampil tetapi statusnya `Tenggat Berakhir` sampai guru menerbitkan ulang/mengubah tenggat.
+- Residual risk:
+  - Risiko rendah. Perubahan memakai endpoint existing dengan limit existing, tanpa polling baru, tanpa endpoint baru, tanpa migration, dan data repair dibatasi ke record remedial lama yang punya kandidat paket tunggal.
+
+## Update Sebelumnya
+
 - Last updated: 2026-05-05 07:39 WIB
 - Current status: Batch 5 parity mobile fitur tahun ajaran baru/promotion selesai, terverifikasi, dan OTA Android channel `pilot-live` sudah dipublish. Mobile admin sekarang memakai istilah operasional yang konsisten dengan web: `Tahun Ajaran Baru`, `Salin Data Tahun Sebelumnya`, `Kenaikan & Kelulusan`, `Tujuan Kelas`, dan `Riwayat Proses`.
 - Objective/task aktif:
