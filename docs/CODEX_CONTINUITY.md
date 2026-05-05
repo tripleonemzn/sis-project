@@ -5,6 +5,51 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
+- Last updated: 2026-05-05 07:39 WIB
+- Current status: Batch 5 parity mobile fitur tahun ajaran baru/promotion selesai, terverifikasi, dan OTA Android channel `pilot-live` sudah dipublish. Mobile admin sekarang memakai istilah operasional yang konsisten dengan web: `Tahun Ajaran Baru`, `Salin Data Tahun Sebelumnya`, `Kenaikan & Kelulusan`, `Tujuan Kelas`, dan `Riwayat Proses`.
+- Objective/task aktif:
+  - Menyederhanakan fitur tahun ajaran baru/promotion agar admin bisa melanjutkan data tahun ajaran lama ke tahun ajaran baru secara aman, bertahap, mudah dipahami, dan parity dengan web/mobile.
+- Batch terakhir selesai:
+  - `Academic year promotion mobile parity Batch 5`
+- Progress roadmap fitur tahun ajaran baru:
+  - `100%` Batch 1 UI/terminologi web admin
+  - `100%` Batch 2 guard kontrak backend legacy vs v2
+  - `100%` Batch 3 preflight/checklist web admin
+  - `100%` Batch 4 audit konteks arsip/lintas tahun web admin
+  - `100%` Batch 5 parity mobile admin
+  - `100%` total roadmap redesign tahun ajaran baru/promotion
+- Last completed repo work:
+  - Commit: `184480a`
+  - Title: `feat(mobile): improve academic year promotion parity`
+  - Summary:
+    - mobile admin menu `Promotion` diganti menjadi `Tahun Ajaran Baru`
+    - istilah teknis `rollover`, `clone`, `mapping`, `commit`, `rollback`, `workspace`, dan `target/source` pada UI mobile diganti menjadi bahasa operasional sekolah
+    - bagian `Salin Data Tahun Sebelumnya` mobile dirapikan dengan label tahun ajaran sumber/baru, status data yang disalin, dan catatan yang lebih mudah dipahami
+    - bagian `Kenaikan & Kelulusan` mobile ditambah `Checklist Kesiapan Sebelum Proses` untuk kelas/wali kelas, guru mapel, jadwal/KKM/rapor/ujian, tujuan kelas siswa, kelulusan kelas XII, serta aktivasi/arsip
+    - status riwayat proses mobile ditampilkan sebagai `Selesai`, `Gagal`, atau `Dibatalkan`, bukan status enum mentah
+- Area/file disentuh:
+  - `mobile-app/app/(app)/admin/academic.tsx`
+  - `docs/CODEX_CONTINUITY.md`
+- Verifikasi batch ini:
+  - `git diff --check`
+  - `cd mobile-app && npm run typecheck`
+  - `cd mobile-app && npm run audit:parity:check`
+  - `cd mobile-app && npm run check:ota:testers` -> channel `pilot-live` ready, runtime `0.2.2`
+  - `cd mobile-app && npm run update:pilot-live:verified -- "Batch 5 tahun ajaran baru mobile parity"` -> EAS update group `423d89f5-8441-47dd-ade1-b91d4cecae1f`, Android update `019df592-f699-783f-8e42-5019eb2e5980`
+- Publish/live status:
+  - Mobile OTA Android sudah publish ke channel `pilot-live`.
+  - Push notifikasi update mobile berhasil: recipients `87`, sent `87`, failed `0`, stale `0`.
+  - Web tidak dideploy karena batch ini hanya menyentuh mobile admin.
+  - Backend tidak disentuh dan tidak direstart pada batch ini.
+- Remaining work:
+  - Tidak ada sisa pekerjaan untuk roadmap redesign fitur tahun ajaran baru/promotion saat ini.
+  - Langkah berikutnya aman: uji manual dari akun admin mobile pada menu `Tahun Ajaran`, terutama flow salin data, checklist, simpan tujuan kelas, dan riwayat proses.
+- Residual risk:
+  - Risiko rendah karena perubahan mobile UI/client-only, tanpa endpoint baru, migration, polling baru, atau mutation tambahan.
+  - OTA dipublish dari worktree sebelum commit, tetapi commit `184480a` sudah merekam source yang sama dengan bundle OTA tersebut.
+
+## Update Sebelumnya
+
 - Last updated: 2026-05-05 05:53 WIB
 - Current status: Batch 4 audit konteks arsip/lintas tahun selesai, terverifikasi, dan web sudah live. Halaman web admin yang memang boleh membaca lintas tahun sekarang diberi label konteks jelas, sementara `Data Kelas` default ke tahun ajaran aktif dan filter tahun/tingkat/jurusan dikirim ke backend agar tidak salah membaca data paginated/client-side.
 - Objective/task aktif:
