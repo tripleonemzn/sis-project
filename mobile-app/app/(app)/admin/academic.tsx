@@ -44,6 +44,19 @@ type AcademicSection =
   | 'question-bank'
   | 'exam-sessions';
 type AcademicOverviewSummaryId = 'classes' | 'assignments' | 'subjects' | 'years';
+type PromotionPreflightStatus = 'ready' | 'warning' | 'blocked' | 'info';
+type PromotionPreflightRow = {
+  key: string;
+  area: string;
+  status: PromotionPreflightStatus;
+  detail: string;
+  nextAction: string;
+};
+type PromotionPreflightComponentLike = {
+  ready: boolean;
+  errors: string[];
+  warnings: string[];
+};
 
 type FeatherIconName = React.ComponentProps<typeof Feather>['name'];
 
@@ -67,8 +80,8 @@ const ACADEMIC_SECTIONS: Array<{
   },
   {
     key: 'promotion',
-    label: 'Promotion',
-    description: 'Preview, mapping, dan commit kenaikan kelas/alumni.',
+    label: 'Tahun Ajaran Baru',
+    description: 'Salin data tahun sebelumnya, tentukan tujuan kelas, lalu proses kenaikan dan kelulusan.',
     icon: 'shuffle',
   },
   {
@@ -175,6 +188,67 @@ function getPromotionResolvedTargetClassId(
   return row.targetClassId ?? null;
 }
 
+function getPromotionRunStatusLabel(status: string) {
+  if (status === 'ROLLED_BACK') return 'Dibatalkan';
+  if (status === 'COMMITTED') return 'Selesai';
+  if (status === 'FAILED') return 'Gagal';
+  return status;
+}
+
+function getPreflightStatusMeta(status: PromotionPreflightStatus) {
+  if (status === 'blocked') {
+    return {
+      label: 'Harus Diperbaiki',
+      borderColor: '#fecaca',
+      backgroundColor: '#fff1f2',
+      textColor: '#b91c1c',
+    };
+  }
+  if (status === 'warning') {
+    return {
+      label: 'Perlu Dicek',
+      borderColor: '#fcd34d',
+      backgroundColor: '#fffbeb',
+      textColor: '#92400e',
+    };
+  }
+  if (status === 'ready') {
+    return {
+      label: 'Siap',
+      borderColor: '#bbf7d0',
+      backgroundColor: '#f0fdf4',
+      textColor: '#15803d',
+    };
+  }
+  return {
+    label: 'Informasi',
+    borderColor: '#bfdbfe',
+    backgroundColor: '#eff6ff',
+    textColor: '#1d4ed8',
+  };
+}
+
+function getPreflightComponentStatus(
+  component?: PromotionPreflightComponentLike | null,
+  hasOperationalWarning = false,
+): PromotionPreflightStatus {
+  if (!component) return 'warning';
+  if (!component.ready || component.errors.length > 0) return 'blocked';
+  if (component.warnings.length > 0 || hasOperationalWarning) return 'warning';
+  return 'ready';
+}
+
+function getRolloverActionLabel(action: unknown) {
+  if (action === 'CREATE') return 'Buat';
+  if (action === 'SKIP_EXISTING') return 'Sudah ada';
+  if (action === 'SKIP_DUPLICATE') return 'Duplikat';
+  if (action === 'SKIP_OUTSIDE_TARGET_RANGE') return 'Di luar rentang tahun baru';
+  if (action === 'SKIP_NO_TARGET_CLASS') return 'Menunggu kelas baru';
+  if (action === 'SKIP_NO_TARGET_PROGRAM') return 'Menunggu program baru';
+  if (action === 'SKIP_NO_SOURCE') return 'Tidak ada data sumber';
+  return String(action || '-');
+}
+
 function getRolloverPreviewItemLabel(item: unknown) {
   if (!item || typeof item !== 'object') return '-';
   const row = item as Record<string, unknown>;
@@ -193,33 +267,33 @@ function getRolloverPreviewItemLabel(item: unknown) {
       homeroomAction === 'CARRY_FORWARD_ON_CREATE'
         ? `Wali ikut: ${String(sourceHomeroomTeacher?.name || '-')}`
         : homeroomAction === 'FILL_EXISTING_EMPTY'
-          ? `Isi wali target: ${String(sourceHomeroomTeacher?.name || '-')}`
+          ? `Isi wali kelas baru: ${String(sourceHomeroomTeacher?.name || '-')}`
           : homeroomAction === 'KEEP_EXISTING'
-            ? `Wali target tetap: ${String(targetHomeroomTeacher?.name || '-')}`
-            : 'Source tanpa wali kelas';
-    return `${String(row.sourceClassName || '-')} -> ${String(row.targetClassName || '-')} • ${homeroomLabel} (${String(
-      row.action || '-',
+            ? `Wali kelas baru tetap: ${String(targetHomeroomTeacher?.name || '-')}`
+            : 'Kelas sumber tanpa wali kelas';
+    return `${String(row.sourceClassName || '-')} ke ${String(row.targetClassName || '-')} • ${homeroomLabel} (${getRolloverActionLabel(
+      row.action,
     )})`;
   }
   if ('sourceAssignmentId' in row && 'subject' in row && 'sourceClassName' in row && 'action' in row) {
     const subject = row.subject as { code?: string; name?: string } | undefined;
-    return `${String(row.sourceClassName || '-')} • ${String(subject?.code || subject?.name || '-')} (${String(row.action || '-')})`;
+    return `${String(row.sourceClassName || '-')} • ${String(subject?.code || subject?.name || '-')} (${getRolloverActionLabel(row.action)})`;
   }
   if ('sourceEventId' in row && 'title' in row && 'action' in row) {
-    return `${String(row.title || '-')} (${String(row.action || '-')})`;
+    return `${String(row.title || '-')} (${getRolloverActionLabel(row.action)})`;
   }
   if ('sourceSubjectKkmId' in row && 'subject' in row && 'classLevel' in row && 'sourceKkm' in row && 'action' in row) {
     const subject = row.subject as { code?: string; name?: string } | undefined;
-    return `${String(subject?.code || subject?.name || '-')} ${String(row.classLevel || '-')} • ${String(row.sourceKkm || '-')} (${String(row.action || '-')})`;
+    return `${String(subject?.code || subject?.name || '-')} ${String(row.classLevel || '-')} • ${String(row.sourceKkm || '-')} (${getRolloverActionLabel(row.action)})`;
   }
   if ('sourceComponentId' in row && 'code' in row && 'label' in row && 'action' in row) {
-    return `${String(row.code || '-')} • ${String(row.label || '-')} (${String(row.action || '-')})`;
+    return `${String(row.code || '-')} • ${String(row.label || '-')} (${getRolloverActionLabel(row.action)})`;
   }
   if ('sourceProgramId' in row && 'code' in row && 'displayLabel' in row && 'action' in row) {
-    return `${String(row.code || '-')} • ${String(row.displayLabel || '-')} (${String(row.action || '-')})`;
+    return `${String(row.code || '-')} • ${String(row.displayLabel || '-')} (${getRolloverActionLabel(row.action)})`;
   }
   if ('sourceSessionId' in row && 'programCode' in row && 'label' in row && 'action' in row) {
-    return `${String(row.programCode || '-')} • ${String(row.label || '-')} (${String(row.action || '-')})`;
+    return `${String(row.programCode || '-')} • ${String(row.label || '-')} (${getRolloverActionLabel(row.action)})`;
   }
 
   return '-';
@@ -852,7 +926,7 @@ export default function AdminAcademicScreen() {
     ? [
         {
           key: 'stat-classPreparation',
-          title: 'Kelas Target',
+          title: 'Kelas Baru',
           value: String(rolloverWorkspace.components.classPreparation.summary.createCount || 0),
           subtitle: 'XI/XII yang perlu dibuat',
         },
@@ -860,7 +934,7 @@ export default function AdminAcademicScreen() {
           key: 'stat-teacherAssignments',
           title: 'Assignment Baru',
           value: String(rolloverWorkspace.components.teacherAssignments.summary.createCount || 0),
-          subtitle: 'Guru-mapel target',
+          subtitle: 'Guru-mapel tahun baru',
         },
         {
           key: 'stat-reportDates',
@@ -872,7 +946,7 @@ export default function AdminAcademicScreen() {
           key: 'stat-subjectKkms',
           title: 'KKM Tahunan',
           value: String(rolloverWorkspace.components.subjectKkms.summary.createCount || 0),
-          subtitle: 'KKM year-scoped baru',
+          subtitle: 'KKM tahun ajaran baru',
         },
         {
           key: 'stat-examGradeComponents',
@@ -884,7 +958,7 @@ export default function AdminAcademicScreen() {
           key: 'stat-examProgramConfigs',
           title: 'Program Ujian',
           value: String(rolloverWorkspace.components.examProgramConfigs.summary.createCount || 0),
-          subtitle: 'Program target baru',
+          subtitle: 'Program tahun baru',
         },
         {
           key: 'stat-examProgramSessions',
@@ -896,16 +970,130 @@ export default function AdminAcademicScreen() {
           key: 'stat-scheduleTimeConfig',
           title: 'Jam Jadwal',
           value: String(rolloverWorkspace.components.scheduleTimeConfig.summary.createCount || 0),
-          subtitle: 'Buat jika target kosong',
+          subtitle: 'Buat jika tahun baru kosong',
         },
         {
           key: 'stat-academicEvents',
           title: 'Kalender',
           value: String(rolloverWorkspace.components.academicEvents.summary.createCount || 0),
-          subtitle: 'Event yang bisa di-clone',
+          subtitle: 'Event yang bisa disalin',
         },
       ]
     : [];
+
+  const hasPromotionMappingDraftChanges = useMemo(() => {
+    const workspace = promotionWorkspaceQuery.data;
+    if (!workspace) return false;
+    return workspace.classes.some((item) => {
+      if (item.action === 'GRADUATE') return false;
+      const selectedTargetClassId = getPromotionResolvedTargetClassId(item, promotionMappingDrafts);
+      return (selectedTargetClassId ?? null) !== (item.targetClassId ?? null);
+    });
+  }, [promotionMappingDrafts, promotionWorkspaceQuery.data]);
+
+  const promotionPreflightRows = useMemo<PromotionPreflightRow[]>(() => {
+    const workspace = promotionWorkspaceQuery.data;
+    if (!workspace) return [];
+
+    const components = rolloverWorkspace?.components;
+    const fallbackRolloverStatus: PromotionPreflightStatus = isRolloverFeatureEnabled ? 'info' : 'warning';
+    const getRolloverStatus = (component?: PromotionPreflightComponentLike | null) =>
+      components ? getPreflightComponentStatus(component) : fallbackRolloverStatus;
+    const getCombinedRolloverStatus = (items: Array<PromotionPreflightComponentLike | undefined>) => {
+      if (!components) return fallbackRolloverStatus;
+      if (items.some((item) => !item || !item.ready || item.errors.length > 0)) return 'blocked';
+      if (items.some((item) => (item?.warnings.length || 0) > 0)) return 'warning';
+      return 'ready';
+    };
+
+    const classErrorCount = workspace.classes.filter((item) => item.validation.errors.length > 0).length;
+    const classWarningCount = workspace.classes.filter((item) => item.validation.warnings.length > 0).length;
+    const classPreparation = components?.classPreparation;
+    const teacherAssignments = components?.teacherAssignments;
+    const yearlyDataComponents = components
+      ? [
+          components.scheduleTimeConfig,
+          components.reportDates,
+          components.subjectKkms,
+          components.examGradeComponents,
+          components.examProgramConfigs,
+          components.examProgramSessions,
+        ]
+      : [];
+    const yearlyDataCreateCount = yearlyDataComponents.reduce(
+      (total, component) => total + Number(component?.summary?.createCount || 0),
+      0,
+    );
+
+    const promotionStatus: PromotionPreflightStatus =
+      workspace.validation.errors.length > 0 || classErrorCount > 0
+        ? 'blocked'
+        : workspace.validation.warnings.length > 0 || classWarningCount > 0 || hasPromotionMappingDraftChanges
+          ? 'warning'
+          : 'ready';
+
+    return [
+      {
+        key: 'classes',
+        area: 'Kelas & Wali Kelas',
+        status: getRolloverStatus(classPreparation),
+        detail: components
+          ? `${classPreparation?.summary.createCount || 0} kelas baru disiapkan, ${classPreparation?.summary.homeroomCarryCount || 0} wali kelas ikut, ${classPreparation?.summary.homeroomExistingFillCount || 0} wali kosong terisi.`
+          : 'Buka bagian salin data untuk menyiapkan kelas baru dan wali kelas.',
+        nextAction: components ? 'Cek kelas yang belum punya pasangan atau wali kelas.' : 'Pilih tahun ajaran sumber dan tahun ajaran baru.',
+      },
+      {
+        key: 'teacher-assignments',
+        area: 'Guru Mapel',
+        status: getRolloverStatus(teacherAssignments),
+        detail: components
+          ? `${teacherAssignments?.summary.createCount || 0} assignment guru-mapel akan dilanjutkan ke tahun ajaran baru.`
+          : 'Assignment guru-mapel mengikuti data tahun ajaran sumber setelah disalin.',
+        nextAction: 'Pastikan kelas tujuan sudah tersedia sebelum assignment disalin.',
+      },
+      {
+        key: 'yearly-data',
+        area: 'Jadwal, KKM, Rapor & Ujian',
+        status: getCombinedRolloverStatus(yearlyDataComponents),
+        detail: components
+          ? `${yearlyDataCreateCount} data tahunan siap disalin untuk jadwal, tanggal rapor, KKM, dan program ujian.`
+          : 'Data pendukung tahunan perlu disalin agar role lain tetap punya konteks lengkap.',
+        nextAction: 'Cek catatan salin data sebelum proses kenaikan dijalankan.',
+      },
+      {
+        key: 'student-destination',
+        area: 'Tujuan Kelas Siswa',
+        status: promotionStatus,
+        detail: `${workspace.summary.configuredPromoteClasses || 0}/${workspace.summary.promotableClasses || 0} kelas naik sudah punya tujuan. ${classErrorCount} kelas perlu diperbaiki, ${classWarningCount} kelas perlu dicek.`,
+        nextAction: hasPromotionMappingDraftChanges ? 'Simpan tujuan kelas yang baru diubah.' : 'Gunakan saran otomatis jika tujuan kelas sudah benar.',
+      },
+      {
+        key: 'graduation',
+        area: 'Kelulusan Kelas XII',
+        status: workspace.summary.graduatingClasses > 0 ? 'ready' : 'info',
+        detail:
+          workspace.summary.graduatingClasses > 0
+            ? `${workspace.summary.graduatingClasses} kelas XII dengan ${workspace.summary.graduatedStudents || 0} siswa akan menjadi alumni.`
+            : 'Tidak ada kelas XII aktif yang perlu diluluskan pada kombinasi tahun ini.',
+        nextAction: 'Pastikan data siswa aktif kelas XII sudah final sebelum proses.',
+      },
+      {
+        key: 'activation',
+        area: 'Aktivasi & Arsip',
+        status: activateTargetYearAfterCommit ? 'ready' : 'warning',
+        detail: activateTargetYearAfterCommit
+          ? 'Tahun ajaran baru akan langsung menjadi aktif setelah proses berhasil.'
+          : 'Tahun ajaran baru tidak otomatis aktif setelah proses berhasil.',
+        nextAction: 'Gunakan OFF hanya jika perlu review manual setelah proses.',
+      },
+    ];
+  }, [
+    activateTargetYearAfterCommit,
+    hasPromotionMappingDraftChanges,
+    isRolloverFeatureEnabled,
+    promotionWorkspaceQuery.data,
+    rolloverWorkspace?.components,
+  ]);
 
   useEffect(() => {
     if (!promotionWorkspaceQuery.data) return;
@@ -1576,7 +1764,7 @@ export default function AdminAcademicScreen() {
   const savePromotionMappingsMutation = useMutation({
     mutationFn: async () => {
       if (!promotionWorkspaceQuery.data || !effectivePromotionSourceAcademicYearId || !effectivePromotionTargetAcademicYearId) {
-        throw new Error('Workspace promotion belum tersedia.');
+        throw new Error('Data kenaikan dan kelulusan belum tersedia.');
       }
       return adminApi.saveAcademicPromotionMappings(effectivePromotionSourceAcademicYearId, {
         targetAcademicYearId: effectivePromotionTargetAcademicYearId,
@@ -1591,17 +1779,17 @@ export default function AdminAcademicScreen() {
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['mobile-admin-academic-promotion-workspace'] });
-      notifySuccess('Mapping promotion berhasil disimpan.');
+      notifySuccess('Tujuan kelas berhasil disimpan.');
     },
     onError: (error: unknown) => {
-      notifyApiError(error, 'Gagal menyimpan mapping promotion.');
+      notifyApiError(error, 'Gagal menyimpan tujuan kelas.');
     },
   });
 
   const commitPromotionMutation = useMutation({
     mutationFn: async () => {
       if (!effectivePromotionSourceAcademicYearId || !effectivePromotionTargetAcademicYearId) {
-        throw new Error('Tahun sumber/target promotion belum valid.');
+        throw new Error('Tahun ajaran sumber/baru belum valid.');
       }
       return adminApi.commitAcademicPromotion(effectivePromotionSourceAcademicYearId, {
         targetAcademicYearId: effectivePromotionTargetAcademicYearId,
@@ -1611,27 +1799,27 @@ export default function AdminAcademicScreen() {
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['mobile-admin-academic-overview'] });
       await queryClient.invalidateQueries({ queryKey: ['mobile-admin-academic-promotion-workspace'] });
-      notifySuccess('Promotion berhasil di-commit.');
+      notifySuccess('Kenaikan dan kelulusan berhasil diproses.');
     },
     onError: (error: unknown) => {
-      notifyApiError(error, 'Gagal commit promotion.');
+      notifyApiError(error, 'Gagal memproses kenaikan dan kelulusan.');
     },
   });
 
   const rollbackPromotionMutation = useMutation({
     mutationFn: async (runId: number) => {
       if (!effectivePromotionSourceAcademicYearId) {
-        throw new Error('Tahun sumber promotion belum valid.');
+        throw new Error('Tahun ajaran sumber belum valid.');
       }
       return adminApi.rollbackAcademicPromotionRun(effectivePromotionSourceAcademicYearId, runId);
     },
     onSuccess: async (result: AdminAcademicPromotionRollbackResult | undefined) => {
       await queryClient.invalidateQueries({ queryKey: ['mobile-admin-academic-overview'] });
       await queryClient.invalidateQueries({ queryKey: ['mobile-admin-academic-promotion-workspace'] });
-      notifySuccess(`Run #${result?.run.id || '-'} berhasil di-rollback.`);
+      notifySuccess(`Proses #${result?.run.id || '-'} berhasil dibatalkan.`);
     },
     onError: (error: unknown) => {
-      notifyApiError(error, 'Gagal rollback promotion.');
+      notifyApiError(error, 'Gagal membatalkan proses.');
     },
   });
 
@@ -1659,7 +1847,7 @@ export default function AdminAcademicScreen() {
   const createRolloverTargetMutation = useMutation({
     mutationFn: async () => {
       if (!effectivePromotionSourceAcademicYearId) {
-        throw new Error('Tahun sumber rollover belum valid.');
+        throw new Error('Tahun ajaran sumber belum valid.');
       }
       return adminApi.createAcademicYearRolloverTarget(effectivePromotionSourceAcademicYearId);
     },
@@ -1673,18 +1861,18 @@ export default function AdminAcademicScreen() {
       notifySuccess(
         result?.created
           ? `Draft ${result.targetAcademicYear.name} berhasil dibuat.`
-          : `Draft ${result?.targetAcademicYear?.name || 'target year'} sudah tersedia.`,
+          : `Draft ${result?.targetAcademicYear?.name || 'tahun ajaran baru'} sudah tersedia.`,
       );
     },
     onError: (error: unknown) => {
-      notifyApiError(error, 'Gagal menyiapkan draft tahun ajaran target.');
+      notifyApiError(error, 'Gagal menyiapkan draft tahun ajaran baru.');
     },
   });
 
   const applyRolloverMutation = useMutation({
     mutationFn: async () => {
       if (!effectivePromotionSourceAcademicYearId || !effectivePromotionTargetAcademicYearId) {
-        throw new Error('Tahun sumber/target rollover belum valid.');
+        throw new Error('Tahun ajaran sumber/baru belum valid.');
       }
       return adminApi.applyAcademicYearRollover(effectivePromotionSourceAcademicYearId, {
         targetAcademicYearId: effectivePromotionTargetAcademicYearId,
@@ -1695,7 +1883,7 @@ export default function AdminAcademicScreen() {
       await queryClient.invalidateQueries({ queryKey: ['mobile-admin-academic-rollover-workspace'] });
       await queryClient.invalidateQueries({ queryKey: ['mobile-admin-academic-promotion-workspace'] });
       notifySuccess(
-        `Setup tahunan diterapkan. Kelas ${result?.applied.classPreparation.created || 0}, wali ikut ${result?.applied.classPreparation.homeroomCarriedOnCreate || 0}, isi target kosong ${result?.applied.classPreparation.homeroomFilledExisting || 0}, assignment ${result?.applied.teacherAssignments.created || 0}, tanggal rapor ${result?.applied.reportDates.created || 0}, KKM ${result?.applied.subjectKkms.created || 0}, program ujian ${result?.applied.examProgramConfigs.created || 0}.`,
+        `Data tahun sebelumnya berhasil disalin. Kelas ${result?.applied.classPreparation.created || 0}, wali ikut ${result?.applied.classPreparation.homeroomCarriedOnCreate || 0}, isi wali kosong ${result?.applied.classPreparation.homeroomFilledExisting || 0}, assignment ${result?.applied.teacherAssignments.created || 0}, tanggal rapor ${result?.applied.reportDates.created || 0}, KKM ${result?.applied.subjectKkms.created || 0}, program ujian ${result?.applied.examProgramConfigs.created || 0}.`,
       );
     },
     onError: (error: unknown) => {
@@ -1945,24 +2133,24 @@ export default function AdminAcademicScreen() {
 
   const handleApplyRollover = () => {
     if (!rolloverWorkspaceQuery.data) {
-      notifyInfo('Workspace rollover belum tersedia.');
+      notifyInfo('Data salin tahun ajaran belum tersedia.');
       return;
     }
     if (!rolloverWorkspaceQuery.data.validation.readyToApply) {
-      notifyInfo('Masih ada issue pada workspace rollover.');
+      notifyInfo('Masih ada data yang harus dicek sebelum salin data.');
       return;
     }
     if (!Object.values(rolloverSelectedComponents).some(Boolean)) {
-      notifyInfo('Pilih minimal satu komponen untuk di-clone.');
+      notifyInfo('Pilih minimal satu data yang akan disalin.');
       return;
     }
     Alert.alert(
-      'Apply Setup Tahunan',
-      'Wizard akan membuat data target yang belum ada tanpa menimpa data target yang sudah disusun manual. Lanjutkan?',
+      'Salin Data ke Tahun Baru',
+      'Sistem akan membuat data tahun ajaran baru yang belum ada tanpa menimpa data yang sudah disusun manual. Lanjutkan?',
       [
         { text: 'Batal', style: 'cancel' },
         {
-          text: 'Apply',
+          text: 'Salin Data',
           style: 'default',
           onPress: () => {
             applyRolloverMutation.mutate();
@@ -1974,20 +2162,20 @@ export default function AdminAcademicScreen() {
 
   const handleCommitPromotion = () => {
     if (!promotionWorkspaceQuery.data) {
-      notifyInfo('Workspace promotion belum tersedia.');
+      notifyInfo('Data kenaikan dan kelulusan belum tersedia.');
       return;
     }
     if (!promotionWorkspaceQuery.data.validation.readyToCommit) {
-      notifyInfo('Masih ada issue blocking. Selesaikan dulu sebelum commit.');
+      notifyInfo('Masih ada data yang harus diperbaiki sebelum proses kenaikan.');
       return;
     }
     Alert.alert(
-      'Commit Promotion',
-      'Perubahan siswa akan ditulis ke data aktif. Lanjutkan commit promotion?',
+      'Proses Kenaikan & Kelulusan',
+      'Perubahan siswa akan ditulis ke data aktif. Lanjutkan proses kenaikan dan kelulusan?',
       [
         { text: 'Batal', style: 'cancel' },
         {
-          text: 'Commit',
+          text: 'Proses',
           style: 'default',
           onPress: () => {
             commitPromotionMutation.mutate();
@@ -2003,12 +2191,12 @@ export default function AdminAcademicScreen() {
       return;
     }
     Alert.alert(
-      'Rollback Promotion',
-      `Rollback run #${runId}? Snapshot siswa akan dikembalikan ke state sebelum run ini.`,
+      'Batalkan Proses',
+      `Batalkan proses #${runId}? Snapshot siswa akan dikembalikan ke kondisi sebelum proses ini.`,
       [
         { text: 'Batal', style: 'cancel' },
         {
-          text: 'Rollback',
+          text: 'Batalkan',
           style: 'destructive',
           onPress: () => {
             rollbackPromotionMutation.mutate(runId);
@@ -3081,15 +3269,15 @@ export default function AdminAcademicScreen() {
 
           {shouldShow('academic-years') ? (
             <SectionCard
-              title="Year Setup Clone Wizard"
-              subtitle="Buat draft target year lalu clone komponen tahunan secara additive sebelum promotion."
+              title="Salin Data Tahun Sebelumnya"
+              subtitle="Buat draft tahun ajaran baru, lalu salin data tahunan secara aman sebelum proses kenaikan dan kelulusan."
             >
               {academicFeatureFlagsQuery.isLoading ? (
-                <QueryStateView type="loading" message="Memuat feature flag rollover..." />
+                <QueryStateView type="loading" message="Memuat pengaturan salin data..." />
               ) : academicFeatureFlagsQuery.isError ? (
                 <QueryStateView
                   type="error"
-                  message="Gagal memuat feature flag rollover."
+                  message="Gagal memuat pengaturan salin data."
                   onRetry={() => academicFeatureFlagsQuery.refetch()}
                 />
               ) : !isRolloverFeatureEnabled ? (
@@ -3103,27 +3291,27 @@ export default function AdminAcademicScreen() {
                     marginBottom: 8,
                   }}
                 >
-                  <Text style={{ color: '#92400e', fontWeight: '700', marginBottom: 4 }}>Rollover dimatikan</Text>
+                  <Text style={{ color: '#92400e', fontWeight: '700', marginBottom: 4 }}>Salin data belum aktif</Text>
                   <Text style={{ color: '#92400e', fontSize: scaleWithAppTextScale(12) }}>
-                    Nyalakan env ACADEMIC_YEAR_ROLLOVER_ENABLED=true di server saat siap uji.
+                    Fitur salin data tahun sebelumnya belum diaktifkan di server.
                   </Text>
                 </View>
               ) : (
                 <>
                   <MobileSelectField
-                    label="Tahun Sumber"
+                    label="Tahun Ajaran Sumber"
                     value={promotionSourceAcademicYearId || (effectivePromotionSourceAcademicYearId ? String(effectivePromotionSourceAcademicYearId) : '')}
                     options={academicYearSelectOptions}
                     onChange={setPromotionSourceAcademicYearId}
-                    placeholder="Pilih tahun sumber"
+                    placeholder="Pilih tahun ajaran sumber"
                   />
 
                   <MobileSelectField
-                    label="Tahun Target"
+                    label="Tahun Ajaran Baru"
                     value={promotionTargetAcademicYearId || (effectivePromotionTargetAcademicYearId ? String(effectivePromotionTargetAcademicYearId) : '')}
                     options={academicYearSelectOptions}
                     onChange={setPromotionTargetAcademicYearId}
-                    placeholder="Pilih tahun target"
+                    placeholder="Pilih tahun ajaran baru"
                   />
 
                   <Pressable
@@ -3141,17 +3329,17 @@ export default function AdminAcademicScreen() {
                     }}
                   >
                     <Text style={{ color: '#fff', fontWeight: '700' }}>
-                      {createRolloverTargetMutation.isPending ? 'Menyiapkan...' : 'Buat Draft Tahun Berikutnya'}
+                      {createRolloverTargetMutation.isPending ? 'Menyiapkan...' : 'Buat Draft Tahun Ajaran Baru'}
                     </Text>
                   </Pressable>
 
                   {!promotionSourceAcademicYearId ? (
                     <Text style={{ color: BRAND_COLORS.textMuted, textAlign: 'center', paddingVertical: 8 }}>
-                      Pilih tahun sumber untuk mulai wizard rollover.
+                      Pilih tahun ajaran sumber untuk mulai menyalin data.
                     </Text>
                   ) : !promotionTargetAcademicYearId ? (
                     <Text style={{ color: BRAND_COLORS.textMuted, textAlign: 'center', paddingVertical: 8 }}>
-                      Pilih target year atau buat draft tahun berikutnya terlebih dahulu.
+                      Pilih tahun ajaran baru atau buat draft tahun berikutnya terlebih dahulu.
                     </Text>
                   ) : !promotionSelectionValid ? (
                     <View
@@ -3166,15 +3354,15 @@ export default function AdminAcademicScreen() {
                     >
                       <Text style={{ color: '#92400e', fontWeight: '700', marginBottom: 4 }}>Tahun tidak valid</Text>
                       <Text style={{ color: '#92400e', fontSize: scaleWithAppTextScale(12) }}>
-                        Tahun sumber dan target harus berbeda.
+                        Tahun ajaran sumber dan tahun ajaran baru harus berbeda.
                       </Text>
                     </View>
                   ) : rolloverWorkspaceQuery.isLoading ? (
-                    <QueryStateView type="loading" message="Memuat workspace rollover..." />
+                    <QueryStateView type="loading" message="Memuat data salin tahun ajaran..." />
                   ) : rolloverWorkspaceQuery.isError || !rolloverWorkspace ? (
                     <QueryStateView
                       type="error"
-                      message="Gagal memuat workspace rollover."
+                      message="Gagal memuat data salin tahun ajaran."
                       onRetry={() => rolloverWorkspaceQuery.refetch()}
                     />
                   ) : (
@@ -3205,7 +3393,7 @@ export default function AdminAcademicScreen() {
                             marginBottom: 10,
                           }}
                         >
-                          <Text style={{ color: '#b91c1c', fontWeight: '700', marginBottom: 6 }}>Blocking Issues</Text>
+                          <Text style={{ color: '#b91c1c', fontWeight: '700', marginBottom: 6 }}>Harus Diperbaiki</Text>
                           {rolloverWorkspace.validation.errors.map((item) => (
                             <Text key={`rollover-global-error-${item}`} style={{ color: '#b91c1c', fontSize: scaleWithAppTextScale(12), marginBottom: 4 }}>
                               • {item}
@@ -3225,7 +3413,7 @@ export default function AdminAcademicScreen() {
                             marginBottom: 10,
                           }}
                         >
-                          <Text style={{ color: '#92400e', fontWeight: '700', marginBottom: 6 }}>Catatan Wizard</Text>
+                          <Text style={{ color: '#92400e', fontWeight: '700', marginBottom: 6 }}>Catatan Salin Data</Text>
                           {rolloverWorkspace.validation.warnings.map((item) => (
                             <Text key={`rollover-global-warning-${item}`} style={{ color: '#92400e', fontSize: scaleWithAppTextScale(12), marginBottom: 4 }}>
                               • {item}
@@ -3234,7 +3422,7 @@ export default function AdminAcademicScreen() {
                         </View>
                       ) : null}
 
-                      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginBottom: 6 }}>Pilih Komponen Clone</Text>
+                      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginBottom: 6 }}>Pilih Data yang Disalin</Text>
                       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
                         <View style={{ flexDirection: 'row', gap: 8, paddingRight: 8 }}>
                           {rolloverComponentEntries.map(([key, component]) => (
@@ -3267,38 +3455,38 @@ export default function AdminAcademicScreen() {
                             {component.description}
                           </Text>
                           <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12) }}>
-                            Sumber: {component.summary.sourceItems} | Create:{' '}
-                            {'createCount' in component.summary ? component.summary.createCount : 0} | Skip existing:{' '}
+                            Sumber: {component.summary.sourceItems} | Dibuat:{' '}
+                            {'createCount' in component.summary ? component.summary.createCount : 0} | Sudah ada:{' '}
                             {'existingCount' in component.summary ? component.summary.existingCount : 0}
                           </Text>
                           {'globalFallbackCount' in component.summary && component.summary.globalFallbackCount > 0 ? (
                             <Text style={{ color: '#92400e', fontSize: scaleWithAppTextScale(12), marginTop: 8 }}>
-                              Fallback global: {component.summary.globalFallbackCount}
+                              Mengambil data global: {component.summary.globalFallbackCount}
                             </Text>
                           ) : null}
                           {'missingGradeComponentCount' in component.summary && component.summary.missingGradeComponentCount > 0 ? (
                             <Text style={{ color: '#92400e', fontSize: scaleWithAppTextScale(12), marginTop: 8 }}>
-                              Dependency komponen nilai: {component.summary.missingGradeComponentCount}
+                              Butuh komponen nilai: {component.summary.missingGradeComponentCount}
                             </Text>
                           ) : null}
                           {'skipNoTargetProgramCount' in component.summary && component.summary.skipNoTargetProgramCount > 0 ? (
                             <Text style={{ color: '#92400e', fontSize: scaleWithAppTextScale(12), marginTop: 8 }}>
-                              Menunggu program target: {component.summary.skipNoTargetProgramCount}
+                              Menunggu program tahun baru: {component.summary.skipNoTargetProgramCount}
                             </Text>
                           ) : null}
                           {'skipNoTargetClassCount' in component.summary && component.summary.skipNoTargetClassCount > 0 ? (
                             <Text style={{ color: '#92400e', fontSize: scaleWithAppTextScale(12), marginTop: 8 }}>
-                              Menunggu kelas target: {component.summary.skipNoTargetClassCount}
+                              Menunggu kelas tahun baru: {component.summary.skipNoTargetClassCount}
                             </Text>
                           ) : null}
                           {'skipNoSourceCount' in component.summary && component.summary.skipNoSourceCount > 0 ? (
                             <Text style={{ color: '#92400e', fontSize: scaleWithAppTextScale(12), marginTop: 8 }}>
-                              Tidak ada source: {component.summary.skipNoSourceCount}
+                              Tidak ada data sumber: {component.summary.skipNoSourceCount}
                             </Text>
                           ) : null}
                           {'skipOutsideTargetRangeCount' in component.summary && component.summary.skipOutsideTargetRangeCount > 0 ? (
                             <Text style={{ color: '#92400e', fontSize: scaleWithAppTextScale(12), marginTop: 8 }}>
-                              Di luar rentang target: {component.summary.skipOutsideTargetRangeCount}
+                              Di luar rentang tahun ajaran baru: {component.summary.skipOutsideTargetRangeCount}
                             </Text>
                           ) : null}
                           {'homeroomCarryCount' in component.summary ? (
@@ -3307,13 +3495,13 @@ export default function AdminAcademicScreen() {
                                 Wali ikut pada kelas baru: {component.summary.homeroomCarryCount}
                               </Text>
                               <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
-                                Isi target kosong dari source: {component.summary.homeroomExistingFillCount}
+                                Isi wali kosong dari sumber: {component.summary.homeroomExistingFillCount}
                               </Text>
                               <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
-                                Target sudah punya wali: {component.summary.homeroomKeepExistingCount}
+                                Kelas baru sudah punya wali: {component.summary.homeroomKeepExistingCount}
                               </Text>
                               <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
-                                Source tanpa wali: {component.summary.homeroomMissingSourceCount}
+                                Kelas sumber tanpa wali: {component.summary.homeroomMissingSourceCount}
                               </Text>
                             </View>
                           ) : null}
@@ -3384,7 +3572,7 @@ export default function AdminAcademicScreen() {
                         }}
                       >
                         <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginBottom: 6 }}>
-                          Tahun target: {rolloverWorkspace.targetAcademicYear.name}
+                          Tahun ajaran baru: {rolloverWorkspace.targetAcademicYear.name}
                         </Text>
                         <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>Catatan Operasional</Text>
                         {rolloverWorkspace.notes.map((item) => (
@@ -3406,7 +3594,7 @@ export default function AdminAcademicScreen() {
                         }}
                       >
                         <Text style={{ color: '#fff', fontWeight: '700' }}>
-                          {applyRolloverMutation.isPending ? 'Menerapkan...' : 'Apply Setup Tahunan'}
+                          {applyRolloverMutation.isPending ? 'Menyalin...' : 'Salin Data ke Tahun Baru'}
                         </Text>
                       </Pressable>
                     </>
@@ -3418,15 +3606,15 @@ export default function AdminAcademicScreen() {
 
           {shouldShow('promotion') ? (
             <SectionCard
-              title="Promotion Center"
-              subtitle="Preview, mapping, dan commit kenaikan kelas/alumni dengan kontrak yang sama seperti web."
+              title="Kenaikan & Kelulusan"
+              subtitle="Tentukan tujuan kelas siswa, cek kelas XII yang menjadi alumni, lalu proses tahun ajaran baru."
             >
               {academicFeatureFlagsQuery.isLoading ? (
-                <QueryStateView type="loading" message="Memuat feature flag promotion..." />
+                <QueryStateView type="loading" message="Memuat pengaturan kenaikan dan kelulusan..." />
               ) : academicFeatureFlagsQuery.isError ? (
                 <QueryStateView
                   type="error"
-                  message="Gagal memuat feature flag promotion."
+                  message="Gagal memuat pengaturan kenaikan dan kelulusan."
                   onRetry={() => academicFeatureFlagsQuery.refetch()}
                 />
               ) : !isPromotionFeatureEnabled ? (
@@ -3440,27 +3628,27 @@ export default function AdminAcademicScreen() {
                     marginBottom: 8,
                   }}
                 >
-                  <Text style={{ color: '#92400e', fontWeight: '700', marginBottom: 4 }}>Promotion dimatikan</Text>
+                  <Text style={{ color: '#92400e', fontWeight: '700', marginBottom: 4 }}>Kenaikan & kelulusan belum aktif</Text>
                   <Text style={{ color: '#92400e', fontSize: scaleWithAppTextScale(12) }}>
-                    Nyalakan env ACADEMIC_PROMOTION_V2_ENABLED=true di server saat siap uji.
+                    Fitur proses kenaikan dan kelulusan belum diaktifkan di server.
                   </Text>
                 </View>
               ) : (
                 <>
                   <MobileSelectField
-                    label="Tahun Sumber"
+                    label="Tahun Ajaran Sumber"
                     value={promotionSourceAcademicYearId || (effectivePromotionSourceAcademicYearId ? String(effectivePromotionSourceAcademicYearId) : '')}
                     options={academicYearSelectOptions}
                     onChange={setPromotionSourceAcademicYearId}
-                    placeholder="Pilih tahun sumber"
+                    placeholder="Pilih tahun ajaran sumber"
                   />
 
                   <MobileSelectField
-                    label="Tahun Target"
+                    label="Tahun Ajaran Baru"
                     value={promotionTargetAcademicYearId || (effectivePromotionTargetAcademicYearId ? String(effectivePromotionTargetAcademicYearId) : '')}
                     options={academicYearSelectOptions}
                     onChange={setPromotionTargetAcademicYearId}
-                    placeholder="Pilih tahun target"
+                    placeholder="Pilih tahun ajaran baru"
                   />
 
                   <Pressable
@@ -3482,13 +3670,13 @@ export default function AdminAcademicScreen() {
                         fontSize: scaleWithAppTextScale(12),
                       }}
                     >
-                      {activateTargetYearAfterCommit ? 'Aktifkan tahun target setelah commit: ON' : 'Aktifkan tahun target setelah commit: OFF'}
+                      {activateTargetYearAfterCommit ? 'Aktifkan tahun ajaran baru setelah proses: ON' : 'Aktifkan tahun ajaran baru setelah proses: OFF'}
                     </Text>
                   </Pressable>
 
                   {!promotionSourceAcademicYearId || !promotionTargetAcademicYearId ? (
                 <Text style={{ color: BRAND_COLORS.textMuted, textAlign: 'center', paddingVertical: 8 }}>
-                  Pilih tahun sumber dan target untuk memuat workspace promotion.
+                  Pilih tahun ajaran sumber dan tahun ajaran baru untuk memuat tujuan kelas.
                 </Text>
                   ) : !promotionSelectionValid ? (
                 <View
@@ -3503,15 +3691,15 @@ export default function AdminAcademicScreen() {
                 >
                   <Text style={{ color: '#92400e', fontWeight: '700', marginBottom: 4 }}>Tahun tidak valid</Text>
                   <Text style={{ color: '#92400e', fontSize: scaleWithAppTextScale(12) }}>
-                    Tahun sumber dan target harus berbeda.
+                    Tahun ajaran sumber dan tahun ajaran baru harus berbeda.
                   </Text>
                 </View>
                   ) : promotionWorkspaceQuery.isLoading ? (
-                <QueryStateView type="loading" message="Memuat workspace promotion..." />
+                <QueryStateView type="loading" message="Memuat tujuan kelas..." />
                   ) : promotionWorkspaceQuery.isError || !promotionWorkspaceQuery.data ? (
                 <QueryStateView
                   type="error"
-                  message="Gagal memuat workspace promotion."
+                  message="Gagal memuat tujuan kelas."
                   onRetry={() => promotionWorkspaceQuery.refetch()}
                 />
                   ) : (
@@ -3535,11 +3723,71 @@ export default function AdminAcademicScreen() {
                       subtitle="Siswa XII aktif"
                     />
                     <StatCard
-                      title="Mapping Siap"
+                      title="Tujuan Siap"
                       value={`${promotionWorkspaceQuery.data.summary.configuredPromoteClasses || 0}/${promotionWorkspaceQuery.data.summary.promotableClasses || 0}`}
-                      subtitle="Kelas promotion terpasang"
+                      subtitle="Kelas tujuan terpasang"
                     />
                   </View>
+
+                  {promotionPreflightRows.length > 0 ? (
+                    <View
+                      style={{
+                        borderWidth: 1,
+                        borderColor: '#d6e0f2',
+                        borderRadius: 14,
+                        padding: 12,
+                        backgroundColor: '#f8fbff',
+                        marginBottom: 12,
+                      }}
+                    >
+                      <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 4 }}>
+                        Checklist Kesiapan Sebelum Proses
+                      </Text>
+                      <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginBottom: 10 }}>
+                        Gunakan daftar ini untuk memastikan data tahun ajaran baru aman sebelum siswa dinaikkan atau diluluskan.
+                      </Text>
+                      {promotionPreflightRows.map((row) => {
+                        const statusMeta = getPreflightStatusMeta(row.status);
+                        return (
+                          <View
+                            key={`promotion-preflight-${row.key}`}
+                            style={{
+                              borderWidth: 1,
+                              borderColor: statusMeta.borderColor,
+                              backgroundColor: statusMeta.backgroundColor,
+                              borderRadius: 12,
+                              padding: 10,
+                              marginBottom: 8,
+                            }}
+                          >
+                            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                              <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', flex: 1 }}>{row.area}</Text>
+                              <View
+                                style={{
+                                  borderWidth: 1,
+                                  borderColor: statusMeta.borderColor,
+                                  borderRadius: 999,
+                                  paddingHorizontal: 8,
+                                  paddingVertical: 3,
+                                  backgroundColor: '#fff',
+                                }}
+                              >
+                                <Text style={{ color: statusMeta.textColor, fontSize: scaleWithAppTextScale(11), fontWeight: '700' }}>
+                                  {statusMeta.label}
+                                </Text>
+                              </View>
+                            </View>
+                            <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginTop: 6 }}>
+                              {row.detail}
+                            </Text>
+                            <Text style={{ color: statusMeta.textColor, fontSize: scaleWithAppTextScale(12), marginTop: 4, fontWeight: '700' }}>
+                              {row.nextAction}
+                            </Text>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  ) : null}
 
                   {promotionWorkspaceQuery.data.validation.errors.length > 0 ? (
                     <View
@@ -3552,7 +3800,7 @@ export default function AdminAcademicScreen() {
                         marginBottom: 10,
                       }}
                     >
-                      <Text style={{ color: '#b91c1c', fontWeight: '700', marginBottom: 6 }}>Blocking Issues</Text>
+                      <Text style={{ color: '#b91c1c', fontWeight: '700', marginBottom: 6 }}>Harus Diperbaiki</Text>
                       {promotionWorkspaceQuery.data.validation.errors.map((item) => (
                         <Text key={`promotion-global-error-${item}`} style={{ color: '#b91c1c', fontSize: scaleWithAppTextScale(12), marginBottom: 4 }}>
                           • {item}
@@ -3609,7 +3857,7 @@ export default function AdminAcademicScreen() {
                       }}
                     >
                       <Text style={{ color: '#fff', fontWeight: '700' }}>
-                        {savePromotionMappingsMutation.isPending ? 'Menyimpan...' : 'Simpan Mapping'}
+                        {savePromotionMappingsMutation.isPending ? 'Menyimpan...' : 'Simpan Tujuan'}
                       </Text>
                     </Pressable>
                     <Pressable
@@ -3625,7 +3873,7 @@ export default function AdminAcademicScreen() {
                       }}
                     >
                       <Text style={{ color: '#fff', fontWeight: '700' }}>
-                        {commitPromotionMutation.isPending ? 'Commit...' : 'Commit Promotion'}
+                        {commitPromotionMutation.isPending ? 'Memproses...' : 'Proses Kenaikan & Kelulusan'}
                       </Text>
                     </Pressable>
                   </View>
@@ -3649,7 +3897,7 @@ export default function AdminAcademicScreen() {
                           {item.major.code} • {item.studentCount} siswa aktif • {item.action === 'GRADUATE' ? 'Alumni' : `Naik ke ${item.expectedTargetLevel}`}
                         </Text>
                         <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginBottom: 6 }}>
-                          Source: {item.mappingSource === 'SAVED' ? 'mapping tersimpan' : item.mappingSource === 'SUGGESTED' ? 'saran otomatis' : item.mappingSource === 'GRADUATE' ? 'alumni' : 'belum dipilih'}
+                          Sumber data: {item.mappingSource === 'SAVED' ? 'tujuan tersimpan' : item.mappingSource === 'SUGGESTED' ? 'saran otomatis' : item.mappingSource === 'GRADUATE' ? 'alumni' : 'belum dipilih'}
                         </Text>
 
                         {item.action === 'GRADUATE' ? (
@@ -3671,7 +3919,7 @@ export default function AdminAcademicScreen() {
                         ) : (
                           <>
                             <MobileSelectField
-                              label="Pilih Kelas Target"
+                              label="Pilih Kelas Tujuan"
                               value={selectedTargetClassId ? String(selectedTargetClassId) : ''}
                               options={[
                                 { value: '', label: 'Kosongkan' },
@@ -3686,7 +3934,7 @@ export default function AdminAcademicScreen() {
                                   [item.sourceClassId]: next ? Number(next) : null,
                                 }))
                               }
-                              placeholder="Pilih kelas target"
+                              placeholder="Pilih kelas tujuan"
                             />
                             <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12), marginBottom: 8 }}>
                               Saran: {suggestedTargetLabel}
@@ -3734,10 +3982,10 @@ export default function AdminAcademicScreen() {
                   })}
 
                   <View style={{ marginTop: 8 }}>
-                    <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>Riwayat Run</Text>
+                    <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginBottom: 6 }}>Riwayat Proses</Text>
                     {(promotionWorkspaceQuery.data.recentRuns || []).length === 0 ? (
                       <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12) }}>
-                        Belum ada run promotion untuk kombinasi source-target ini.
+                        Belum ada proses untuk kombinasi tahun ajaran ini.
                       </Text>
                     ) : (
                       promotionWorkspaceQuery.data.recentRuns.map((run) => (
@@ -3754,7 +4002,7 @@ export default function AdminAcademicScreen() {
                       >
                           <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
                             <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }}>
-                              Run #{run.id} • {run.promotedStudents} naik • {run.graduatedStudents} alumni
+                              Proses #{run.id} • {run.promotedStudents} naik • {run.graduatedStudents} alumni
                             </Text>
                             <View
                               style={{
@@ -3781,19 +4029,19 @@ export default function AdminAcademicScreen() {
                                         : '#475569',
                                 }}
                               >
-                                {run.status}
+                                {getPromotionRunStatusLabel(run.status)}
                               </Text>
                             </View>
                           </View>
                           <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12) }}>
-                            Commit: {formatDateTime(run.committedAt || run.createdAt)}
+                            Diproses: {formatDateTime(run.committedAt || run.createdAt)}
                           </Text>
                           <Text style={{ color: BRAND_COLORS.textMuted, fontSize: scaleWithAppTextScale(12) }}>
                             {run.createdBy ? `Oleh ${run.createdBy.name}` : 'Oleh sistem'}
                           </Text>
                           {run.rolledBackAt ? (
                             <Text style={{ color: '#92400e', fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
-                              Rollback: {formatDateTime(run.rolledBackAt)}
+                              Dibatalkan: {formatDateTime(run.rolledBackAt)}
                               {run.rolledBackBy?.name ? ` oleh ${run.rolledBackBy.name}` : ''}
                             </Text>
                           ) : null}
@@ -3812,7 +4060,7 @@ export default function AdminAcademicScreen() {
                             }}
                           >
                             <Text style={{ color: '#92400e', fontWeight: '700', fontSize: scaleWithAppTextScale(12) }}>
-                              {rollbackPromotionMutation.isPending ? 'Rollback...' : 'Rollback Run'}
+                              {rollbackPromotionMutation.isPending ? 'Membatalkan...' : 'Batalkan'}
                             </Text>
                           </Pressable>
                           {!run.canRollback && run.rollbackBlockedReason ? (
