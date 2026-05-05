@@ -169,6 +169,9 @@ Dokumen ini adalah policy kerja default untuk setiap sesi baru yang mengerjakan 
      - card tetap boleh dipakai untuk statistik ringkas, quick action, panduan/notice, empty state, monitor/display khusus seperti QR monitor, dan container form/modal
      - jika data punya konteks besar yang berbeda, pisahkan tabel berdasarkan konteks operasional yang jelas seperti tingkat, kelas, jurusan, program, semester, atau status; jangan mencampur semuanya dalam satu card/list panjang yang sulit discan
      - table view wajib punya struktur minimal yang konsisten: page header, tab/filter/action bar bila diperlukan, table section, pagination/limit bila data bisa besar, empty state, loading state, dan modal/drawer untuk tambah/edit/detail
+     - tab/filter/action bar harus menjadi bagian dari container table view atau section operasional yang sedang dikendalikan, bukan dibuat sebagai card terpisah yang mengambang jauh dari tabel/konten aktif
+     - jika sebuah tab mengubah isi tabel/section di bawahnya, jarak visual antara tab dan table view harus rapat dan jelas agar user memahami bahwa tab tersebut mengontrol data yang sama
+     - jangan membuat tab horizontal sebagai blok besar tersendiri di luar alur konten kecuali memang tab tersebut adalah navigasi level halaman penuh dan konten aktif tetap langsung mengikuti di bawahnya
    - Parity web-mobile untuk halaman dan menu wajib dijaga 1:1:
      - istilah, nama menu, urutan menu, nama tab, status, filter, dan arti aksi harus sama antara web dan mobile
      - jika web memakai urutan tab/menu tertentu, mobile harus mengikuti urutan tersebut kecuali user meminta desain lintas-platform baru
@@ -188,6 +191,18 @@ Dokumen ini adalah policy kerja default untuk setiap sesi baru yang mengerjakan 
      - `Persetujuan Izin` Wali Kelas sebagai acuan table view data operasional
      - `Tambah Assignment Guru` sebagai acuan searchable dropdown untuk data besar
      - `Buat Jadwal Ujian` dan `Lihat Detail Mengajar` sebagai acuan modal/popup operasional
+     - pola `warning/petunjuk ujian` di role siswa sebagai acuan indikator catatan penting yang ringkas dan tidak boros ruang
+   - Untuk button, card aksi, dan quick action:
+     - ukuran button wajib proporsional terhadap teks, posisi, dan kepentingan aksi; jangan membuat button terlalu tinggi/lebar hanya karena ditempatkan dalam kolom/grid yang besar
+     - button utama boleh menonjol, tetapi tetap harus punya padding, tinggi, dan lebar yang wajar; hindari bentuk seperti card besar jika aksi tersebut hanya satu tombol biasa
+     - jika teks button panjang seperti `Buat Draft Tahun Ajaran Baru`, gunakan lebar secukupnya, wrap/shorten label bila perlu, atau pisahkan menjadi tombol normal dengan helper text di dekatnya
+     - jangan menggabungkan button dengan card statistik/notice sehingga tampil seperti blok besar yang tidak proporsional; gunakan button compact di action bar atau area aksi yang jelas
+     - pada mobile, button harus tetap mudah disentuh tetapi tidak boleh mengambil ruang berlebihan dari konten utama; ikuti ukuran komponen shared yang sudah ada
+   - Untuk catatan, panduan, warning, atau informasi panjang:
+     - jangan menampilkan daftar catatan panjang terbuka sebagai card besar di halaman utama jika informasinya hanya pendukung dan bukan data utama
+     - jika catatan banyak, gunakan pola ringkas seperti indikator warning bulat berkedip/petunjuk ujian siswa, badge jumlah catatan, popover/modal detail, accordion, atau expandable notice
+     - tampilkan hanya ringkasan paling penting di halaman utama; detail lengkap dibuka sadar oleh user lewat tombol/ikon `Lihat Catatan`, `Panduan`, atau aksi sejenis
+     - warning yang blocking boleh tetap tampil jelas, tetapi warning informatif/non-blocking harus hemat ruang agar tidak menggeser tabel/data utama terlalu jauh ke bawah
    - Untuk menu tab horizontal di web, gunakan gaya standar seperti tab pada `Kelola Ujian` Wakakur:
      - utamakan komponen shared `UnderlineTabBar` atau pola setara yang identik dengan `Kelola Ujian`
      - gunakan icon tab yang relevan seperti pola `Kelola Ujian`; jangan membuat tab teks polos jika konteks tab operasional membutuhkan scan cepat
