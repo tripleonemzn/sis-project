@@ -24,7 +24,7 @@ import { academicYearApi } from '../academicYear/academicYearApi';
 import { adminApi } from '../admin/adminApi';
 import { useAuth } from '../auth/AuthProvider';
 import { gradeApi } from '../grades/gradeApi';
-import type { HomeroomResultPublicationStudentRow } from '../grades/types';
+import type { HomeroomRemedialMonitoringItem, HomeroomResultPublicationStudentRow } from '../grades/types';
 import { getStandardPagePadding } from '../../lib/ui/pageLayout';
 import { homeroomReportApi } from './homeroomReportApi';
 import { examApi } from '../exams/examApi';
@@ -36,7 +36,7 @@ import {
   HomeroomStudentReportSubjectRow,
 } from './types';
 
-type TabKey = 'RAPOR' | 'LEDGER' | 'EXTRACURRICULAR' | 'RANKING' | 'PUBLICATION';
+type TabKey = 'RAPOR' | 'LEDGER' | 'EXTRACURRICULAR' | 'RANKING' | 'REMEDIAL' | 'PUBLICATION';
 type RequestedProgramHint = 'MIDTERM' | 'FINAL_ODD' | 'FINAL_EVEN';
 
 type ModuleConfig = {
@@ -295,6 +295,13 @@ function formatDateTime(value: string | null | undefined) {
     hour: '2-digit',
     minute: '2-digit',
   });
+}
+
+function getProgressToneStyle(tone: string) {
+  if (tone === 'green') return { bg: '#dcfce7', border: '#86efac', text: '#166534' };
+  if (tone === 'red') return { bg: '#fee2e2', border: '#fca5a5', text: '#991b1b' };
+  if (tone === 'blue') return { bg: '#dbeafe', border: '#93c5fd', text: '#1d4ed8' };
+  return { bg: '#fef3c7', border: '#fcd34d', text: '#92400e' };
 }
 
 function averageFrom(values: Array<number | null | undefined>) {
@@ -615,7 +622,7 @@ export function HomeroomReportModuleScreen({
     const items: Array<{
       key: TabKey;
       label: string;
-      iconName: 'file-text' | 'layers' | 'activity' | 'bar-chart-2' | 'award';
+      iconName: 'file-text' | 'layers' | 'activity' | 'bar-chart-2' | 'clipboard' | 'award';
     }> = [
       { key: 'LEDGER', label: 'Leger Nilai', iconName: 'layers' },
       { key: 'EXTRACURRICULAR', label: 'Ekstrakurikuler', iconName: 'activity' },
@@ -625,6 +632,7 @@ export function HomeroomReportModuleScreen({
     }
     items.push(
       { key: 'RAPOR', label: 'Rapor Siswa', iconName: 'file-text' },
+      { key: 'REMEDIAL', label: 'Monitoring Remedial', iconName: 'clipboard' },
       { key: 'PUBLICATION', label: 'Publikasi Nilai', iconName: 'award' },
     );
     return items;
@@ -778,6 +786,31 @@ export function HomeroomReportModuleScreen({
         publicationCode: activeProgramCode,
         page: 1,
         limit: 250,
+        search: search.trim() || undefined,
+      }),
+  });
+
+  const remedialMonitoringQuery = useQuery({
+    queryKey: [
+      'mobile-homeroom-report-remedial-monitoring',
+      user?.id,
+      activeProgramCode,
+      selectedClassId,
+      activeYearQuery.data?.id,
+      semester,
+      search,
+    ],
+    enabled:
+      isAuthenticated &&
+      !!isAllowed &&
+      !!selectedClassId &&
+      !!activeYearQuery.data?.id &&
+      activeTab === 'REMEDIAL',
+    queryFn: async () =>
+      gradeApi.getHomeroomRemedialMonitoring({
+        classId: Number(selectedClassId),
+        semester,
+        publicationCode: activeProgramCode || undefined,
         search: search.trim() || undefined,
       }),
   });
@@ -1461,6 +1494,139 @@ export function HomeroomReportModuleScreen({
     );
   };
 
+  const renderRemedialItem = (item: HomeroomRemedialMonitoringItem) => {
+    const tone = getProgressToneStyle(item.progress.tone);
+    return (
+      <View
+        key={`${item.scoreEntryId}-${item.subject.id}`}
+        style={{
+          borderWidth: 1,
+          borderColor: '#e2e8f0',
+          borderRadius: 12,
+          backgroundColor: '#fff',
+          padding: 10,
+          marginTop: 8,
+        }}
+      >
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700' }} numberOfLines={1}>
+              {safeText(item.subject.name)}
+            </Text>
+            <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
+              {safeText(item.sourceLabel)} • Nilai {formatNumber(item.currentEffectiveScore, 2)} / KKM {formatNumber(item.kkm, 2)}
+            </Text>
+          </View>
+          <View
+            style={{
+              borderWidth: 1,
+              borderColor: tone.border,
+              backgroundColor: tone.bg,
+              borderRadius: 999,
+              paddingHorizontal: 8,
+              paddingVertical: 4,
+            }}
+          >
+            <Text style={{ color: tone.text, fontSize: scaleWithAppTextScale(11), fontWeight: '700' }}>
+              {safeText(item.progress.label)}
+            </Text>
+          </View>
+        </View>
+        <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12), marginTop: 6 }}>
+          Percobaan: {formatNumber(item.attemptCount)} • Tenggat: {formatDateTime(item.latestAttempt?.activityDueAt)}
+        </Text>
+        <Text style={{ color: '#475569', fontSize: scaleWithAppTextScale(12), lineHeight: scaleWithAppTextScale(18), marginTop: 4 }}>
+          {safeText(item.progress.description)}
+        </Text>
+      </View>
+    );
+  };
+
+  const renderRemedialMonitoringTab = () => {
+    if (remedialMonitoringQuery.isLoading) {
+      return <QueryStateView type="loading" message="Memuat monitoring remedial..." />;
+    }
+    if (remedialMonitoringQuery.isError) {
+      return (
+        <QueryStateView
+          type="error"
+          message="Gagal memuat monitoring remedial."
+          onRetry={() => remedialMonitoringQuery.refetch()}
+        />
+      );
+    }
+
+    const data = remedialMonitoringQuery.data;
+    const rows = data?.rows || [];
+    const summary = data?.summary || {
+      totalStudents: 0,
+      studentsWithRemedial: 0,
+      subjectsWithRemedial: 0,
+      totalItems: 0,
+      finishedItems: 0,
+      unfinishedItems: 0,
+      blockedItems: 0,
+      expiredItems: 0,
+    };
+
+    return (
+      <View>
+        <View style={{ flexDirection: 'row', marginHorizontal: -4, marginBottom: 12 }}>
+          <View style={{ flex: 1, paddingHorizontal: 4 }}>
+            <SummaryCard title="Mapel Remedial" value={formatNumber(summary.subjectsWithRemedial)} subtitle={`${formatNumber(summary.studentsWithRemedial)} siswa`} />
+          </View>
+          <View style={{ flex: 1, paddingHorizontal: 4 }}>
+            <SummaryCard title="Belum Selesai" value={formatNumber(summary.unfinishedItems)} subtitle={`Ditahan ${formatNumber(summary.blockedItems)} • Expired ${formatNumber(summary.expiredItems)}`} />
+          </View>
+        </View>
+
+        {rows.length === 0 ? (
+          <EmptyState message="Tidak ada remedial aktif untuk filter ini." />
+        ) : (
+          <View>
+            {rows.map((row, index) => (
+              <View
+                key={row.student.id}
+                style={{
+                  borderWidth: 1,
+                  borderColor: '#dbe7fb',
+                  backgroundColor: '#fff',
+                  borderRadius: 14,
+                  padding: 12,
+                  marginBottom: 12,
+                }}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(11), fontWeight: '700' }}>NO {index + 1}</Text>
+                    <Text style={{ color: BRAND_COLORS.textDark, fontWeight: '700', marginTop: 2 }}>
+                      {safeText(row.student.name)}
+                    </Text>
+                    <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
+                      NIS: {safeText(row.student.nis)} • NISN: {safeText(row.student.nisn)}
+                    </Text>
+                  </View>
+                  <View style={{ alignItems: 'flex-end' }}>
+                    <Text style={{ color: '#0f172a', fontWeight: '700' }}>{formatNumber(row.summary.subjectCount)} mapel</Text>
+                    <Text style={{ color: '#64748b', fontSize: scaleWithAppTextScale(12), marginTop: 2 }}>
+                      {formatNumber(row.summary.finishedItems)} selesai • {formatNumber(row.summary.unfinishedItems)} belum
+                    </Text>
+                  </View>
+                </View>
+                {row.summary.blockedItems > 0 ? (
+                  <Text style={{ color: '#991b1b', fontSize: scaleWithAppTextScale(12), marginTop: 8 }}>
+                    Ada {formatNumber(row.summary.blockedItems)} remedial yang masih ditahan wali kelas.
+                  </Text>
+                ) : null}
+                {row.items.map(renderRemedialItem)}
+              </View>
+            ))}
+          </View>
+        )}
+      </View>
+    );
+  };
+
   const renderPublicationTab = () => {
     if (publicationQuery.isLoading) {
       return <QueryStateView type="loading" message="Memuat kontrol publikasi nilai..." />;
@@ -1955,6 +2121,7 @@ export function HomeroomReportModuleScreen({
       {activeTab === 'LEDGER' ? renderLedgerTab() : null}
       {activeTab === 'EXTRACURRICULAR' ? renderExtracurricularTab() : null}
       {activeTab === 'RANKING' ? renderRankingTab() : null}
+      {activeTab === 'REMEDIAL' ? renderRemedialMonitoringTab() : null}
       {activeTab === 'PUBLICATION' ? renderPublicationTab() : null}
 
       <MobileDetailModal

@@ -7,6 +7,7 @@ import {
   Alert,
   Image,
   Keyboard,
+  Linking,
   Modal,
   Platform,
   Pressable,
@@ -37,6 +38,8 @@ import { permissionApi } from '../../src/features/permissions/permissionApi';
 import { examApi, ExamProgramItem } from '../../src/features/exams/examApi';
 import { useStudentExamsQuery } from '../../src/features/exams/useStudentExamsQuery';
 import { resolveStudentExamRuntimeStatus, StudentExamRuntimeStatus } from '../../src/features/exams/status';
+import { learningApi } from '../../src/features/learning/learningApi';
+import { LearningRemedialActivity } from '../../src/features/learning/types';
 import {
   teachingResourceProgramApi,
   TeachingResourceProgramItem,
@@ -718,6 +721,34 @@ function buildStudentExamRoute(raw?: string | null): string {
   return code ? `/exams?programCode=${encodeURIComponent(code)}` : '/exams';
 }
 
+function resolveWebRoute(pathname: string) {
+  const base = ENV.API_BASE_URL.replace(/\/api\/?$/, '').replace(/\/+$/, '');
+  return `${base}${pathname.startsWith('/') ? pathname : `/${pathname}`}`;
+}
+
+function resolveRemedialPacket(item: LearningRemedialActivity) {
+  return item.activityExamPacket || item.activitySourceExamPacket || null;
+}
+
+function resolveRemedialProgramCode(item: LearningRemedialActivity) {
+  const packet = resolveRemedialPacket(item);
+  return normalizeProgramCode(packet?.programCode || packet?.type || item.sourceLabel || '');
+}
+
+function isQuestionSetRemedial(item: LearningRemedialActivity) {
+  return String(item.method || '').toUpperCase() === 'QUESTION_SET';
+}
+
+function resolveRemedialRuntimeStatus(item: LearningRemedialActivity): StudentExamRuntimeStatus {
+  const normalizedStatus = String(item.status || '').toUpperCase();
+  if (item.activitySubmittedAt || normalizedStatus === 'PASSED' || normalizedStatus === 'STILL_BELOW_KKM') {
+    return 'COMPLETED';
+  }
+  const dueMs = item.activityDueAt ? new Date(item.activityDueAt).getTime() : Number.NaN;
+  if (Number.isFinite(dueMs) && dueMs < Date.now()) return 'MISSED';
+  return 'OPEN';
+}
+
 function normalizeTeachingResourceProgramCode(raw?: string | null): string {
   return String(raw || '')
     .trim()
@@ -1035,6 +1066,12 @@ export default function HomeScreen() {
   const studentExamsQuery = useStudentExamsQuery({
     enabled: isAuthenticated && profile.role === 'STUDENT',
     user: profile,
+  });
+  const studentRemedialsQuery = useQuery({
+    queryKey: ['mobile-home-student-remedials', profile.id, activeAcademicYearQuery.data?.id],
+    enabled: isAuthenticated && profile.role === 'STUDENT' && Boolean(activeAcademicYearQuery.data?.id),
+    ...PASSIVE_HOME_QUERY_OPTIONS,
+    queryFn: () => learningApi.getRemedialActivities(),
   });
   const studentInternshipOverviewQuery = useQuery({
     queryKey: ['mobile-home-student-internship-overview', profile.id],
@@ -1828,6 +1865,64 @@ export default function HomeScreen() {
       })
       .slice(0, 5);
   }, [profile.role, studentExamsQuery.data?.exams]);
+  const upcomingStudentRemedials = useMemo(() => {
+    if (profile.role !== 'STUDENT') return [];
+    return [...(studentRemedialsQuery.data || [])]
+      .filter((item) => {
+        const status = resolveRemedialRuntimeStatus(item);
+        return status === 'OPEN' || status === 'MISSED' || status === 'UPCOMING';
+      })
+      .sort((a, b) => {
+        const aTime = a.activityDueAt ? new Date(a.activityDueAt).getTime() : Number.MAX_SAFE_INTEGER - 1;
+        const bTime = b.activityDueAt ? new Date(b.activityDueAt).getTime() : Number.MAX_SAFE_INTEGER - 1;
+        return aTime - bTime || a.id - b.id;
+      })
+      .slice(0, 5);
+  }, [profile.role, studentRemedialsQuery.data]);
+  const upcomingStudentAssessments = useMemo(() => {
+    const exams = upcomingStudentExams.map((item) => ({
+      kind: 'EXAM' as const,
+      key: `exam-${item.id}`,
+      title: item.packet?.title || '-',
+      subjectLabel: `${resolveExamSubjectName(item)} • ${String(item.packet?.programCode || item.packet?.type || '-').trim().toUpperCase()}`,
+      dateLabel: `Mulai: ${formatExamDateTime(item.startTime)}`,
+      status: resolveStudentExamRuntimeStatus(item),
+      sortTime: new Date(item.startTime).getTime(),
+      isBlocked: Boolean(item.isBlocked),
+      blockReason: item.blockReason || null,
+      onPress: () => router.push(buildStudentExamRoute(item.packet?.programCode || item.packet?.type)),
+    }));
+    const remedials = upcomingStudentRemedials.map((item) => {
+      const programCode = resolveRemedialProgramCode(item);
+      const status = resolveRemedialRuntimeStatus(item);
+      const canOpenQuestionSet = isQuestionSetRemedial(item) && Boolean(resolveRemedialPacket(item));
+      return {
+        kind: 'REMEDIAL' as const,
+        key: `remedial-${item.id}`,
+        title: item.activityTitle || `Remedial ${item.subject?.name || ''}`.trim(),
+        subjectLabel: `${item.subject?.name || '-'} • ${programCode || item.sourceLabel || 'Remedial'}`,
+        dateLabel: item.activityDueAt ? `Tenggat: ${formatExamDateTime(item.activityDueAt)}` : 'Tanpa tenggat',
+        status,
+        sortTime: item.activityDueAt ? new Date(item.activityDueAt).getTime() : Number.MAX_SAFE_INTEGER - 1,
+        isBlocked: false,
+        blockReason: null,
+        onPress: async () => {
+          if (canOpenQuestionSet) {
+            await Linking.openURL(resolveWebRoute(`/student/remedials/${item.id}/take`));
+            return;
+          }
+          router.push('/learning');
+        },
+      };
+    });
+    return [...exams, ...remedials]
+      .sort((a, b) => {
+        const safeA = Number.isFinite(a.sortTime) ? a.sortTime : Number.MAX_SAFE_INTEGER;
+        const safeB = Number.isFinite(b.sortTime) ? b.sortTime : Number.MAX_SAFE_INTEGER;
+        return safeA - safeB || a.title.localeCompare(b.title, 'id-ID');
+      })
+      .slice(0, 5);
+  }, [router, upcomingStudentExams, upcomingStudentRemedials]);
 
   const displayName = (profile.name?.trim() || profile.username || 'Pengguna').trim();
   const profilePhotoUrl = useMemo(() => resolveMediaUrl(profile.photo), [profile.photo]);
@@ -2085,6 +2180,7 @@ export default function HomeScreen() {
         refetches.push(studentScheduleQuery.refetch());
         refetches.push(studentScheduleTimeConfigQuery.refetch());
         refetches.push(studentExamsQuery.refetch());
+        refetches.push(studentRemedialsQuery.refetch());
       }
       if (profile.role === 'TEACHER') {
         refetches.push(examProgramsQuery.refetch());
@@ -2750,30 +2846,25 @@ export default function HomeScreen() {
                 marginBottom: 12,
               }}
             >
-              <Text style={{ color: colors.text, fontWeight: '700', fontSize: scaleFont(15), marginBottom: 8 }}>Jadwal Ujian Terdekat</Text>
-              {studentExamsQuery.isLoading ? (
-                <Text style={{ color: colors.textMuted, fontSize: scaleFont(12) }}>Memuat jadwal ujian terdekat...</Text>
+              <Text style={{ color: colors.text, fontWeight: '700', fontSize: scaleFont(15), marginBottom: 8 }}>Jadwal Ujian & Remedial Terdekat</Text>
+              {studentExamsQuery.isLoading || studentRemedialsQuery.isLoading ? (
+                <Text style={{ color: colors.textMuted, fontSize: scaleFont(12) }}>Memuat jadwal ujian dan remedial terdekat...</Text>
               ) : null}
-              {studentExamsQuery.isError && !studentExamsQuery.isLoading ? (
+              {(studentExamsQuery.isError || studentRemedialsQuery.isError) && !studentExamsQuery.isLoading && !studentRemedialsQuery.isLoading ? (
                 <Text style={{ color: isDarkModeActive ? '#fca5a5' : '#b91c1c', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18) }}>
-                  Gagal memuat jadwal ujian. Tarik layar ke bawah untuk muat ulang.
+                  Gagal memuat jadwal ujian atau remedial. Tarik layar ke bawah untuk muat ulang.
                 </Text>
               ) : null}
-              {!studentExamsQuery.isLoading && !studentExamsQuery.isError ? (
-                upcomingStudentExams.length > 0 ? (
+              {!studentExamsQuery.isLoading && !studentRemedialsQuery.isLoading && !studentExamsQuery.isError && !studentRemedialsQuery.isError ? (
+                upcomingStudentAssessments.length > 0 ? (
                   <View>
-                    {upcomingStudentExams.map((item) => {
-                      const status = resolveStudentExamRuntimeStatus(item);
+                    {upcomingStudentAssessments.map((item) => {
+                      const status = item.status;
                       const tone = getStudentExamStatusTone(status);
-                      const examType = String(item.packet?.programCode || item.packet?.type || '-')
-                        .trim()
-                        .toUpperCase();
                       return (
                         <Pressable
-                          key={item.id}
-                          onPress={() => {
-                            router.push(buildStudentExamRoute(item.packet?.programCode || item.packet?.type));
-                          }}
+                          key={item.key}
+                          onPress={item.onPress}
                           style={{
                             borderRadius: 10,
                             borderWidth: 1,
@@ -2789,7 +2880,7 @@ export default function HomeScreen() {
                               style={{ color: colors.text, fontWeight: '700', fontSize: scaleFont(13), flex: 1, paddingRight: 8 }}
                               numberOfLines={1}
                             >
-                              {item.packet?.title || '-'}
+                              {item.title}
                             </Text>
                             <Text
                               style={{
@@ -2804,14 +2895,14 @@ export default function HomeScreen() {
                                 fontWeight: '700',
                               }}
                             >
-                              {tone.label}
+                              {item.kind === 'REMEDIAL' && status === 'OPEN' ? 'Remedial' : tone.label}
                             </Text>
                           </View>
                           <Text style={{ color: colors.textMuted, fontSize: scaleFont(11), marginTop: 2 }} numberOfLines={1}>
-                            {`${resolveExamSubjectName(item)} • ${examType}`}
+                            {item.subjectLabel}
                           </Text>
                           <Text style={{ color: colors.textMuted, fontSize: scaleFont(11), marginTop: 1 }}>
-                            Mulai: {formatExamDateTime(item.startTime)}
+                            {item.dateLabel}
                           </Text>
                           {item.isBlocked ? (
                             <Text style={{ color: isDarkModeActive ? '#fecaca' : '#991b1b', fontSize: scaleFont(11), lineHeight: scaleLineHeight(17), marginTop: 2 }}>
@@ -2833,7 +2924,7 @@ export default function HomeScreen() {
                     }}
                   >
                       <Text style={{ color: colors.textMuted, fontSize: scaleFont(13), lineHeight: scaleLineHeight(20), textAlign: 'center' }}>
-                        Tidak ada jadwal ujian aktif saat ini.
+                        Tidak ada jadwal ujian atau remedial aktif saat ini.
                       </Text>
                   </View>
                 )

@@ -1,5 +1,5 @@
 import { apiClient } from '../../lib/api/client';
-import { HomeroomResultPublicationsData, StudentGradeOverviewData } from './types';
+import { HomeroomRemedialMonitoringData, HomeroomResultPublicationsData, StudentGradeOverviewData } from './types';
 
 type StudentGradeOverviewResponse = {
   success: boolean;
@@ -11,6 +11,12 @@ type HomeroomResultPublicationsResponse = {
   success: boolean;
   message: string;
   data: HomeroomResultPublicationsData;
+};
+
+type HomeroomRemedialMonitoringResponse = {
+  success: boolean;
+  message: string;
+  data: HomeroomRemedialMonitoringData;
 };
 
 export const gradeApi = {
@@ -63,5 +69,24 @@ export const gradeApi = {
   }) {
     const response = await apiClient.put('/grades/homeroom-result-publications', payload);
     return response.data;
+  },
+  async getHomeroomRemedialMonitoring(params: {
+    classId: number;
+    semester?: 'ODD' | 'EVEN';
+    publicationCode?: string;
+    search?: string;
+  }): Promise<HomeroomRemedialMonitoringData> {
+    const response = await apiClient.get<HomeroomRemedialMonitoringResponse>('/grades/remedials/homeroom-monitoring', {
+      params: {
+        classId: params.classId,
+        semester: params.semester,
+        publicationCode: params.publicationCode,
+        search: params.search,
+      },
+    });
+    if (!response.data?.data) {
+      throw new Error('Data monitoring remedial wali kelas tidak tersedia.');
+    }
+    return response.data.data;
   },
 };

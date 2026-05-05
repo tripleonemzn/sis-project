@@ -3909,6 +3909,437 @@ function formatRemedialScoreEntry(entry: RemedialScoreEntryRow, kkm: number) {
   }
 }
 
+function resolveHomeroomRemedialProgressStatus(params: {
+  isBlockedByHomeroom: boolean
+  isComplete: boolean
+  latestAttempt: RemedialScoreEntryRow['remedials'][number] | null
+  hasAnyRemedial: boolean
+}) {
+  if (params.isBlockedByHomeroom) {
+    return {
+      code: 'BLOCKED_BY_HOMEROOM',
+      label: 'Ditahan Wali Kelas',
+      description: 'Publikasi nilai siswa ini masih ditahan wali kelas, sehingga remedial belum bisa diproses guru.',
+      tone: 'red',
+      isFinished: false,
+      isUnfinished: true,
+      isBlocked: true,
+    }
+  }
+
+  if (params.isComplete) {
+    return {
+      code: 'COMPLETED',
+      label: 'Selesai',
+      description: 'Nilai remedial sudah mencapai KKM atau sudah tercatat tuntas.',
+      tone: 'green',
+      isFinished: true,
+      isUnfinished: false,
+      isBlocked: false,
+    }
+  }
+
+  const latest = params.latestAttempt
+  if (latest?.status === ScoreRemedialStatus.DRAFT) {
+    const dueAt = latest.activityDueAt ? new Date(latest.activityDueAt).getTime() : Number.NaN
+    if (Number.isFinite(dueAt) && dueAt < Date.now() && !latest.activitySubmittedAt) {
+      return {
+        code: 'EXPIRED',
+        label: 'Tenggat Berakhir',
+        description: 'Paket remedial sudah melewati tenggat dan siswa belum menyelesaikan.',
+        tone: 'red',
+        isFinished: false,
+        isUnfinished: true,
+        isBlocked: false,
+      }
+    }
+    if (latest.method === ScoreRemedialMethod.QUESTION_SET && !latest.activityExamPacketId && !latest.activitySourceExamPacketId) {
+      return {
+        code: 'WAITING_PACKET',
+        label: 'Menunggu Paket',
+        description: 'Guru sudah membuat aktivitas remedial, tetapi paket soal belum terhubung.',
+        tone: 'amber',
+        isFinished: false,
+        isUnfinished: true,
+        isBlocked: false,
+      }
+    }
+    if (latest.activityStartedAt && !latest.activitySubmittedAt) {
+      return {
+        code: 'IN_PROGRESS',
+        label: 'Sedang Dikerjakan',
+        description: 'Siswa sudah membuka remedial tetapi belum mengirim jawaban.',
+        tone: 'blue',
+        isFinished: false,
+        isUnfinished: true,
+        isBlocked: false,
+      }
+    }
+    return {
+      code: 'AVAILABLE',
+      label: 'Bisa Dikerjakan',
+      description: 'Paket remedial sudah tersedia untuk siswa.',
+      tone: 'blue',
+      isFinished: false,
+      isUnfinished: true,
+      isBlocked: false,
+    }
+  }
+
+  if (latest && latest.status !== ScoreRemedialStatus.CANCELLED) {
+    return {
+      code: 'STILL_BELOW_KKM',
+      label: 'Belum Tuntas',
+      description: 'Remedial sudah tercatat, tetapi nilai efektif masih di bawah KKM.',
+      tone: 'amber',
+      isFinished: false,
+      isUnfinished: true,
+      isBlocked: false,
+    }
+  }
+
+  return {
+    code: params.hasAnyRemedial ? 'WAITING_FOLLOW_UP' : 'WAITING_REMEDIAL',
+    label: params.hasAnyRemedial ? 'Perlu Tindak Lanjut' : 'Menunggu Remedial',
+    description: params.hasAnyRemedial
+      ? 'Ada riwayat remedial, tetapi siswa masih belum tuntas.'
+      : 'Nilai siswa di bawah KKM dan belum ada paket remedial aktif.',
+    tone: 'amber',
+    isFinished: false,
+    isUnfinished: true,
+    isBlocked: false,
+  }
+}
+
+export const getHomeroomRemedialMonitoring = async (req: Request, res: Response) => {
+  try {
+    const user = (req as any).user as AuthUserLike
+    const classId = Number(req.query.class_id || req.query.classId || 0)
+    const requestedSemester = parseStudentReportSemester(req.query.semester)
+    const requestedPublicationCode = normalizeComponentCode(
+      req.query.publicationCode || req.query.programCode || req.query.examType || '',
+    )
+    const search = String(req.query.search || '').trim()
+
+    if (!Number.isFinite(classId) || classId <= 0) {
+      throw new ApiError(400, 'classId wajib diisi.')
+    }
+
+    const { activeYear, homeroomClass } = await resolveHomeroomPublicationAccess({ user, classId })
+    const semester = requestedSemester || resolveCurrentSemesterFromAcademicYear(activeYear)
+    const classScope = await resolveHistoricalStudentScope({
+      academicYearId: activeYear.id,
+      classId: homeroomClass.id,
+      limit: 500,
+      search: search || null,
+    })
+
+    if (classScope.studentIds.length === 0) {
+      return ApiResponseHelper.success(
+        res,
+        {
+          academicYear: { id: activeYear.id, name: activeYear.name },
+          class: {
+            id: homeroomClass.id,
+            name: homeroomClass.name,
+            level: homeroomClass.level,
+            major: homeroomClass.major,
+          },
+          semester,
+          publicationCode: requestedPublicationCode || null,
+          summary: {
+            totalStudents: 0,
+            studentsWithRemedial: 0,
+            subjectsWithRemedial: 0,
+            totalItems: 0,
+            finishedItems: 0,
+            unfinishedItems: 0,
+            blockedItems: 0,
+            expiredItems: 0,
+          },
+          subjects: [],
+          rows: [],
+        },
+        'Monitoring remedial wali kelas berhasil dimuat.',
+      )
+    }
+
+    const entries = await prisma.studentScoreEntry.findMany({
+      where: {
+        studentId: { in: classScope.studentIds },
+        academicYearId: activeYear.id,
+        semester,
+        NOT: {
+          sourceKey: {
+            startsWith: FORMATIVE_SLOT_COUNT_SOURCE_PREFIX,
+          },
+        },
+      },
+      include: {
+        student: {
+          select: {
+            id: true,
+            name: true,
+            nis: true,
+            nisn: true,
+            classId: true,
+            studentClass: {
+              select: {
+                academicYearId: true,
+              },
+            },
+          },
+        },
+        subject: {
+          select: {
+            id: true,
+            code: true,
+            name: true,
+          },
+        },
+        academicYear: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        remedials: {
+          orderBy: {
+            attemptNumber: 'asc',
+          },
+        },
+      },
+      orderBy: [
+        { student: { name: 'asc' } },
+        { subject: { name: 'asc' } },
+        { componentCode: 'asc' },
+        { recordedAt: 'asc' },
+      ],
+      take: 2500,
+    })
+
+    const dedupedEntries = dedupeRemedialEligibleEntries(entries as RemedialScoreEntryRow[])
+    const kkmCache = new Map<string, Awaited<ReturnType<typeof resolveKkmForRemedialScoreEntry>>>()
+    const classPreferencesCache = new Map<number, unknown>()
+    const studentRows = new Map<number, {
+      student: {
+        id: number
+        name: string
+        nis?: string | null
+        nisn?: string | null
+      }
+      summary: {
+        subjectCount: number
+        totalItems: number
+        finishedItems: number
+        unfinishedItems: number
+        blockedItems: number
+        expiredItems: number
+      }
+      items: unknown[]
+      subjectIds: Set<number>
+    }>()
+    const subjectRows = new Map<number, {
+      subject: {
+        id: number
+        code?: string | null
+        name: string
+      }
+      totalItems: number
+      finishedItems: number
+      unfinishedItems: number
+      blockedItems: number
+      expiredItems: number
+      studentIds: Set<number>
+    }>()
+
+    classScope.students.forEach((student) => {
+      studentRows.set(student.id, {
+        student: {
+          id: student.id,
+          name: student.name,
+          nis: student.nis,
+          nisn: student.nisn,
+        },
+        summary: {
+          subjectCount: 0,
+          totalItems: 0,
+          finishedItems: 0,
+          unfinishedItems: 0,
+          blockedItems: 0,
+          expiredItems: 0,
+        },
+        items: [],
+        subjectIds: new Set<number>(),
+      })
+    })
+
+    for (const entry of dedupedEntries) {
+      const publicationCode = resolveRemedialPublicationCode(entry)
+      if (requestedPublicationCode && publicationCode !== requestedPublicationCode) continue
+
+      const kkmCacheKey = `${entry.studentId}:${entry.subjectId}:${entry.academicYearId}`
+      let kkmInfo = kkmCache.get(kkmCacheKey)
+      if (!kkmInfo) {
+        kkmInfo = await resolveKkmForRemedialScoreEntry({
+          studentId: entry.studentId,
+          subjectId: entry.subjectId,
+          academicYearId: entry.academicYearId,
+        })
+        kkmCache.set(kkmCacheKey, kkmInfo)
+      }
+
+      const row = formatRemedialScoreEntry(entry, kkmInfo.kkm)
+      const homeroomPublication = await resolveRemedialHomeroomPublicationInfo({
+        entry,
+        fallbackClassId: homeroomClass.id,
+        classPreferencesCache,
+      })
+      const hasAnyRemedial = entry.remedials.some((remedial) => remedial.status !== ScoreRemedialStatus.CANCELLED)
+      if (row.isComplete && !hasAnyRemedial && !homeroomPublication.isBlocked) continue
+      if (!hasAnyRemedial && row.currentEffectiveScore >= row.kkm) continue
+
+      const latestAttempt = entry.remedials
+        .filter((remedial) => remedial.status !== ScoreRemedialStatus.CANCELLED)
+        .sort((a, b) => Number(b.attemptNumber || 0) - Number(a.attemptNumber || 0))[0] || null
+      const progress = resolveHomeroomRemedialProgressStatus({
+        isBlockedByHomeroom: homeroomPublication.isBlocked,
+        isComplete: row.isComplete,
+        latestAttempt,
+        hasAnyRemedial,
+      })
+
+      const studentRow = studentRows.get(entry.studentId)
+      if (!studentRow) continue
+      studentRow.subjectIds.add(entry.subjectId)
+      studentRow.summary.totalItems += 1
+      if (progress.isFinished) studentRow.summary.finishedItems += 1
+      if (progress.isUnfinished) studentRow.summary.unfinishedItems += 1
+      if (progress.isBlocked) studentRow.summary.blockedItems += 1
+      if (progress.code === 'EXPIRED') studentRow.summary.expiredItems += 1
+
+      const subjectRow = subjectRows.get(entry.subjectId) || {
+        subject: entry.subject,
+        totalItems: 0,
+        finishedItems: 0,
+        unfinishedItems: 0,
+        blockedItems: 0,
+        expiredItems: 0,
+        studentIds: new Set<number>(),
+      }
+      subjectRow.totalItems += 1
+      subjectRow.studentIds.add(entry.studentId)
+      if (progress.isFinished) subjectRow.finishedItems += 1
+      if (progress.isUnfinished) subjectRow.unfinishedItems += 1
+      if (progress.isBlocked) subjectRow.blockedItems += 1
+      if (progress.code === 'EXPIRED') subjectRow.expiredItems += 1
+      subjectRows.set(entry.subjectId, subjectRow)
+
+      studentRow.items.push({
+        id: entry.id,
+        scoreEntryId: entry.id,
+        subject: entry.subject,
+        sourceLabel: row.sourceLabel,
+        publicationCode,
+        semester: entry.semester,
+        originalScore: row.originalScore,
+        currentEffectiveScore: row.currentEffectiveScore,
+        kkm: row.kkm,
+        attemptCount: row.attemptCount,
+        latestAttempt: latestAttempt
+          ? {
+              id: latestAttempt.id,
+              attemptNumber: latestAttempt.attemptNumber,
+              status: latestAttempt.status,
+              method: latestAttempt.method,
+              methodLabel: formatRemedialMethodLabel(latestAttempt.method),
+              activityTitle: latestAttempt.activityTitle,
+              activityDueAt: latestAttempt.activityDueAt,
+              activityStartedAt: latestAttempt.activityStartedAt,
+              activitySubmittedAt: latestAttempt.activitySubmittedAt,
+              remedialScore: roundRemedialScore(Number(latestAttempt.remedialScore)),
+              effectiveScore: roundRemedialScore(Number(latestAttempt.effectiveScore)),
+            }
+          : null,
+        homeroomPublication,
+        progress,
+      })
+    }
+
+    const rows = Array.from(studentRows.values())
+      .map((row) => ({
+        student: row.student,
+        summary: {
+          ...row.summary,
+          subjectCount: row.subjectIds.size,
+        },
+        items: row.items,
+      }))
+      .filter((row) => row.summary.totalItems > 0)
+      .sort((a, b) => a.student.name.localeCompare(b.student.name, 'id-ID'))
+
+    const subjects = Array.from(subjectRows.values())
+      .map((row) => ({
+        subject: row.subject,
+        studentCount: row.studentIds.size,
+        totalItems: row.totalItems,
+        finishedItems: row.finishedItems,
+        unfinishedItems: row.unfinishedItems,
+        blockedItems: row.blockedItems,
+        expiredItems: row.expiredItems,
+      }))
+      .sort((a, b) => a.subject.name.localeCompare(b.subject.name, 'id-ID'))
+
+    const summary = rows.reduce(
+      (accumulator, row) => {
+        accumulator.studentsWithRemedial += 1
+        accumulator.totalItems += row.summary.totalItems
+        accumulator.finishedItems += row.summary.finishedItems
+        accumulator.unfinishedItems += row.summary.unfinishedItems
+        accumulator.blockedItems += row.summary.blockedItems
+        accumulator.expiredItems += row.summary.expiredItems
+        return accumulator
+      },
+      {
+        totalStudents: classScope.students.length,
+        studentsWithRemedial: 0,
+        subjectsWithRemedial: subjects.length,
+        totalItems: 0,
+        finishedItems: 0,
+        unfinishedItems: 0,
+        blockedItems: 0,
+        expiredItems: 0,
+      },
+    )
+
+    return ApiResponseHelper.success(
+      res,
+      {
+        academicYear: {
+          id: activeYear.id,
+          name: activeYear.name,
+        },
+        class: {
+          id: homeroomClass.id,
+          name: homeroomClass.name,
+          level: homeroomClass.level,
+          major: homeroomClass.major,
+        },
+        semester,
+        publicationCode: requestedPublicationCode || null,
+        summary,
+        subjects,
+        rows,
+      },
+      'Monitoring remedial wali kelas berhasil dimuat.',
+    )
+  } catch (error) {
+    console.error('Get homeroom remedial monitoring error:', error)
+    if (error instanceof ApiError) throw error
+    throw new ApiError(500, 'Gagal memuat monitoring remedial wali kelas.')
+  }
+}
+
 type RemedialHomeroomPublicationInfo = {
   publicationCode: string
   classId: number | null

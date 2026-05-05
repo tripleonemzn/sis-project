@@ -28,6 +28,12 @@ router.put(
   asyncHandler(gradeController.updateHomeroomResultPublication)
 );
 
+router.get(
+  '/remedials/homeroom-monitoring',
+  roleMiddleware(['TEACHER']),
+  asyncHandler(gradeController.getHomeroomRemedialMonitoring)
+);
+
 // REMEDIAL NILAI
 router.get(
   '/remedials/eligible',

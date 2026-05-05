@@ -6,6 +6,7 @@ import { attendanceService } from '../../services/attendance.service';
 import { scheduleService, type ScheduleEntry, type DayOfWeek } from '../../services/schedule.service';
 import { scheduleTimeConfigService } from '../../services/scheduleTimeConfig.service';
 import { examProgramCodeToSlug, examService } from '../../services/exam.service';
+import { gradeService, type StudentRemedialActivity } from '../../services/grade.service';
 import { authService } from '../../services/auth.service';
 import type { User } from '../../types/auth';
 import type { StudentAttendanceHistory } from '../../services/attendance.service';
@@ -22,6 +23,34 @@ interface AvailableExam {
   room: string;
   sessionLabel?: string | null;
 }
+
+type DashboardAssessmentItem =
+  | {
+      kind: 'EXAM';
+      id: string;
+      title: string;
+      subjectName: string;
+      label: string;
+      statusLabel: string;
+      statusClassName: string;
+      dateTime: string;
+      roomLabel: string;
+      path: string;
+      sortTime: number;
+    }
+  | {
+      kind: 'REMEDIAL';
+      id: string;
+      title: string;
+      subjectName: string;
+      label: string;
+      statusLabel: string;
+      statusClassName: string;
+      dateTime: string;
+      roomLabel: string;
+      path: string;
+      sortTime: number;
+    };
 
 type ActiveYearContext = {
   id?: number;
@@ -82,6 +111,60 @@ function pickString(...values: unknown[]): string {
 function buildStudentExamProgramPath(programCode?: string | null): string {
   const slug = examProgramCodeToSlug(programCode);
   return slug ? `/student/exams/program/${slug}` : '/student/exams';
+}
+
+function resolveRemedialPacket(activity: StudentRemedialActivity) {
+  return activity.activityExamPacket || activity.activitySourceExamPacket || null;
+}
+
+function buildStudentRemedialPath(activity: StudentRemedialActivity): string {
+  if (String(activity.method || '').toUpperCase() === 'QUESTION_SET' && resolveRemedialPacket(activity)) {
+    return `/student/remedials/${activity.id}/take`;
+  }
+  return '/student/learning';
+}
+
+function resolveRemedialDashboardStatus(activity: StudentRemedialActivity) {
+  const normalizedStatus = String(activity.status || '').toUpperCase();
+  if (activity.activitySubmittedAt || normalizedStatus === 'PASSED' || normalizedStatus === 'STILL_BELOW_KKM') {
+    return {
+      label: 'Selesai',
+      className: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+      isVisibleOnDashboard: false,
+    };
+  }
+  const dueTime = activity.activityDueAt ? new Date(activity.activityDueAt).getTime() : Number.NaN;
+  if (Number.isFinite(dueTime) && dueTime < Date.now()) {
+    return {
+      label: 'Tenggat Berakhir',
+      className: 'bg-rose-50 text-rose-700 border-rose-200',
+      isVisibleOnDashboard: true,
+    };
+  }
+  if (String(activity.method || '').toUpperCase() === 'QUESTION_SET' && !resolveRemedialPacket(activity)) {
+    return {
+      label: 'Menunggu Paket',
+      className: 'bg-amber-50 text-amber-700 border-amber-200',
+      isVisibleOnDashboard: true,
+    };
+  }
+  return {
+    label: 'Remedial',
+    className: 'bg-blue-50 text-blue-700 border-blue-200',
+    isVisibleOnDashboard: true,
+  };
+}
+
+function formatDashboardDateTime(value?: string | null): string {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '-';
+  return date.toLocaleDateString('id-ID', {
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 }
 
 function extractExamRows(payload: unknown): unknown[] {
@@ -167,6 +250,13 @@ export const StudentDashboard = () => {
     enabled: !!user?.id,
   });
 
+  const { data: remedialActivities = [] } = useQuery({
+    queryKey: ['student-dashboard-remedials', activeAcademicYearId, user?.id],
+    queryFn: () => gradeService.getStudentRemedialActivities({ limit: 20 }),
+    enabled: !!user?.id && !!activeAcademicYearId,
+    staleTime: 60_000,
+  });
+
   const activeExams = useMemo(() => {
     const rawExams = extractExamRows(examSchedules);
 
@@ -211,10 +301,57 @@ export const StudentDashboard = () => {
       .sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
   }, [examSchedules]);
 
-  const upcomingExams = useMemo(() => activeExams.slice(0, 5), [activeExams]);
+  const dashboardAssessmentItems = useMemo<DashboardAssessmentItem[]>(() => {
+    const examItems: DashboardAssessmentItem[] = activeExams.map((exam) => {
+      const startTime = new Date(exam.start_time).getTime();
+      return {
+        kind: 'EXAM',
+        id: exam.id,
+        title: exam.title,
+        subjectName: exam.subject?.name || '-',
+        label: exam.examType || 'Ujian',
+        statusLabel: exam.status === 'OPEN' || exam.status === 'ONGOING' || exam.status === 'IN_PROGRESS'
+          ? 'Berlangsung'
+          : 'Terjadwal',
+        statusClassName: exam.status === 'OPEN' || exam.status === 'ONGOING' || exam.status === 'IN_PROGRESS'
+          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+          : 'bg-blue-50 text-blue-700 border-blue-200',
+        dateTime: formatDashboardDateTime(exam.start_time),
+        roomLabel: `Ruang: ${exam.room || 'Belum ditetapkan'}`,
+        path: buildStudentExamProgramPath(exam.examType),
+        sortTime: Number.isFinite(startTime) ? startTime : Number.MAX_SAFE_INTEGER,
+      };
+    });
+
+    const remedialItems: DashboardAssessmentItem[] = remedialActivities
+      .reduce<DashboardAssessmentItem[]>((items, activity) => {
+        const status = resolveRemedialDashboardStatus(activity);
+        if (!status.isVisibleOnDashboard) return items;
+        const dueTime = activity.activityDueAt ? new Date(activity.activityDueAt).getTime() : Number.NaN;
+        items.push({
+          kind: 'REMEDIAL',
+          id: String(activity.id),
+          title: activity.activityTitle || `Remedial ${activity.subject?.name || ''}`.trim(),
+          subjectName: activity.subject?.name || '-',
+          label: activity.sourceLabel || 'Remedial',
+          statusLabel: status.label,
+          statusClassName: status.className,
+          dateTime: activity.activityDueAt ? `Tenggat ${formatDashboardDateTime(activity.activityDueAt)}` : 'Tanpa tenggat',
+          roomLabel: activity.teacher?.name ? `Guru: ${activity.teacher.name}` : 'Guru belum tersedia',
+          path: buildStudentRemedialPath(activity),
+          sortTime: Number.isFinite(dueTime) ? dueTime : Number.MAX_SAFE_INTEGER - 1,
+        });
+        return items;
+      }, []);
+
+    return [...examItems, ...remedialItems]
+      .sort((a, b) => a.sortTime - b.sortTime || a.title.localeCompare(b.title, 'id-ID'))
+      .slice(0, 5);
+  }, [activeExams, remedialActivities]);
+
   const nearestExamMenuPath = useMemo(
-    () => buildStudentExamProgramPath(upcomingExams[0]?.examType),
-    [upcomingExams],
+    () => dashboardAssessmentItems[0]?.path || '/student/exams',
+    [dashboardAssessmentItems],
   );
 
   const examRooms = useMemo(() => {
@@ -552,8 +689,8 @@ export const StudentDashboard = () => {
         <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
             <div>
-              <h2 className="text-sm font-semibold text-gray-900">Jadwal Ujian Terdekat</h2>
-              <p className="text-xs text-gray-500 mt-0.5">Ujian yang akan datang atau sedang berlangsung.</p>
+            <h2 className="text-sm font-semibold text-gray-900">Jadwal Ujian & Remedial Terdekat</h2>
+              <p className="text-xs text-gray-500 mt-0.5">Ujian terjadwal dan remedial yang perlu ditindaklanjuti.</p>
             </div>
             <Link
               to={nearestExamMenuPath}
@@ -564,39 +701,28 @@ export const StudentDashboard = () => {
             </Link>
           </div>
           <div className="px-5 py-4 space-y-3">
-            {upcomingExams.length === 0 ? (
-              <p className="text-sm text-gray-500 text-center py-4">Tidak ada jadwal ujian aktif saat ini.</p>
+            {dashboardAssessmentItems.length === 0 ? (
+              <p className="text-sm text-gray-500 text-center py-4">Tidak ada jadwal ujian atau remedial aktif saat ini.</p>
             ) : (
-              upcomingExams.map((exam) => (
+              dashboardAssessmentItems.map((item) => (
                 <Link
-                  key={exam.id}
-                  to={buildStudentExamProgramPath(exam.examType)}
+                  key={`${item.kind}-${item.id}`}
+                  to={item.path}
                   className="flex items-center justify-between rounded-lg border border-gray-200 p-3 hover:bg-gray-50"
                 >
                   <div>
-                    <div className="text-sm font-medium text-gray-900">{exam.title}</div>
-                    <div className="text-xs text-gray-500">{exam.subject?.name || '-'}</div>
-                    <div className="text-xs text-gray-500">
-                      Ruang: {exam.room || 'Belum ditetapkan'}
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="text-sm font-medium text-gray-900">{item.title}</div>
+                      <span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${item.statusClassName}`}>
+                        {item.statusLabel}
+                      </span>
                     </div>
+                    <div className="text-xs text-gray-500">{item.subjectName} • {item.label}</div>
+                    <div className="text-xs text-gray-500">{item.roomLabel}</div>
                   </div>
                   <div className="text-right">
-                    <div className="text-xs font-medium text-gray-900">
-                      {(() => {
-                        try {
-                          const d = new Date(exam.start_time);
-                          return isNaN(d.getTime()) ? '-' : d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
-                        } catch { return '-'; }
-                      })()}
-                    </div>
-                    <div className="text-xs text-gray-500">
-                      {(() => {
-                         try {
-                           const d = new Date(exam.start_time);
-                           return isNaN(d.getTime()) ? '-' : d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
-                         } catch { return '-'; }
-                      })()}
-                    </div>
+                    <div className="text-xs font-medium text-gray-900">{item.kind === 'REMEDIAL' ? 'Remedial' : 'Ujian'}</div>
+                    <div className="text-xs text-gray-500">{item.dateTime}</div>
                   </div>
                 </Link>
               ))

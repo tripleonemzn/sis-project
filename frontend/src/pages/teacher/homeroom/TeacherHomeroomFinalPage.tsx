@@ -14,6 +14,7 @@ import {
   Loader2,
   Filter,
   GraduationCap,
+  ClipboardCheck,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { classService } from '../../../services/class.service';
@@ -25,6 +26,7 @@ import { HomeroomReportSatPage } from './HomeroomReportSatPage';
 import { HomeroomReportPage2 } from './HomeroomReportPage2';
 import { HomeroomReportP5Page } from './HomeroomReportP5Page';
 import { HomeroomResultPublicationPanel } from '../../../components/homeroom/HomeroomResultPublicationPanel';
+import { HomeroomRemedialMonitoringPanel } from '../../../components/homeroom/HomeroomRemedialMonitoringPanel';
 import { UnderlineTabBar } from '../../../components/navigation/UnderlineTabBar';
 
 type SemesterType = 'ODD' | 'EVEN';
@@ -33,6 +35,7 @@ type HomeroomFinalTabId =
   | 'extracurriculars'
   | 'ranking'
   | 'report-main'
+  | 'remedial-monitoring'
   | 'publication'
   | 'report-support'
   | 'report-p5';
@@ -185,6 +188,7 @@ export const TeacherHomeroomFinalPage = ({
       dynamicTabs.push({ id: 'report-p5', label: 'Rapor P5', icon: BarChart3 });
     }
 
+    dynamicTabs.push({ id: 'remedial-monitoring', label: 'Monitoring Remedial', icon: ClipboardCheck });
     dynamicTabs.push({ id: 'publication', label: 'Publikasi Nilai', icon: GraduationCap });
 
     return dynamicTabs;
@@ -291,6 +295,14 @@ export const TeacherHomeroomFinalPage = ({
                 classId={classSummary.id}
                 semester={semester}
                 programCode={programCode}
+              />
+            )}
+            {activeTab === 'remedial-monitoring' && (
+              <HomeroomRemedialMonitoringPanel
+                classId={classSummary.id}
+                semester={semester}
+                programCode={programCode}
+                programLabel={resolvedProgramLabel}
               />
             )}
             {activeTab === 'report-main' &&

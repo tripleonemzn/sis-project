@@ -216,3 +216,108 @@ export type HomeroomResultPublicationsData = {
     totalPages: number;
   };
 };
+
+export type HomeroomRemedialMonitoringItem = {
+  id: number;
+  scoreEntryId: number;
+  subject: {
+    id: number;
+    code?: string | null;
+    name: string;
+  };
+  sourceLabel: string;
+  publicationCode?: string | null;
+  semester: 'ODD' | 'EVEN';
+  originalScore: number;
+  currentEffectiveScore: number;
+  kkm: number;
+  attemptCount: number;
+  latestAttempt?: {
+    id: number;
+    attemptNumber: number;
+    status: string;
+    method?: string | null;
+    methodLabel: string;
+    activityTitle?: string | null;
+    activityDueAt?: string | null;
+    activityStartedAt?: string | null;
+    activitySubmittedAt?: string | null;
+    remedialScore: number;
+    effectiveScore: number;
+  } | null;
+  homeroomPublication: {
+    mode: 'FOLLOW_GLOBAL' | 'BLOCKED' | string;
+    isBlocked: boolean;
+    label: string;
+    description?: string;
+    updatedAt?: string | null;
+  };
+  progress: {
+    code: string;
+    label: string;
+    description: string;
+    tone: 'red' | 'amber' | 'green' | 'blue' | string;
+    isFinished: boolean;
+    isUnfinished: boolean;
+    isBlocked: boolean;
+  };
+};
+
+export type HomeroomRemedialMonitoringData = {
+  academicYear: {
+    id: number;
+    name: string;
+  };
+  class: {
+    id: number;
+    name: string;
+    level: string;
+    major: {
+      id: number;
+      name: string;
+      code: string;
+    } | null;
+  };
+  semester: 'ODD' | 'EVEN';
+  publicationCode?: string | null;
+  summary: {
+    totalStudents: number;
+    studentsWithRemedial: number;
+    subjectsWithRemedial: number;
+    totalItems: number;
+    finishedItems: number;
+    unfinishedItems: number;
+    blockedItems: number;
+    expiredItems: number;
+  };
+  subjects: Array<{
+    subject: {
+      id: number;
+      code?: string | null;
+      name: string;
+    };
+    studentCount: number;
+    totalItems: number;
+    finishedItems: number;
+    unfinishedItems: number;
+    blockedItems: number;
+    expiredItems: number;
+  }>;
+  rows: Array<{
+    student: {
+      id: number;
+      name: string;
+      nis?: string | null;
+      nisn?: string | null;
+    };
+    summary: {
+      subjectCount: number;
+      totalItems: number;
+      finishedItems: number;
+      unfinishedItems: number;
+      blockedItems: number;
+      expiredItems: number;
+    };
+    items: HomeroomRemedialMonitoringItem[];
+  }>;
+};

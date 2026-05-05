@@ -422,6 +422,113 @@ export interface RemedialScoreEntry {
   remedials: ScoreRemedialAttempt[];
 }
 
+export interface HomeroomRemedialMonitoringItem {
+  id: number;
+  scoreEntryId: number;
+  subject: {
+    id: number;
+    code?: string | null;
+    name: string;
+  };
+  sourceLabel: string;
+  publicationCode?: string | null;
+  semester: 'ODD' | 'EVEN';
+  originalScore: number;
+  currentEffectiveScore: number;
+  kkm: number;
+  attemptCount: number;
+  latestAttempt?: {
+    id: number;
+    attemptNumber: number;
+    status: ScoreRemedialStatus;
+    method?: ScoreRemedialMethod | null;
+    methodLabel: string;
+    activityTitle?: string | null;
+    activityDueAt?: string | null;
+    activityStartedAt?: string | null;
+    activitySubmittedAt?: string | null;
+    remedialScore: number;
+    effectiveScore: number;
+  } | null;
+  homeroomPublication: {
+    publicationCode?: string;
+    classId?: number | null;
+    mode: 'FOLLOW_GLOBAL' | 'BLOCKED' | string;
+    isBlocked: boolean;
+    label: string;
+    description?: string;
+    updatedAt?: string | null;
+  };
+  progress: {
+    code: string;
+    label: string;
+    description: string;
+    tone: 'red' | 'amber' | 'green' | 'blue' | string;
+    isFinished: boolean;
+    isUnfinished: boolean;
+    isBlocked: boolean;
+  };
+}
+
+export interface HomeroomRemedialMonitoringData {
+  academicYear: {
+    id: number;
+    name: string;
+  };
+  class: {
+    id: number;
+    name: string;
+    level: string;
+    major: {
+      id: number;
+      name: string;
+      code: string;
+    } | null;
+  };
+  semester: 'ODD' | 'EVEN';
+  publicationCode?: string | null;
+  summary: {
+    totalStudents: number;
+    studentsWithRemedial: number;
+    subjectsWithRemedial: number;
+    totalItems: number;
+    finishedItems: number;
+    unfinishedItems: number;
+    blockedItems: number;
+    expiredItems: number;
+  };
+  subjects: Array<{
+    subject: {
+      id: number;
+      code?: string | null;
+      name: string;
+    };
+    studentCount: number;
+    totalItems: number;
+    finishedItems: number;
+    unfinishedItems: number;
+    blockedItems: number;
+    expiredItems: number;
+  }>;
+  rows: Array<{
+    student: {
+      id: number;
+      name: string;
+      nis?: string | null;
+      nisn?: string | null;
+    };
+    summary: {
+      subjectCount: number;
+      totalItems: number;
+      finishedItems: number;
+      unfinishedItems: number;
+      blockedItems: number;
+      expiredItems: number;
+    };
+    items: HomeroomRemedialMonitoringItem[];
+  }>;
+}
+
 export const gradeService = {
   getComponents: async (params?: {
     subject_id?: number;
@@ -558,6 +665,26 @@ export const gradeService = {
   }) => {
     const response = await api.put('/grades/homeroom-result-publications', payload);
     return response.data;
+  },
+
+  getHomeroomRemedialMonitoring: async (params: {
+    classId: number;
+    semester?: 'ODD' | 'EVEN';
+    publicationCode?: string;
+    search?: string;
+  }): Promise<HomeroomRemedialMonitoringData> => {
+    const response = await api.get('/grades/remedials/homeroom-monitoring', {
+      params: {
+        classId: params.classId,
+        semester: params.semester,
+        publicationCode: params.publicationCode,
+        search: params.search,
+      },
+    });
+    if (!response.data?.data) {
+      throw new Error('Data monitoring remedial wali kelas tidak tersedia.');
+    }
+    return response.data.data as HomeroomRemedialMonitoringData;
   },
 
   getRemedialEligibleScores: async (params: {
