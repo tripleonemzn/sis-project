@@ -12,6 +12,7 @@ import {
     Users,
     X,
     RotateCcw,
+    Trash2,
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import {
@@ -167,6 +168,7 @@ export const ExamListPage = () => {
     const [scheduleRows, setScheduleRows] = useState<ScheduleDraftRow[]>([]);
     const [isScheduleLoading, setIsScheduleLoading] = useState(false);
     const [isScheduleSaving, setIsScheduleSaving] = useState(false);
+    const [deletingPacketId, setDeletingPacketId] = useState<number | null>(null);
     const [createExamInfoDraft, setCreateExamInfoDraft] = useState<CreateExamInfoDraft>({
         title: '',
         assignmentId: '',
@@ -583,6 +585,33 @@ export const ExamListPage = () => {
         });
     }, [packetsForActiveTab, search, resolvePacketDisplayTitle, resolvePacketLabel]);
 
+    const handleDeleteRemedialPacket = async (packet: ExamPacket) => {
+        if (!isRemedialExamPacket(packet)) {
+            toast.error('Hanya paket remedial yang dapat dihapus dari menu guru.');
+            return;
+        }
+
+        const confirmed = window.confirm(
+            'Hapus paket remedial ini? Paket hanya bisa dihapus jika belum dipakai pada remedial siswa.',
+        );
+        if (!confirmed) return;
+
+        try {
+            setDeletingPacketId(Number(packet.id));
+            const response = await examService.deletePacket(Number(packet.id));
+            toast.success(response?.message || 'Paket remedial berhasil dihapus.');
+            await refetchPackets();
+        } catch (error) {
+            const message =
+                (error as { response?: { data?: { message?: string } }; message?: string })?.response?.data?.message ||
+                (error as { message?: string })?.message ||
+                'Gagal menghapus paket remedial.';
+            toast.error(message);
+        } finally {
+            setDeletingPacketId(null);
+        }
+    };
+
     const handleScheduleRowChange = (
         classId: number,
         field: 'selected' | 'startTime' | 'endTime',
@@ -995,7 +1024,7 @@ export const ExamListPage = () => {
                                         Jadwal program ini dibuat oleh {CURRICULUM_EXAM_MANAGER_LABEL}.
                                     </p>
                                 ) : null}
-                                <div className="flex items-center justify-center">
+                                <div className={`grid gap-2 ${isRemedialExamPacket(packet) ? 'grid-cols-2' : 'grid-cols-1'}`}>
                                     <button 
                                         onClick={() =>
                                             navigate(`/teacher/exams/${packet.id}/edit`, {
@@ -1009,8 +1038,24 @@ export const ExamListPage = () => {
                                         className="inline-flex min-h-10 w-full max-w-[260px] items-center justify-center rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-center text-xs font-bold text-blue-700 transition-all hover:bg-blue-600 hover:text-white"
                                         title="Edit Informasi Ujian & Butir Soal"
                                     >
-                                        Edit Informasi Ujian &amp; Butir Soal
+                                        {isRemedialExamPacket(packet) ? 'Edit Paket' : 'Edit Informasi Ujian & Butir Soal'}
                                     </button>
+                                    {isRemedialExamPacket(packet) ? (
+                                        <button
+                                            type="button"
+                                            onClick={() => handleDeleteRemedialPacket(packet)}
+                                            disabled={deletingPacketId === Number(packet.id)}
+                                            className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-rose-100 bg-rose-50 px-3 py-2 text-center text-xs font-bold text-rose-700 transition-all hover:bg-rose-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-70"
+                                            title="Hapus paket remedial yang belum dipakai"
+                                        >
+                                            {deletingPacketId === Number(packet.id) ? (
+                                                <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                                            ) : (
+                                                <Trash2 className="h-3.5 w-3.5" />
+                                            )}
+                                            Hapus
+                                        </button>
+                                    ) : null}
                                 </div>
                             </div>
                         </div>

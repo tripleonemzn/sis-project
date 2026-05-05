@@ -53,6 +53,18 @@ router.post(
   asyncHandler(gradeController.createBulkScoreRemedialActivities)
 );
 
+router.patch(
+  '/remedials/student-activities/:id',
+  roleMiddleware(['ADMIN', 'TEACHER']),
+  asyncHandler(gradeController.updateStudentRemedialActivity)
+);
+
+router.delete(
+  '/remedials/student-activities/:id',
+  roleMiddleware(['ADMIN', 'TEACHER']),
+  asyncHandler(gradeController.cancelStudentRemedialActivity)
+);
+
 router.get(
   '/remedials/student-activities',
   roleMiddleware(['STUDENT']),

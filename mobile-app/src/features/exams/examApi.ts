@@ -583,6 +583,10 @@ export const examApi = {
     const response = await apiClient.put<TeacherPacketMutationResponse>(`/exams/packets/${packetId}`, payload);
     return response.data.data;
   },
+  async deleteTeacherPacket(packetId: number) {
+    const response = await apiClient.delete(`/exams/packets/${packetId}`);
+    return response.data;
+  },
 
   async replyPacketReviewFeedback(packetId: number, payload: { questionId: string; teacherResponse: string }) {
     const response = await apiClient.patch<TeacherPacketReviewReplyResponse>(

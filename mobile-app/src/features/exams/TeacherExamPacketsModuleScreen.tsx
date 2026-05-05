@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Redirect, useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
-import { Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
+import { Alert, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../components/AppLoadingScreen';
 import { ExamHtmlContent, plainTextFromExamRichText } from '../../components/ExamHtmlContent';
@@ -19,6 +19,7 @@ import { ExamQuestion, ExamQuestionOption, ExamQuestionType } from './types';
 type ExamTypeFilter = 'ALL' | string;
 type SemesterFilter = 'ODD' | 'EVEN' | '';
 type ExamLabelMap = Record<string, string>;
+const REMEDIAL_PACKET_MARKER = '[SIS:REMEDIAL_PACKET]';
 
 type TeacherExamPacketsModuleScreenProps = {
   title: string;
@@ -36,6 +37,10 @@ function normalizeProgramCode(raw?: string | null): string {
     .replace(/[^A-Z0-9]+/g, '_')
     .replace(/_+/g, '_')
     .replace(/^_+|_+$/g, '');
+}
+
+function isRemedialPacket(item?: { description?: string | null } | null): boolean {
+  return String(item?.description || '').includes(REMEDIAL_PACKET_MARKER);
 }
 
 function normalizeClassLevelToken(raw?: string | null): string {
@@ -239,6 +244,7 @@ export function TeacherExamPacketsModuleScreen({
   const [searchQuery, setSearchQuery] = useState('');
   const [semesterFilter, setSemesterFilter] = useState<SemesterFilter>('');
   const [expandedPacketId, setExpandedPacketId] = useState<number | null>(null);
+  const [deletingPacketId, setDeletingPacketId] = useState<number | null>(null);
 
   const examProgramsQuery = useQuery({
     queryKey: ['mobile-teacher-exam-programs', teacherAssignmentsQuery.data?.activeYear?.id],
@@ -423,6 +429,43 @@ export function TeacherExamPacketsModuleScreen({
       avgDuration,
     };
   }, [filtered]);
+
+  const handleDeleteRemedialPacket = (item: { id: number; title: string; description?: string | null }) => {
+    if (!isRemedialPacket(item)) {
+      Alert.alert('Tidak Bisa Dihapus', 'Hanya paket remedial yang dapat dihapus dari menu guru.');
+      return;
+    }
+
+    Alert.alert(
+      'Hapus Paket Remedial',
+      'Paket hanya bisa dihapus jika belum dipakai pada remedial siswa.',
+      [
+        { text: 'Batal', style: 'cancel' },
+        {
+          text: deletingPacketId === item.id ? 'Menghapus...' : 'Hapus',
+          style: 'destructive',
+          onPress: () => {
+            void (async () => {
+              try {
+                setDeletingPacketId(item.id);
+                const response = await examApi.deleteTeacherPacket(item.id);
+                Alert.alert('Berhasil', response?.message || 'Paket remedial berhasil dihapus.');
+                await packetsQuery.refetch();
+              } catch (error) {
+                const message =
+                  (error as { response?: { data?: { message?: string } }; message?: string })?.response?.data?.message ||
+                  (error as { message?: string })?.message ||
+                  'Gagal menghapus paket remedial.';
+                Alert.alert('Gagal', message);
+              } finally {
+                setDeletingPacketId(null);
+              }
+            })();
+          },
+        },
+      ],
+    );
+  };
 
   if (isLoading) return <AppLoadingScreen message="Memuat daftar ujian..." />;
   if (!isAuthenticated) return <Redirect href="/welcome" />;
@@ -689,6 +732,8 @@ export function TeacherExamPacketsModuleScreen({
               const firstQuestion = parsedQuestions[0] || null;
               const firstQuestionPreview = plainTextFromExamRichText(resolveQuestionHtml(firstQuestion));
               const isPreviewOpen = expandedPacketId === item.id;
+              const isRemedial = isRemedialPacket(item);
+              const isDeleting = deletingPacketId === item.id;
               return (
                 <View
                   key={item.id}
@@ -755,10 +800,41 @@ export function TeacherExamPacketsModuleScreen({
                           textAlign: 'center',
                         }}
                       >
-                        Edit Informasi Ujian & Butir Soal
+                        {isRemedial ? 'Edit Paket' : 'Edit Informasi Ujian & Butir Soal'}
                       </Text>
                     </Pressable>
                   </View>
+                  {isRemedial ? (
+                    <View style={{ marginBottom: 8 }}>
+                      <Pressable
+                        onPress={() => handleDeleteRemedialPacket(item)}
+                        disabled={isDeleting}
+                        style={{
+                          backgroundColor: '#fff1f2',
+                          borderWidth: 1,
+                          borderColor: '#fecdd3',
+                          borderRadius: 10,
+                          paddingVertical: 10,
+                          paddingHorizontal: 12,
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          opacity: isDeleting ? 0.7 : 1,
+                        }}
+                      >
+                        <Text
+                          style={{
+                            color: '#be123c',
+                            fontWeight: '700',
+                            fontSize: scaleFont(12),
+                            lineHeight: scaleLineHeight(18),
+                            textAlign: 'center',
+                          }}
+                        >
+                          {isDeleting ? 'Menghapus...' : 'Hapus Paket Remedial'}
+                        </Text>
+                      </Pressable>
+                    </View>
+                  ) : null}
                   <View style={{ flexDirection: 'row', marginHorizontal: -4 }}>
                     <View style={{ flex: 1, paddingHorizontal: 4 }}>
                       <Pressable

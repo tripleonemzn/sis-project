@@ -13,6 +13,7 @@ import {
     JobApplicationAssessmentStageCode,
     JobApplicationStatus,
     Prisma,
+    ScoreRemedialStatus,
     VerificationStatus,
     SelectionAssessmentSource,
 } from '@prisma/client';
@@ -8121,12 +8122,58 @@ export const deletePacket = asyncHandler(async (req: Request, res: Response) => 
     const authRole = String(authUser?.role || '')
         .trim()
         .toUpperCase();
+    const authUserId = Number(authUser?.id || 0);
+
+    if (!Number.isFinite(packetId) || packetId <= 0) {
+        throw new ApiError(400, 'ID paket ujian tidak valid.');
+    }
 
     if (authRole !== 'ADMIN') {
-        throw new ApiError(
-            403,
-            'Paket ujian tidak dapat dihapus dari menu guru. Silakan edit informasi ujian atau isi soal yang tersedia.',
-        );
+        const packet = await prisma.examPacket.findUnique({
+            where: { id: packetId },
+            select: {
+                id: true,
+                authorId: true,
+                description: true,
+            },
+        });
+
+        if (!packet) {
+            throw new ApiError(404, 'Paket ujian tidak ditemukan.');
+        }
+
+        if (!isRemedialPacketDescription(packet.description)) {
+            throw new ApiError(
+                403,
+                'Paket ujian reguler tidak dapat dihapus dari menu guru. Silakan edit informasi ujian atau isi soal yang tersedia.',
+            );
+        }
+
+        if (!authUserId || Number(packet.authorId) !== authUserId) {
+            throw new ApiError(403, 'Guru hanya dapat menghapus paket remedial miliknya sendiri.');
+        }
+
+        const [scheduleCount, activeRemedialCount] = await Promise.all([
+            prisma.examSchedule.count({
+                where: { packetId },
+            }),
+            prisma.studentScoreRemedial.count({
+                where: {
+                    status: { not: ScoreRemedialStatus.CANCELLED },
+                    OR: [
+                        { activityExamPacketId: packetId },
+                        { activitySourceExamPacketId: packetId },
+                    ],
+                },
+            }),
+        ]);
+
+        if (scheduleCount > 0 || activeRemedialCount > 0) {
+            throw new ApiError(
+                400,
+                'Paket remedial sudah dipakai. Batalkan penerbitan remedial siswa terlebih dahulu sebelum menghapus paket soal.',
+            );
+        }
     }
 
     await prisma.examPacket.delete({ where: { id: packetId } });

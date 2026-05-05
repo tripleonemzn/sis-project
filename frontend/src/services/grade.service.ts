@@ -663,4 +663,34 @@ export const gradeService = {
     });
     return response.data;
   },
+
+  updateScoreRemedialActivity: async (id: number, payload: {
+    activityTitle?: string | null;
+    activityInstructions?: string | null;
+    activityDueAt?: string | null;
+    activityReferenceUrl?: string | null;
+    activityExamPacketId?: number | null;
+    activitySourceExamPacketId?: number | null;
+    note?: string | null;
+  }) => {
+    const response = await api.patch(`/grades/remedials/student-activities/${id}`, {
+      activity_title: payload.activityTitle,
+      activity_instructions: payload.activityInstructions,
+      activity_due_at: payload.activityDueAt,
+      activity_reference_url: payload.activityReferenceUrl,
+      activity_exam_packet_id: payload.activityExamPacketId,
+      activity_source_exam_packet_id: payload.activitySourceExamPacketId,
+      note: payload.note,
+    });
+    return response.data;
+  },
+
+  cancelScoreRemedialActivity: async (id: number, payload?: { note?: string | null }) => {
+    const response = await api.delete(`/grades/remedials/student-activities/${id}`, {
+      data: {
+        note: payload?.note,
+      },
+    });
+    return response.data;
+  },
 };

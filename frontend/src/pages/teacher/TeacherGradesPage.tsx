@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef, type WheelEvent } from 'react';
-import { ClipboardList, Loader2, RotateCcw, Save, X } from 'lucide-react';
+import { Check, ClipboardList, Loader2, Pencil, RotateCcw, Save, Trash2, X } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
 import { gradeService } from '../../services/grade.service';
@@ -303,6 +303,14 @@ const formatDateTimeDisplay = (value?: string | null): string => {
     hour: '2-digit',
     minute: '2-digit',
   });
+};
+
+const formatDateTimeLocalInput = (value?: string | null): string => {
+  if (!value) return '';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return '';
+  const localTimestamp = parsed.getTime() - parsed.getTimezoneOffset() * 60_000;
+  return new Date(localTimestamp).toISOString().slice(0, 16);
 };
 
 const getApiErrorMessage = (error: unknown, fallback: string): string => {
@@ -845,6 +853,11 @@ export const TeacherGradesPage = () => {
   const [remedialExamPackets, setRemedialExamPackets] = useState<ExamPacket[]>([]);
   const [remedialExamPacketsLoading, setRemedialExamPacketsLoading] = useState(false);
   const [remedialSaving, setRemedialSaving] = useState(false);
+  const [editingRemedialActivityId, setEditingRemedialActivityId] = useState<number | null>(null);
+  const [editingRemedialTitle, setEditingRemedialTitle] = useState('');
+  const [editingRemedialDueAt, setEditingRemedialDueAt] = useState('');
+  const [editingRemedialNote, setEditingRemedialNote] = useState('');
+  const [remedialActivityActionLoadingId, setRemedialActivityActionLoadingId] = useState<number | null>(null);
   const [isFilterRestoreDone, setIsFilterRestoreDone] = useState(false);
   const restoredAssignmentRef = useRef<string | undefined>(undefined);
   const gradeComponentRequestRef = useRef(0);
@@ -1776,6 +1789,10 @@ export const TeacherGradesPage = () => {
     setRemedialActivityExamPacketIdInput('');
     setRemedialActivitySourceExamPacketIdInput('');
     setRemedialExamPackets([]);
+    setEditingRemedialActivityId(null);
+    setEditingRemedialTitle('');
+    setEditingRemedialDueAt('');
+    setEditingRemedialNote('');
     fetchRemedialDetail(row.scoreEntryId);
   };
 
@@ -1792,6 +1809,11 @@ export const TeacherGradesPage = () => {
     setRemedialActivitySourceExamPacketIdInput('');
     setRemedialExamPackets([]);
     setRemedialDetailLoading(false);
+    setEditingRemedialActivityId(null);
+    setEditingRemedialTitle('');
+    setEditingRemedialDueAt('');
+    setEditingRemedialNote('');
+    setRemedialActivityActionLoadingId(null);
   };
 
   const resetRemedialActivityInputs = () => {
@@ -1913,6 +1935,13 @@ export const TeacherGradesPage = () => {
       toast.error('Isi judul remedial atau pilih paket soal sebelum remedial diterbitkan.');
       return;
     }
+    if (remedialActivityDueAtInput) {
+      const parsedDueAt = new Date(remedialActivityDueAtInput);
+      if (Number.isNaN(parsedDueAt.getTime()) || parsedDueAt.getTime() <= Date.now() + 60_000) {
+        toast.error('Tenggat remedial harus masih di masa depan.');
+        return;
+      }
+    }
 
     try {
       setRemedialSaving(true);
@@ -1934,6 +1963,79 @@ export const TeacherGradesPage = () => {
       toast.error(getApiErrorMessage(error, 'Gagal menerbitkan remedial terpilih'));
     } finally {
       setRemedialSaving(false);
+    }
+  };
+
+  const openEditRemedialActivity = (attempt: ScoreRemedialAttempt) => {
+    setEditingRemedialActivityId(attempt.id);
+    setEditingRemedialTitle(attempt.activityTitle || '');
+    setEditingRemedialDueAt(formatDateTimeLocalInput(attempt.activityDueAt));
+    setEditingRemedialNote(attempt.note || '');
+  };
+
+  const closeEditRemedialActivity = () => {
+    setEditingRemedialActivityId(null);
+    setEditingRemedialTitle('');
+    setEditingRemedialDueAt('');
+    setEditingRemedialNote('');
+  };
+
+  const handleUpdateRemedialActivity = async (attempt: ScoreRemedialAttempt) => {
+    const activeRemedial = remedialDetail || selectedRemedial;
+    if (!activeRemedial) return;
+    const title = editingRemedialTitle.trim();
+    const note = editingRemedialNote.trim();
+    if (!title && !attempt.activityExamPacket && !attempt.activitySourceExamPacket) {
+      toast.error('Isi judul remedial atau pastikan paket soal masih terhubung.');
+      return;
+    }
+    if (editingRemedialDueAt) {
+      const parsedDueAt = new Date(editingRemedialDueAt);
+      if (Number.isNaN(parsedDueAt.getTime()) || parsedDueAt.getTime() <= Date.now() + 60_000) {
+        toast.error('Tenggat remedial harus masih di masa depan.');
+        return;
+      }
+    }
+
+    try {
+      setRemedialActivityActionLoadingId(attempt.id);
+      await gradeService.updateScoreRemedialActivity(attempt.id, {
+        activityTitle: title || null,
+        activityDueAt: editingRemedialDueAt || null,
+        note: note || null,
+      });
+      toast.success('Aktivitas remedial berhasil diperbarui.');
+      closeEditRemedialActivity();
+      await fetchRemedialDetail(activeRemedial.scoreEntryId);
+      await fetchRemedialRows(true);
+    } catch (error) {
+      console.error('Update remedial activity error:', error);
+      toast.error(getApiErrorMessage(error, 'Gagal memperbarui aktivitas remedial'));
+    } finally {
+      setRemedialActivityActionLoadingId(null);
+    }
+  };
+
+  const handleCancelRemedialActivity = async (attempt: ScoreRemedialAttempt) => {
+    const activeRemedial = remedialDetail || selectedRemedial;
+    if (!activeRemedial) return;
+    const confirmed = window.confirm('Batalkan remedial ini? Siswa tidak akan melihat paket remedial tersebut lagi.');
+    if (!confirmed) return;
+
+    try {
+      setRemedialActivityActionLoadingId(attempt.id);
+      await gradeService.cancelScoreRemedialActivity(attempt.id, {
+        note: attempt.note || 'Dibatalkan oleh guru.',
+      });
+      toast.success('Aktivitas remedial berhasil dibatalkan.');
+      if (editingRemedialActivityId === attempt.id) closeEditRemedialActivity();
+      await fetchRemedialDetail(activeRemedial.scoreEntryId);
+      await fetchRemedialRows(true);
+    } catch (error) {
+      console.error('Cancel remedial activity error:', error);
+      toast.error(getApiErrorMessage(error, 'Gagal membatalkan aktivitas remedial'));
+    } finally {
+      setRemedialActivityActionLoadingId(null);
     }
   };
 
@@ -2993,7 +3095,7 @@ export const TeacherGradesPage = () => {
 
       {activeRemedialDetail && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/25 backdrop-blur-[2px]">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-3xl max-h-[calc(100vh-7rem)] overflow-hidden flex flex-col animate-in fade-in zoom-in duration-200">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-5xl max-h-[calc(100vh-7rem)] overflow-hidden flex flex-col animate-in fade-in zoom-in duration-200">
             <div className="flex items-start justify-between gap-4 border-b border-gray-200 px-6 py-4">
               <div>
                 <h3 className="text-lg font-bold text-gray-900">
@@ -3045,7 +3147,7 @@ export const TeacherGradesPage = () => {
                   <h4 className="text-sm font-semibold text-gray-900">Riwayat Percobaan</h4>
                 </div>
                 <div className="overflow-x-auto">
-                  <table className="w-full min-w-[620px] border-collapse">
+                  <table className="w-full min-w-[900px] border-collapse">
                     <thead>
                       <tr className="bg-gray-50">
                         <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Percobaan</th>
@@ -3054,12 +3156,19 @@ export const TeacherGradesPage = () => {
                         <th className="px-4 py-2 text-center text-xs font-medium uppercase tracking-wider text-gray-500">Status</th>
                         <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Metode</th>
                         <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Catatan</th>
+                        <th className="px-4 py-2 text-right text-xs font-medium uppercase tracking-wider text-gray-500">Aksi</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-200 bg-white">
                       {remedialAttempts.length > 0 ? (
                         remedialAttempts.map((attempt) => {
                           const statusMeta = getRemedialStatusMeta(attempt.status);
+                          const canManageAttempt =
+                            String(attempt.status || '').toUpperCase() === 'DRAFT' &&
+                            String(attempt.method || '').toUpperCase() !== 'MANUAL_SCORE' &&
+                            !attempt.activitySubmittedAt;
+                          const isEditingAttempt = editingRemedialActivityId === attempt.id;
+                          const isActionLoading = remedialActivityActionLoadingId === attempt.id;
                           return (
                             <tr key={attempt.id}>
                               <td className="px-4 py-3 text-sm text-gray-700">
@@ -3100,12 +3209,97 @@ export const TeacherGradesPage = () => {
                                 ) : null}
                               </td>
                               <td className="px-4 py-3 text-sm text-gray-600">{attempt.note || '-'}</td>
+                              <td className="px-4 py-3 text-right text-sm">
+                                {canManageAttempt ? (
+                                  isEditingAttempt ? (
+                                    <div className="ml-auto w-72 space-y-2 rounded-lg border border-blue-100 bg-blue-50/50 p-3 text-left">
+                                      <div>
+                                        <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                                          Judul Remedial
+                                        </label>
+                                        <input
+                                          type="text"
+                                          value={editingRemedialTitle}
+                                          onChange={(event) => setEditingRemedialTitle(event.target.value)}
+                                          className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                                          placeholder="Contoh: Remedial SBTS"
+                                        />
+                                      </div>
+                                      <div>
+                                        <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                                          Tenggat
+                                        </label>
+                                        <input
+                                          type="datetime-local"
+                                          value={editingRemedialDueAt}
+                                          onChange={(event) => setEditingRemedialDueAt(event.target.value)}
+                                          className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                                        />
+                                      </div>
+                                      <div>
+                                        <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                                          Catatan
+                                        </label>
+                                        <textarea
+                                          rows={2}
+                                          value={editingRemedialNote}
+                                          onChange={(event) => setEditingRemedialNote(event.target.value)}
+                                          className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                                          placeholder="Opsional"
+                                        />
+                                      </div>
+                                      <div className="flex justify-end gap-2">
+                                        <button
+                                          type="button"
+                                          onClick={closeEditRemedialActivity}
+                                          className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                                          disabled={isActionLoading}
+                                        >
+                                          Batal
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleUpdateRemedialActivity(attempt)}
+                                          className="inline-flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-70"
+                                          disabled={isActionLoading}
+                                        >
+                                          {isActionLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                                          Simpan
+                                        </button>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <div className="flex justify-end gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => openEditRemedialActivity(attempt)}
+                                        className="inline-flex items-center gap-1 rounded-lg border border-blue-100 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-600 hover:text-white"
+                                        disabled={isActionLoading}
+                                      >
+                                        <Pencil className="h-3.5 w-3.5" />
+                                        Edit
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleCancelRemedialActivity(attempt)}
+                                        className="inline-flex items-center gap-1 rounded-lg border border-rose-100 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-70"
+                                        disabled={isActionLoading}
+                                      >
+                                        {isActionLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                                        Batalkan
+                                      </button>
+                                    </div>
+                                  )
+                                ) : (
+                                  <span className="text-xs text-slate-400">-</span>
+                                )}
+                              </td>
                             </tr>
                           );
                         })
                       ) : (
                         <tr>
-                          <td colSpan={6} className="px-4 py-6 text-center text-sm text-gray-500">
+                          <td colSpan={7} className="px-4 py-6 text-center text-sm text-gray-500">
                             Belum ada percobaan remedial.
                           </td>
                         </tr>

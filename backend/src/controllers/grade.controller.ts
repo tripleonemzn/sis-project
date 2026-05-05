@@ -3502,6 +3502,14 @@ function normalizeOptionalRemedialDate(value: unknown): Date | null {
   return Number.isFinite(parsed.getTime()) ? parsed : null
 }
 
+function assertRemedialDueAtIsFuture(activityDueAt: Date | null) {
+  if (!activityDueAt) return
+  const minimumDueAt = Date.now() + 60_000
+  if (activityDueAt.getTime() <= minimumDueAt) {
+    throw new ApiError(400, 'Tenggat remedial harus masih di masa depan.')
+  }
+}
+
 function normalizeRemedialDraftFlag(value: unknown): boolean {
   const normalized = String(value ?? '').trim().toLowerCase()
   return normalized === 'true' || normalized === '1' || normalized === 'yes'
@@ -3822,6 +3830,52 @@ async function assertCanAccessRemedialScoreEntry(user: AuthUserLike, entry: {
     studentId: entry.studentId,
     subjectId: entry.subjectId,
     academicYearId: entry.academicYearId,
+  })
+}
+
+async function loadRemedialActivityForManagement(activityId: number) {
+  if (!Number.isFinite(activityId) || activityId <= 0) return null
+
+  return prisma.studentScoreRemedial.findUnique({
+    where: { id: activityId },
+    include: {
+      scoreEntry: {
+        include: {
+          student: {
+            select: {
+              id: true,
+              name: true,
+              nis: true,
+              nisn: true,
+              classId: true,
+              studentClass: {
+                select: {
+                  academicYearId: true,
+                },
+              },
+            },
+          },
+          subject: {
+            select: {
+              id: true,
+              code: true,
+              name: true,
+            },
+          },
+          academicYear: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+          remedials: {
+            orderBy: {
+              attemptNumber: 'asc',
+            },
+          },
+        },
+      },
+    },
   })
 }
 
@@ -4285,6 +4339,7 @@ export const createScoreRemedial = async (req: Request, res: Response) => {
     if (method === ScoreRemedialMethod.QUESTION_SET && !activityExamPacketId && !activitySourceExamPacketId) {
       throw new ApiError(400, 'Pilih paket soal remedial sebelum diterbitkan ke siswa.')
     }
+    assertRemedialDueAtIsFuture(activityDueAt)
     if (
       method !== ScoreRemedialMethod.MANUAL_SCORE &&
       !activityTitle &&
@@ -4417,6 +4472,7 @@ export const createBulkScoreRemedialActivities = async (req: Request, res: Respo
     if (method === ScoreRemedialMethod.QUESTION_SET && !activityExamPacketId && !activitySourceExamPacketId) {
       throw new ApiError(400, 'Pilih paket soal remedial sebelum diterbitkan ke siswa.')
     }
+    assertRemedialDueAtIsFuture(activityDueAt)
     if (!activityTitle && !activityExamPacketId && !activitySourceExamPacketId) {
       throw new ApiError(400, 'Isi judul remedial atau pilih paket soal sebelum remedial diterbitkan.')
     }
@@ -4533,6 +4589,203 @@ export const createBulkScoreRemedialActivities = async (req: Request, res: Respo
     console.error('Create bulk score remedial activities error:', error)
     if (error instanceof ApiError) throw error
     throw new ApiError(500, 'Gagal menerbitkan remedial terpilih.')
+  }
+}
+
+export const updateStudentRemedialActivity = async (req: Request, res: Response) => {
+  try {
+    const user = (req as any).user as AuthUserLike
+    const activityId = toPositiveInt(req.params.id)
+
+    if (!activityId) {
+      throw new ApiError(400, 'Aktivitas remedial tidak valid.')
+    }
+
+    const activity = await loadRemedialActivityForManagement(activityId)
+    if (!activity) {
+      throw new ApiError(404, 'Aktivitas remedial tidak ditemukan.')
+    }
+
+    await assertCanAccessRemedialScoreEntry(user, activity.scoreEntry)
+
+    if (activity.status === ScoreRemedialStatus.CANCELLED) {
+      throw new ApiError(400, 'Aktivitas remedial sudah dibatalkan.')
+    }
+    if (activity.method === ScoreRemedialMethod.MANUAL_SCORE) {
+      throw new ApiError(400, 'Input nilai manual tidak memiliki aktivitas remedial yang dapat diedit.')
+    }
+    if (activity.activitySubmittedAt) {
+      throw new ApiError(400, 'Aktivitas remedial yang sudah dikumpulkan siswa tidak dapat diedit.')
+    }
+
+    const body = req.body || {}
+    const hasActivityTitle = Object.prototype.hasOwnProperty.call(body, 'activity_title') ||
+      Object.prototype.hasOwnProperty.call(body, 'activityTitle')
+    const hasActivityInstructions = Object.prototype.hasOwnProperty.call(body, 'activity_instructions') ||
+      Object.prototype.hasOwnProperty.call(body, 'activityInstructions')
+    const hasActivityDueAt = Object.prototype.hasOwnProperty.call(body, 'activity_due_at') ||
+      Object.prototype.hasOwnProperty.call(body, 'activityDueAt')
+    const hasActivityReferenceUrl = Object.prototype.hasOwnProperty.call(body, 'activity_reference_url') ||
+      Object.prototype.hasOwnProperty.call(body, 'activityReferenceUrl')
+    const hasActivityExamPacketId = Object.prototype.hasOwnProperty.call(body, 'activity_exam_packet_id') ||
+      Object.prototype.hasOwnProperty.call(body, 'activityExamPacketId')
+    const hasActivitySourceExamPacketId = Object.prototype.hasOwnProperty.call(body, 'activity_source_exam_packet_id') ||
+      Object.prototype.hasOwnProperty.call(body, 'activitySourceExamPacketId')
+    const hasNote = Object.prototype.hasOwnProperty.call(body, 'note')
+
+    const updateData: Prisma.StudentScoreRemedialUpdateInput = {}
+    const activityTitle = hasActivityTitle
+      ? normalizeOptionalRemedialText(body.activity_title ?? body.activityTitle, 160)
+      : activity.activityTitle
+    const activityInstructions = hasActivityInstructions
+      ? normalizeOptionalRemedialText(body.activity_instructions ?? body.activityInstructions, 2000)
+      : activity.activityInstructions
+    const activityDueAt = hasActivityDueAt
+      ? normalizeOptionalRemedialDate(body.activity_due_at ?? body.activityDueAt)
+      : activity.activityDueAt
+    const activityReferenceUrl = hasActivityReferenceUrl
+      ? normalizeOptionalRemedialText(body.activity_reference_url ?? body.activityReferenceUrl, 500)
+      : activity.activityReferenceUrl
+    const note = hasNote ? normalizeOptionalRemedialText(body.note, 2000) : activity.note
+
+    if (hasActivityDueAt) {
+      assertRemedialDueAtIsFuture(activityDueAt)
+      updateData.activityDueAt = activityDueAt
+    }
+    if (hasActivityTitle) updateData.activityTitle = activityTitle
+    if (hasActivityInstructions) updateData.activityInstructions = activityInstructions
+    if (hasActivityReferenceUrl) updateData.activityReferenceUrl = activityReferenceUrl
+    if (hasNote) updateData.note = note
+
+    const readPacketId = (value: unknown, label: string): number | null => {
+      const raw = String(value ?? '').trim()
+      if (!raw) return null
+      const parsed = toPositiveInt(value)
+      if (!parsed) {
+        throw new ApiError(400, `${label} tidak valid.`)
+      }
+      return parsed
+    }
+
+    let nextActivityExamPacketId = activity.activityExamPacketId
+    let nextActivitySourceExamPacketId = activity.activitySourceExamPacketId
+
+    if (hasActivityExamPacketId) {
+      const packetId = readPacketId(
+        body.activity_exam_packet_id ?? body.activityExamPacketId,
+        'Paket soal remedial',
+      )
+      const packet = await resolveRemedialExamPacketReference(packetId, activity.scoreEntry, user)
+      nextActivityExamPacketId = packet?.id || null
+      updateData.activityExamPacketId = nextActivityExamPacketId
+    }
+
+    if (hasActivitySourceExamPacketId) {
+      const packetId = readPacketId(
+        body.activity_source_exam_packet_id ?? body.activitySourceExamPacketId,
+        'Paket soal sumber',
+      )
+      const packet = await resolveRemedialExamPacketReference(packetId, activity.scoreEntry, user)
+      nextActivitySourceExamPacketId = packet?.id || null
+      updateData.activitySourceExamPacketId = nextActivitySourceExamPacketId
+    }
+
+    const packetChanged =
+      Number(nextActivityExamPacketId || 0) !== Number(activity.activityExamPacketId || 0) ||
+      Number(nextActivitySourceExamPacketId || 0) !== Number(activity.activitySourceExamPacketId || 0)
+    if (activity.activityStartedAt && packetChanged) {
+      throw new ApiError(400, 'Paket soal tidak dapat diganti karena siswa sudah mulai mengerjakan.')
+    }
+    if (
+      activity.method === ScoreRemedialMethod.QUESTION_SET &&
+      !nextActivityExamPacketId &&
+      !nextActivitySourceExamPacketId
+    ) {
+      throw new ApiError(400, 'Aktivitas soal/quiz remedial harus memiliki paket soal.')
+    }
+    if (
+      !activityTitle &&
+      !activityInstructions &&
+      !activityReferenceUrl &&
+      !nextActivityExamPacketId &&
+      !nextActivitySourceExamPacketId
+    ) {
+      throw new ApiError(400, 'Isi judul, instruksi, tautan, atau paket soal remedial.')
+    }
+
+    const updated = await prisma.studentScoreRemedial.update({
+      where: { id: activity.id },
+      data: updateData,
+    })
+
+    emitGradeRealtimeRefresh({
+      studentIds: [activity.scoreEntry.studentId],
+      subjectIds: [activity.scoreEntry.subjectId],
+      academicYearIds: [activity.scoreEntry.academicYearId],
+      semesters: [activity.scoreEntry.semester],
+      includeReports: false,
+    })
+
+    return ApiResponseHelper.success(
+      res,
+      { remedial: updated },
+      'Aktivitas remedial berhasil diperbarui.',
+    )
+  } catch (error) {
+    console.error('Update student remedial activity error:', error)
+    if (error instanceof ApiError) throw error
+    throw new ApiError(500, 'Gagal memperbarui aktivitas remedial.')
+  }
+}
+
+export const cancelStudentRemedialActivity = async (req: Request, res: Response) => {
+  try {
+    const user = (req as any).user as AuthUserLike
+    const activityId = toPositiveInt(req.params.id)
+
+    if (!activityId) {
+      throw new ApiError(400, 'Aktivitas remedial tidak valid.')
+    }
+
+    const activity = await loadRemedialActivityForManagement(activityId)
+    if (!activity) {
+      throw new ApiError(404, 'Aktivitas remedial tidak ditemukan.')
+    }
+
+    await assertCanAccessRemedialScoreEntry(user, activity.scoreEntry)
+
+    if (activity.method === ScoreRemedialMethod.MANUAL_SCORE) {
+      throw new ApiError(400, 'Input nilai manual tidak dapat dibatalkan dari menu aktivitas.')
+    }
+    if (activity.activitySubmittedAt) {
+      throw new ApiError(400, 'Aktivitas remedial yang sudah dikumpulkan siswa tidak dapat dibatalkan.')
+    }
+
+    const updated = await prisma.studentScoreRemedial.update({
+      where: { id: activity.id },
+      data: {
+        status: ScoreRemedialStatus.CANCELLED,
+        note: normalizeOptionalRemedialText(req.body?.note, 2000) || activity.note,
+      },
+    })
+
+    emitGradeRealtimeRefresh({
+      studentIds: [activity.scoreEntry.studentId],
+      subjectIds: [activity.scoreEntry.subjectId],
+      academicYearIds: [activity.scoreEntry.academicYearId],
+      semesters: [activity.scoreEntry.semester],
+      includeReports: false,
+    })
+
+    return ApiResponseHelper.success(
+      res,
+      { remedial: updated },
+      'Aktivitas remedial berhasil dibatalkan.',
+    )
+  } catch (error) {
+    console.error('Cancel student remedial activity error:', error)
+    if (error instanceof ApiError) throw error
+    throw new ApiError(500, 'Gagal membatalkan aktivitas remedial.')
   }
 }
 
