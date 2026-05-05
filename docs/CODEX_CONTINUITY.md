@@ -5,6 +5,57 @@ Setiap room baru yang diminta `baca AGENTS.md` atau `lanjutkan` wajib membaca fi
 
 ## Update Terbaru
 
+- Last updated: 2026-05-05 10:32 WIB
+- Current status: Fitur remedial tampil di dashboard siswa dan monitoring remedial wali kelas selesai, terverifikasi, live web/backend, serta OTA Android `pilot-live` sudah dipublish.
+- Objective/task aktif:
+  - Remedial yang diberikan guru harus tampil di dashboard siswa seperti ujian terjadwal dan ketika diklik langsung mengarah ke sumbernya.
+  - Wali kelas perlu monitoring remedial untuk melihat progres mapel remedial, siswa yang sudah selesai, belum selesai, tenggat berakhir, dan nilai yang masih ditahan wali kelas.
+- Last completed repo work:
+  - Commit: `817fdd4`
+  - Title: `feat(remedial): add student dashboard and homeroom monitoring`
+  - Summary:
+    - backend menambah endpoint scoped wali kelas `GET /grades/remedials/homeroom-monitoring`
+    - endpoint monitoring hanya membaca kelas wali pada tahun ajaran aktif, semester/program terkait, dan memakai limit aman per kelas
+    - web dashboard siswa menampilkan `Jadwal Ujian & Remedial Terdekat`; remedial paket soal mengarah ke `/student/remedials/:id/take`, remedial non-paket ke `Materi & Tugas`
+    - mobile dashboard siswa menampilkan agenda ujian dan remedial dalam card yang sama; remedial paket soal membuka route web pengerjaan remedial
+    - web rapor wali kelas SBTS/SAS/SAT menambah tab `Monitoring Remedial` sebelum `Publikasi Nilai`
+    - mobile `Rapor Wali Kelas` menambah tab `Monitoring Remedial` dengan ringkasan dan detail per siswa
+    - monitoring menampilkan status jelas seperti `Selesai`, `Bisa Dikerjakan`, `Sedang Dikerjakan`, `Tenggat Berakhir`, `Menunggu Paket`, `Menunggu Remedial`, dan `Ditahan Wali Kelas`
+- Area/file disentuh:
+  - `backend/src/controllers/grade.controller.ts`
+  - `backend/src/routes/grade.routes.ts`
+  - `frontend/src/components/homeroom/HomeroomRemedialMonitoringPanel.tsx`
+  - `frontend/src/pages/student/StudentDashboard.tsx`
+  - `frontend/src/pages/teacher/homeroom/TeacherHomeroomFinalPage.tsx`
+  - `frontend/src/pages/teacher/homeroom/TeacherHomeroomSbtsPage.tsx`
+  - `frontend/src/services/grade.service.ts`
+  - `mobile-app/app/(app)/home.tsx`
+  - `mobile-app/src/features/grades/gradeApi.ts`
+  - `mobile-app/src/features/grades/types.ts`
+  - `mobile-app/src/features/homeroomReports/HomeroomReportModuleScreen.tsx`
+- Verifikasi:
+  - `cd backend && npm run build`
+  - `cd frontend && npm run build`
+  - `cd mobile-app && npm run typecheck`
+  - `cd mobile-app && npm run audit:parity:check`
+  - `cd backend && npm run service:restart`
+  - `cd backend && npm run service:health` -> `Backend:200`, `Backend API:200`
+  - `cd frontend && npm run deploy`
+  - `curl https://siskgb2.id/` -> `Web:200`
+  - `curl https://siskgb2.id/student/dashboard` -> `Student dashboard route:200`
+- Publish/live status:
+  - Backend sudah restart live dan health check normal.
+  - Web sudah deploy live.
+  - Mobile OTA Android sudah publish ke channel `pilot-live`, update group `431333e7-cfae-42af-88f3-648a262ed37f`, Android update `019df632-6b60-70d2-b3e9-ce3eb58e11a5`.
+  - Push notifikasi update mobile berhasil: recipients `93`, sent `93`, failed `0`, stale `0`.
+- Remaining work:
+  - Tidak ada sisa pekerjaan kode untuk request ini.
+  - Uji manual yang disarankan: login siswa yang punya remedial aktif, cek dashboard; login wali kelas, buka rapor program SBTS/SAS/SAT lalu tab `Monitoring Remedial`.
+- Residual risk:
+  - Risiko rendah. Query monitoring dibatasi scope kelas wali dan tahun ajaran aktif, tidak menambah polling agresif, tidak menambah migration, dan tidak membuat broadcast/refetch global.
+
+## Update Sebelumnya
+
 - Last updated: 2026-05-05 09:13 WIB
 - Current status: Fix paket remedial KGB2G103 tenggat berakhir selesai, terverifikasi, dipublish live, dan data sample sudah bisa dikerjakan lagi. Aktivitas remedial guru `KGB2G103` sekarang tidak ada yang expired aktif (`total=8`, `expired=0`) dengan tenggat baru `2026-05-12 23:59 WIB`.
 - Objective/task aktif:
