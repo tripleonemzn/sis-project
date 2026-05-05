@@ -3514,6 +3514,11 @@ async function resolveRemedialExamPacketReference(
     subjectId: number
     academicYearId: number
     semester: Semester
+    componentCode?: string | null
+    componentType?: GradeComponentType | null
+    componentTypeCode?: string | null
+    reportSlot?: string | null
+    reportSlotCode?: string | null
   },
   user: AuthUserLike,
 ) {
@@ -3540,6 +3545,15 @@ async function resolveRemedialExamPacketReference(
 
   if (!packet) {
     throw new ApiError(400, 'Paket soal remedial tidak valid untuk mapel, semester, atau tahun ajaran ini.')
+  }
+
+  const expectedProgramCode = resolveRemedialPublicationCode(entry)
+  const packetProgramCode = normalizeComponentCode(packet.programCode || packet.type)
+  if (expectedProgramCode && packetProgramCode && expectedProgramCode !== packetProgramCode) {
+    throw new ApiError(
+      400,
+      `Paket soal remedial harus sesuai jenis nilai sumber (${expectedProgramCode}).`,
+    )
   }
 
   if (!isTeacherUser(user)) return packet
@@ -3953,6 +3967,10 @@ async function createScoreRemedialRecord(params: CreateScoreRemedialRecordParams
     resolveRemedialExamPacketReference(params.activitySourceExamPacketId ?? null, params.entry, params.user),
   ])
 
+  if (params.method === ScoreRemedialMethod.QUESTION_SET && !activityExamPacket && !activitySourceExamPacket) {
+    throw new ApiError(400, 'Pilih paket soal remedial sebelum diterbitkan ke siswa.')
+  }
+
   const kkmInfo = await resolveKkmForRemedialScoreEntry({
     studentId: params.entry.studentId,
     subjectId: params.entry.subjectId,
@@ -4264,6 +4282,9 @@ export const createScoreRemedial = async (req: Request, res: Response) => {
     if (saveAsDraft && method === ScoreRemedialMethod.MANUAL_SCORE) {
       throw new ApiError(400, 'Aktivitas remedial harus memakai metode tugas atau soal.')
     }
+    if (method === ScoreRemedialMethod.QUESTION_SET && !activityExamPacketId && !activitySourceExamPacketId) {
+      throw new ApiError(400, 'Pilih paket soal remedial sebelum diterbitkan ke siswa.')
+    }
     if (
       method !== ScoreRemedialMethod.MANUAL_SCORE &&
       !activityTitle &&
@@ -4392,6 +4413,9 @@ export const createBulkScoreRemedialActivities = async (req: Request, res: Respo
     }
     if (method === ScoreRemedialMethod.MANUAL_SCORE) {
       throw new ApiError(400, 'Bulk remedial hanya untuk metode tugas atau soal.')
+    }
+    if (method === ScoreRemedialMethod.QUESTION_SET && !activityExamPacketId && !activitySourceExamPacketId) {
+      throw new ApiError(400, 'Pilih paket soal remedial sebelum diterbitkan ke siswa.')
     }
     if (!activityTitle && !activityExamPacketId && !activitySourceExamPacketId) {
       throw new ApiError(400, 'Isi judul remedial atau pilih paket soal sebelum remedial diterbitkan.')

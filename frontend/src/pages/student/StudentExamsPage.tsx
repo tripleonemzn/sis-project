@@ -11,6 +11,7 @@ import {
   type StudentExamPlacement,
 } from '../../services/exam.service'
 import { examCardService } from '../../services/examCard.service'
+import { gradeService, type StudentRemedialActivity } from '../../services/grade.service'
 import { isNonScheduledExamProgram } from '../../lib/examProgramMenu'
 import { 
   FileText, 
@@ -23,6 +24,7 @@ import {
   Search,
   ChevronDown,
   ChevronUp,
+  ClipboardCheck,
 } from 'lucide-react'
 
 type ExamProgramLabelMap = Record<string, string>
@@ -374,6 +376,19 @@ function formatExamDayLabel(value?: string | null): string {
   })
 }
 
+function resolveRemedialPacket(activity: StudentRemedialActivity) {
+  return activity.activityExamPacket || activity.activitySourceExamPacket || null
+}
+
+function resolveRemedialProgramCode(activity: StudentRemedialActivity): string {
+  const packet = resolveRemedialPacket(activity)
+  return normalizeExamProgramCode(packet?.programCode || packet?.type || activity.sourceLabel || '')
+}
+
+function isQuestionSetRemedial(activity: StudentRemedialActivity): boolean {
+  return String(activity.method || '').toUpperCase() === 'QUESTION_SET'
+}
+
 export default function StudentExamsPage() {
   const navigate = useNavigate()
   const location = useLocation()
@@ -440,6 +455,13 @@ export default function StudentExamsPage() {
       const response = await examService.getMyExamSittings()
       return response.data || []
     },
+  })
+  const studentRemedialActivitiesQuery = useQuery({
+    queryKey: ['student-remedial-exams-web'],
+    enabled: !isCandidateMode && !isApplicantMode && !applicantVerificationLocked,
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+    queryFn: () => gradeService.getStudentRemedialActivities({ limit: 100 }),
   })
 
   useEffect(() => {
@@ -1063,6 +1085,184 @@ export default function StudentExamsPage() {
     if (normalizedType && examProgramLabels[normalizedType]) return examProgramLabels[normalizedType]
 
     return normalizedProgram || normalizedType || '-'
+  }
+
+  const getRemedialTypeLabel = (activity: StudentRemedialActivity) => {
+    const normalizedProgram = resolveRemedialProgramCode(activity)
+    return examProgramLabels[normalizedProgram] || normalizedProgram || activity.sourceLabel || 'Remedial'
+  }
+
+  const getRemedialStatus = (activity: StudentRemedialActivity) => {
+    const normalizedStatus = String(activity.status || '').toUpperCase()
+    if (activity.activitySubmittedAt || normalizedStatus === 'PASSED' || normalizedStatus === 'STILL_BELOW_KKM') {
+      return 'completed'
+    }
+    if (!isQuestionSetRemedial(activity) || !resolveRemedialPacket(activity)) return 'not_ready'
+    const dueMs = activity.activityDueAt ? new Date(activity.activityDueAt).getTime() : Number.NaN
+    if (Number.isFinite(dueMs) && dueMs < Date.now()) return 'expired'
+    return 'available'
+  }
+
+  const canTakeRemedialActivity = (activity: StudentRemedialActivity) => getRemedialStatus(activity) === 'available'
+
+  const relevantRemedialTotal = useMemo(() => {
+    const rows = studentRemedialActivitiesQuery.data || []
+    return rows.filter((activity) => {
+      if (!isQuestionSetRemedial(activity)) return false
+      if (programFilter === 'all') return true
+      return resolveRemedialProgramCode(activity) === programFilter
+    }).length
+  }, [programFilter, studentRemedialActivitiesQuery.data])
+
+  const filteredRemedialActivities = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase()
+    return (studentRemedialActivitiesQuery.data || [])
+      .filter((activity) => {
+        if (!isQuestionSetRemedial(activity)) return false
+        const programCode = resolveRemedialProgramCode(activity)
+        if (programFilter !== 'all' && programCode !== programFilter) return false
+
+        const status = getRemedialStatus(activity)
+        if (statusFilter !== 'all') {
+          if (statusFilter === 'completed' || statusFilter === 'graded') {
+            if (status !== 'completed') return false
+          } else if (statusFilter === 'available') {
+            if (status !== 'available') return false
+          } else if (statusFilter === 'expired') {
+            if (status !== 'expired') return false
+          } else if (statusFilter === 'upcoming') {
+            if (status !== 'not_ready') return false
+          } else {
+            return false
+          }
+        }
+
+        if (!q) return true
+        const packet = resolveRemedialPacket(activity)
+        return (
+          String(activity.activityTitle || packet?.title || '').toLowerCase().includes(q) ||
+          String(activity.subject?.name || '').toLowerCase().includes(q) ||
+          String(activity.subject?.code || '').toLowerCase().includes(q) ||
+          String(activity.teacher?.name || '').toLowerCase().includes(q) ||
+          String(activity.sourceLabel || '').toLowerCase().includes(q)
+        )
+      })
+      .sort((left, right) => {
+        const leftDue = left.activityDueAt ? new Date(left.activityDueAt).getTime() : Number.POSITIVE_INFINITY
+        const rightDue = right.activityDueAt ? new Date(right.activityDueAt).getTime() : Number.POSITIVE_INFINITY
+        if (leftDue !== rightDue) return leftDue - rightDue
+        return new Date(String(right.recordedAt || 0)).getTime() - new Date(String(left.recordedAt || 0)).getTime()
+      })
+  }, [getRemedialStatus, programFilter, searchQuery, statusFilter, studentRemedialActivitiesQuery.data])
+
+  const getRemedialStatusBadge = (activity: StudentRemedialActivity) => {
+    const status = getRemedialStatus(activity)
+    if (status === 'completed') {
+      return (
+        <span className="inline-flex items-center gap-1 rounded bg-green-100 px-2 py-1 text-xs font-medium text-green-800">
+          <CheckCircle className="h-3 w-3" />
+          Sudah Dikerjakan
+        </span>
+      )
+    }
+    if (status === 'expired') {
+      return (
+        <span className="inline-flex items-center gap-1 rounded bg-red-100 px-2 py-1 text-xs font-medium text-red-800">
+          <XCircle className="h-3 w-3" />
+          Tenggat Berakhir
+        </span>
+      )
+    }
+    if (status === 'not_ready') {
+      return (
+        <span className="inline-flex items-center gap-1 rounded bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800">
+          <AlertCircle className="h-3 w-3" />
+          Paket Belum Siap
+        </span>
+      )
+    }
+    return (
+      <span className="inline-flex items-center gap-1 rounded bg-blue-600 px-2 py-1 text-xs font-medium text-white">
+        <Play className="h-3 w-3" />
+        Bisa Dikerjakan
+      </span>
+    )
+  }
+
+  const renderRemedialRow = (activity: StudentRemedialActivity) => {
+    const packet = resolveRemedialPacket(activity)
+    const canTake = canTakeRemedialActivity(activity)
+    const questionCount = Number(packet?.publishedQuestionCount || 0)
+    const duration = Number(packet?.duration || 0)
+
+    return (
+      <tr key={`remedial-${activity.id}`} className={`hover:bg-gray-50 ${canTake ? 'bg-blue-50/50' : ''}`}>
+        <td className="px-6 py-4">
+          <div className="flex items-start">
+            <ClipboardCheck className="mr-2 mt-0.5 h-5 w-5 flex-shrink-0 text-blue-600" />
+            <div>
+              <div className="text-sm font-medium text-gray-900">
+                {activity.activityTitle || packet?.title || 'Remedial'}
+              </div>
+              <div className="mt-1 text-xs text-gray-500">
+                Sumber nilai: {activity.sourceLabel || '-'}
+              </div>
+            </div>
+          </div>
+        </td>
+        <td className="px-6 py-4">
+          <div className="text-sm font-medium text-gray-900">{activity.subject?.name || '-'}</div>
+          <div className="text-xs text-gray-500">{activity.teacher?.name || 'Guru mapel'}</div>
+        </td>
+        <td className="px-6 py-4 text-center">
+          <span className={`rounded px-2 py-1 text-xs font-medium ${getTypeColor(resolveRemedialProgramCode(activity))}`}>
+            {getRemedialTypeLabel(activity)}
+          </span>
+        </td>
+        <td className="px-6 py-4 text-center">
+          <div className="text-sm font-medium text-gray-900">{questionCount || '-'}</div>
+          <div className="text-xs text-gray-500">soal</div>
+        </td>
+        <td className="px-6 py-4 text-center">
+          <div className="text-sm font-medium text-gray-900">{duration || '-'}</div>
+          <div className="text-xs text-gray-500">menit</div>
+        </td>
+        <td className="px-6 py-4">
+          <div className="text-xs text-gray-600">
+            <div className="flex items-center gap-1">
+              <Clock className="h-3 w-3" />
+              <span>Tenggat: {activity.activityDueAt ? formatDateShort(activity.activityDueAt) : 'Tidak dibatasi'}</span>
+            </div>
+            {activity.activitySubmittedAt ? (
+              <div className="mt-1 flex items-center gap-1 text-green-700">
+                <CheckCircle className="h-3 w-3" />
+                <span>Dikumpulkan: {formatDateShort(activity.activitySubmittedAt)}</span>
+              </div>
+            ) : null}
+          </div>
+        </td>
+        <td className="px-6 py-4 text-center">{getRemedialStatusBadge(activity)}</td>
+        <td className="px-6 py-4 text-center">
+          {canTake ? (
+            <button
+              type="button"
+              onClick={() => navigate(`/student/remedials/${activity.id}/take`)}
+              className="inline-flex items-center gap-1 rounded bg-blue-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700"
+            >
+              <Play className="h-4 w-4" />
+              <span>Kerjakan</span>
+            </button>
+          ) : getRemedialStatus(activity) === 'completed' ? (
+            <span className="inline-flex items-center gap-1 rounded bg-gray-100 px-3 py-2 text-sm font-medium text-gray-700">
+              <CheckCircle className="h-4 w-4" />
+              <span>Selesai</span>
+            </span>
+          ) : (
+            <span className="text-sm text-gray-400">-</span>
+          )}
+        </td>
+      </tr>
+    )
   }
 
   const filteredPlacements = useMemo(() => {
@@ -1798,6 +1998,69 @@ export default function StudentExamsPage() {
             </div>
           )}
         </div>
+        {!isCandidateMode && !isApplicantMode ? (
+          <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+            <div className="border-b border-gray-200 px-5 py-4">
+              <h2 className="text-lg font-semibold text-gray-900">Paket Remedial</h2>
+              <p className="mt-1 text-sm text-gray-500">
+                Menampilkan {filteredRemedialActivities.length} dari {relevantRemedialTotal} paket remedial soal yang diterbitkan guru.
+              </p>
+            </div>
+            {studentRemedialActivitiesQuery.isLoading ? (
+              <div className="p-8 text-center text-sm text-gray-500">Memuat paket remedial...</div>
+            ) : studentRemedialActivitiesQuery.isError ? (
+              <div className="p-8 text-center">
+                <AlertCircle className="mx-auto mb-3 h-10 w-10 text-rose-400" />
+                <h3 className="text-base font-semibold text-gray-900">Gagal memuat remedial</h3>
+                <p className="mt-1 text-sm text-gray-500">Silakan muat ulang halaman atau hubungi guru mapel.</p>
+              </div>
+            ) : filteredRemedialActivities.length === 0 ? (
+              <div className="p-8 text-center">
+                <ClipboardCheck className="mx-auto mb-3 h-12 w-12 text-gray-300" />
+                <h3 className="text-base font-semibold text-gray-900">Belum Ada Paket Remedial</h3>
+                <p className="mt-1 text-sm text-gray-500">
+                  Paket remedial akan muncul di sini setelah guru menerbitkan remedial tipe soal untuk akun Anda.
+                </p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                        Paket Remedial
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                        Mata Pelajaran
+                      </th>
+                      <th className="px-6 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500">
+                        Jenis
+                      </th>
+                      <th className="px-6 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500">
+                        Soal
+                      </th>
+                      <th className="px-6 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500">
+                        Durasi
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                        Waktu
+                      </th>
+                      <th className="px-6 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500">
+                        Status
+                      </th>
+                      <th className="px-6 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500">
+                        Aksi
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200 bg-white">
+                    {filteredRemedialActivities.map((activity) => renderRemedialRow(activity))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        ) : null}
       {showExamRulesModal ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/25 px-4 backdrop-blur-[2px]">
           <div className="w-full max-w-lg rounded-2xl border border-yellow-200 bg-white p-6 shadow-xl">

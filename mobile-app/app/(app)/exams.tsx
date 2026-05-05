@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Feather } from '@expo/vector-icons';
 import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
-import { Alert, Animated, Image, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
+import { Alert, Animated, Image, Linking, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppLoadingScreen } from '../../src/components/AppLoadingScreen';
 import MobileDetailModal from '../../src/components/MobileDetailModal';
@@ -17,6 +17,8 @@ import { ENV } from '../../src/config/env';
 import { getStandardPagePadding } from '../../src/lib/ui/pageLayout';
 import { examApi, ExamProgramItem } from '../../src/features/exams/examApi';
 import { examCardApi } from '../../src/features/examCards/examCardApi';
+import { learningApi } from '../../src/features/learning/learningApi';
+import { LearningRemedialActivity } from '../../src/features/learning/types';
 import { useIsScreenActive } from '../../src/hooks/useIsScreenActive';
 import { useAppTextScale } from '../../src/theme/AppTextScaleProvider';
 import {
@@ -216,6 +218,35 @@ function resolveCardMediaUrl(value?: string | null) {
   return `${base}/api/uploads/${raw.replace(/^\/+/, '')}`;
 }
 
+function resolveWebRoute(pathname: string) {
+  const base = ENV.API_BASE_URL.replace(/\/api\/?$/, '').replace(/\/+$/, '');
+  return `${base}${pathname.startsWith('/') ? pathname : `/${pathname}`}`;
+}
+
+function resolveRemedialPacket(item: LearningRemedialActivity) {
+  return item.activityExamPacket || item.activitySourceExamPacket || null;
+}
+
+function resolveRemedialProgramCode(item: LearningRemedialActivity) {
+  const packet = resolveRemedialPacket(item);
+  return normalizeProgramCode(packet?.programCode || packet?.type || item.sourceLabel || '');
+}
+
+function isQuestionSetRemedial(item: LearningRemedialActivity) {
+  return String(item.method || '').toUpperCase() === 'QUESTION_SET';
+}
+
+function resolveRemedialRuntimeStatus(item: LearningRemedialActivity): StudentExamRuntimeStatus {
+  const normalizedStatus = String(item.status || '').toUpperCase();
+  if (item.activitySubmittedAt || normalizedStatus === 'PASSED' || normalizedStatus === 'STILL_BELOW_KKM') {
+    return 'COMPLETED';
+  }
+  if (!isQuestionSetRemedial(item) || !resolveRemedialPacket(item)) return 'UPCOMING';
+  const dueMs = item.activityDueAt ? new Date(item.activityDueAt).getTime() : Number.NaN;
+  if (Number.isFinite(dueMs) && dueMs < Date.now()) return 'MISSED';
+  return 'OPEN';
+}
+
 export default function StudentExamsScreen() {
   const params = useLocalSearchParams<{ programCode?: string | string[] }>();
   const router = useRouter();
@@ -298,6 +329,18 @@ export default function StudentExamsScreen() {
     refetchOnMount: false,
     queryFn: () => examCardApi.getMyCards({ programCode: lockedProgramCode || undefined }),
   });
+  const studentRemedialActivitiesQuery = useQuery({
+    queryKey: ['mobile-student-remedial-exams', user?.id || 'anon'],
+    enabled:
+      isAuthenticated &&
+      !isCandidateMode &&
+      !isApplicantMode &&
+      !applicantVerificationLocked &&
+      user?.role === 'STUDENT',
+    staleTime: 60_000,
+    refetchOnMount: false,
+    queryFn: () => learningApi.getRemedialActivities(),
+  });
 
   const effectiveTypeFilter = lockedProgramCode || 'ALL';
 
@@ -329,14 +372,16 @@ export default function StudentExamsScreen() {
   const isRefreshingExamData =
     (examsQuery.isFetching && !examsQuery.isLoading) ||
     (!isCandidateMode && !isApplicantMode && studentExamCardsQuery.isFetching && !studentExamCardsQuery.isLoading) ||
-    (!isCandidateMode && !isApplicantMode && studentExamPlacementsQuery.isFetching && !studentExamPlacementsQuery.isLoading);
+    (!isCandidateMode && !isApplicantMode && studentExamPlacementsQuery.isFetching && !studentExamPlacementsQuery.isLoading) ||
+    (!isCandidateMode && !isApplicantMode && studentRemedialActivitiesQuery.isFetching && !studentRemedialActivitiesQuery.isLoading);
   const handleRefreshExamData = useCallback(() => {
     void examsQuery.refetch();
     if (!isCandidateMode && !isApplicantMode) {
       void studentExamCardsQuery.refetch();
       void studentExamPlacementsQuery.refetch();
+      void studentRemedialActivitiesQuery.refetch();
     }
-  }, [examsQuery, isApplicantMode, isCandidateMode, studentExamCardsQuery, studentExamPlacementsQuery]);
+  }, [examsQuery, isApplicantMode, isCandidateMode, studentExamCardsQuery, studentExamPlacementsQuery, studentRemedialActivitiesQuery]);
   useEffect(() => {
     const becameActive = isScreenActive && !screenBecameActiveRef.current;
     screenBecameActiveRef.current = isScreenActive;
@@ -372,7 +417,18 @@ export default function StudentExamsScreen() {
         minIntervalMs: MOBILE_FOREGROUND_REFETCH_MIN_INTERVAL_MS,
         now,
       });
-    if (!shouldRefetchExamList && !shouldRefetchExamCards && !shouldRefetchExamPlacements) return;
+    const shouldRefetchRemedials =
+      !isCandidateMode &&
+      !isApplicantMode &&
+      user?.role === 'STUDENT' &&
+      shouldRunForegroundRefetch({
+        dataUpdatedAt: studentRemedialActivitiesQuery.dataUpdatedAt,
+        isFetching: studentRemedialActivitiesQuery.isFetching,
+        lastTriggeredAt: foregroundExamRefreshAtRef.current,
+        minIntervalMs: MOBILE_FOREGROUND_REFETCH_MIN_INTERVAL_MS,
+        now,
+      });
+    if (!shouldRefetchExamList && !shouldRefetchExamCards && !shouldRefetchExamPlacements && !shouldRefetchRemedials) return;
     foregroundExamRefreshAtRef.current = now;
     if (shouldRefetchExamList) {
       void examsQuery.refetch();
@@ -382,6 +438,9 @@ export default function StudentExamsScreen() {
     }
     if (shouldRefetchExamPlacements) {
       void studentExamPlacementsQuery.refetch();
+    }
+    if (shouldRefetchRemedials) {
+      void studentRemedialActivitiesQuery.refetch();
     }
   }, [
     applicantVerificationLocked,
@@ -396,6 +455,8 @@ export default function StudentExamsScreen() {
     studentExamCardsQuery.isFetching,
     studentExamPlacementsQuery.dataUpdatedAt,
     studentExamPlacementsQuery.isFetching,
+    studentRemedialActivitiesQuery.dataUpdatedAt,
+    studentRemedialActivitiesQuery.isFetching,
     user?.role,
   ]);
   useEffect(() => {
@@ -515,6 +576,41 @@ export default function StudentExamsScreen() {
       );
     });
   }, [effectiveTypeFilter, examsQuery.data?.exams, searchQuery, statusFilter]);
+  const remedialProgramTotal = useMemo(() => {
+    const rows = studentRemedialActivitiesQuery.data || [];
+    return rows.filter((item) => {
+      if (!isQuestionSetRemedial(item)) return false;
+      const type = resolveRemedialProgramCode(item);
+      return effectiveTypeFilter === 'ALL' || type === effectiveTypeFilter;
+    }).length;
+  }, [effectiveTypeFilter, studentRemedialActivitiesQuery.data]);
+  const filteredRemedials = useMemo(() => {
+    const rows = studentRemedialActivitiesQuery.data || [];
+    const q = searchQuery.trim().toLowerCase();
+    return rows
+      .filter((item) => {
+        if (!isQuestionSetRemedial(item)) return false;
+        const type = resolveRemedialProgramCode(item);
+        const status = resolveRemedialRuntimeStatus(item);
+        if (effectiveTypeFilter !== 'ALL' && type !== effectiveTypeFilter) return false;
+        if (statusFilter !== 'ALL' && status !== statusFilter) return false;
+        if (!q) return true;
+        const packet = resolveRemedialPacket(item);
+        return (
+          String(item.activityTitle || packet?.title || '').toLowerCase().includes(q) ||
+          String(item.subject?.name || '').toLowerCase().includes(q) ||
+          String(item.subject?.code || '').toLowerCase().includes(q) ||
+          String(item.teacher?.name || '').toLowerCase().includes(q) ||
+          String(item.sourceLabel || '').toLowerCase().includes(q)
+        );
+      })
+      .sort((left, right) => {
+        const leftDue = left.activityDueAt ? new Date(left.activityDueAt).getTime() : Number.POSITIVE_INFINITY;
+        const rightDue = right.activityDueAt ? new Date(right.activityDueAt).getTime() : Number.POSITIVE_INFINITY;
+        if (leftDue !== rightDue) return leftDue - rightDue;
+        return new Date(String(right.recordedAt || 0)).getTime() - new Date(String(left.recordedAt || 0)).getTime();
+      });
+  }, [effectiveTypeFilter, searchQuery, statusFilter, studentRemedialActivitiesQuery.data]);
   const groupedFilteredExams = useMemo<ExamDayGroup[]>(() => {
     const groupMap = new Map<string, ExamDayGroup>();
     filtered.forEach((item) => {
@@ -1689,6 +1785,137 @@ export default function StudentExamsScreen() {
             </Text>
           </View>
         )
+      ) : null}
+
+      {!isCandidateMode && !isApplicantMode && user?.role === 'STUDENT' ? (
+        <View
+          style={{
+            marginTop: 12,
+            backgroundColor: '#fff',
+            borderWidth: 1,
+            borderColor: '#e2e8f0',
+            borderRadius: 14,
+            overflow: 'hidden',
+          }}
+        >
+          <View style={{ padding: 14, borderBottomWidth: 1, borderBottomColor: '#e2e8f0' }}>
+            <Text style={{ color: '#0f172a', fontSize: scaleFont(18), fontWeight: '700' }}>Paket Remedial</Text>
+            <Text style={{ color: '#64748b', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginTop: 4 }}>
+              Menampilkan {filteredRemedials.length} dari {remedialProgramTotal} paket remedial soal yang diterbitkan guru.
+            </Text>
+          </View>
+          {studentRemedialActivitiesQuery.isLoading ? (
+            <View style={{ padding: 16 }}>
+              <Text style={{ color: '#64748b' }}>Memuat paket remedial...</Text>
+            </View>
+          ) : studentRemedialActivitiesQuery.isError ? (
+            <View style={{ padding: 16 }}>
+              <Text style={{ color: '#be123c', fontWeight: '700', marginBottom: 4 }}>Gagal memuat remedial.</Text>
+              <Text style={{ color: '#64748b' }}>Silakan tarik ke bawah untuk memuat ulang atau hubungi guru mapel.</Text>
+            </View>
+          ) : filteredRemedials.length > 0 ? (
+            <View style={{ padding: 10, gap: 8 }}>
+              {filteredRemedials.map((item) => {
+                const packet = resolveRemedialPacket(item);
+                const status = resolveRemedialRuntimeStatus(item);
+                const chip = statusStyle(status);
+                const type = resolveRemedialProgramCode(item);
+                const questionCount = Number(packet?.publishedQuestionCount || 0);
+                const duration = Number(packet?.duration || 0);
+                const statusLabel =
+                  status === 'UPCOMING'
+                    ? 'Paket Belum Siap'
+                    : status === 'OPEN'
+                      ? 'Bisa Dikerjakan'
+                      : chip.label;
+                return (
+                  <View
+                    key={`remedial-${item.id}`}
+                    style={{
+                      borderWidth: 1,
+                      borderColor: '#e2e8f0',
+                      borderRadius: 12,
+                      padding: 12,
+                      backgroundColor: status === 'OPEN' ? '#eff6ff' : '#fff',
+                    }}
+                  >
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ color: '#0f172a', fontSize: scaleFont(15), fontWeight: '700' }}>
+                          {item.activityTitle || packet?.title || 'Remedial'}
+                        </Text>
+                        <Text style={{ color: '#64748b', fontSize: scaleFont(12), lineHeight: scaleLineHeight(18), marginTop: 3 }}>
+                          {item.subject?.name || '-'}{item.subject?.code ? ` (${item.subject.code})` : ''} • {examTypeLabel(type)}
+                        </Text>
+                      </View>
+                      <Text
+                        style={{
+                          color: chip.text,
+                          backgroundColor: chip.bg,
+                          borderColor: chip.border,
+                          borderWidth: 1,
+                          borderRadius: 999,
+                          paddingHorizontal: 8,
+                          paddingVertical: 3,
+                          fontSize: scaleFont(11),
+                          fontWeight: '700',
+                          alignSelf: 'flex-start',
+                        }}
+                      >
+                        {statusLabel}
+                      </Text>
+                    </View>
+                    <Text style={{ color: '#334155', fontSize: scaleFont(12), marginBottom: 4 }}>
+                      Guru: {item.teacher?.name || 'Guru mapel'}
+                    </Text>
+                    <Text style={{ color: '#334155', fontSize: scaleFont(12), marginBottom: 4 }}>
+                      Sumber nilai: {item.sourceLabel || '-'}
+                    </Text>
+                    <Text style={{ color: '#334155', fontSize: scaleFont(12), marginBottom: 4 }}>
+                      Tenggat: {item.activityDueAt ? formatDateTime(item.activityDueAt) : 'Tidak dibatasi'}
+                    </Text>
+                    <Text style={{ color: '#334155', fontSize: scaleFont(12), marginBottom: 8 }}>
+                      Soal: {questionCount || '-'} • Durasi: {duration || '-'} menit
+                    </Text>
+                    <Pressable
+                      onPress={async () => {
+                        if (status === 'OPEN') {
+                          await Linking.openURL(resolveWebRoute(`/student/remedials/${item.id}/take`));
+                          return;
+                        }
+                        Alert.alert(
+                          'Paket Remedial',
+                          status === 'COMPLETED'
+                            ? 'Remedial ini sudah selesai dikerjakan.'
+                            : status === 'MISSED'
+                              ? 'Tenggat remedial sudah berakhir.'
+                              : 'Paket soal remedial belum siap untuk dikerjakan.',
+                        );
+                      }}
+                      style={{
+                        backgroundColor: status === 'OPEN' ? '#1d4ed8' : '#cbd5e1',
+                        borderRadius: 8,
+                        paddingVertical: 9,
+                        alignItems: 'center',
+                      }}
+                    >
+                      <Text style={{ color: '#fff', fontWeight: '700' }}>
+                        {status === 'OPEN' ? 'Kerjakan Remedial' : 'Detail Remedial'}
+                      </Text>
+                    </Pressable>
+                  </View>
+                );
+              })}
+            </View>
+          ) : (
+            <View style={{ padding: 16 }}>
+              <Text style={{ color: '#0f172a', fontWeight: '700', marginBottom: 4 }}>Belum ada paket remedial</Text>
+              <Text style={{ color: '#64748b', fontSize: scaleFont(13), lineHeight: scaleLineHeight(20) }}>
+                Paket remedial akan tampil di sini setelah guru menerbitkan remedial tipe soal untuk akun Anda.
+              </Text>
+            </View>
+          )}
+        </View>
       ) : null}
 
       <Pressable

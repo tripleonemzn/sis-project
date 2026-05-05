@@ -1904,6 +1904,11 @@ export const TeacherGradesPage = () => {
     const activityExamPacketId = Number(remedialActivityExamPacketIdInput || 0);
     const activitySourceExamPacketId = Number(remedialActivitySourceExamPacketIdInput || 0);
 
+    if (remedialMethodInput === 'QUESTION_SET' && !activityExamPacketId && !activitySourceExamPacketId) {
+      toast.error('Pilih paket soal remedial sebelum diterbitkan ke siswa.');
+      return;
+    }
+
     if (!activityTitle && !activityExamPacketId && !activitySourceExamPacketId) {
       toast.error('Isi judul remedial atau pilih paket soal sebelum remedial diterbitkan.');
       return;
